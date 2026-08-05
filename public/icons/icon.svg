@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Background with neobrutalist border -->
+  <rect x="16" y="16" width="480" height="480" rx="32" fill="#141414" />
+  <rect x="32" y="32" width="448" height="448" rx="24" fill="#ffffff" stroke="#141414" stroke-width="12" />
+  
+  <!-- Shadow of the book-cross -->
+  <path d="M152 208 L368 208 L368 368 L152 368 Z" fill="#141414" opacity="0.15" transform="translate(12, 12)" />
+
+  <!-- Book Pages / Base -->
+  <path d="M120 320 C180 320, 240 340, 256 350 C272 340, 332 320, 392 320 L392 180 C332 180, 272 200, 256 210 C240 200, 180 180, 120 180 Z" fill="#ffffff" stroke="#141414" stroke-width="16" stroke-linejoin="round" />
+  
+  <!-- Left Page Lines -->
+  <line x1="150" y1="220" x2="220" y2="220" stroke="#141414" stroke-width="12" stroke-linecap="round" />
+  <line x1="150" y1="250" x2="220" y2="250" stroke="#141414" stroke-width="12" stroke-linecap="round" />
+  <line x1="150" y1="280" x2="200" y2="280" stroke="#141414" stroke-width="12" stroke-linecap="round" />
+
+  <!-- Right Page Lines -->
+  <line x1="292" y1="220" x2="362" y2="220" stroke="#141414" stroke-width="12" stroke-linecap="round" />
+  <line x1="292" y1="250" x2="362" y2="250" stroke="#141414" stroke-width="12" stroke-linecap="round" />
+  <line x1="292" y1="280" x2="342" y2="280" stroke="#141414" stroke-width="12" stroke-linecap="round" />
+
+  <!-- Divider Ribbon / Bookmarks -->
+  <path d="M256 190 L256 370" stroke="#141414" stroke-width="16" stroke-linecap="round" />
+  <path d="M248 370 L256 385 L264 370 Z" fill="#141414" stroke="#141414" stroke-width="4" stroke-linejoin="round" />
+
+  <!-- Combined Medical Cross floating or integrated in center header -->
+  <!-- Let's put a distinct medical cross graphic above or centered -->
+  <g transform="translate(256, 115)">
+    <!-- Shadow -->
+    <rect x="-35" y="-12" width="70" height="24" rx="4" fill="#141414" transform="translate(4,4)" opacity="0.2" />
+    <rect x="-12" y="-35" width="24" height="70" rx="4" fill="#141414" transform="translate(4,4)" opacity="0.2" />
+    
+    <!-- Outer line -->
+    <rect x="-38" y="-15" width="76" height="30" rx="6" fill="#141414" />
+    <rect x="-15" y="-38" width="30" height="76" rx="6" fill="#141414" />
+    
+    <!-- Colored fill (medical red/teal) -->
+    <rect x="-32" y="-9" width="64" height="18" rx="3" fill="#10b981" />
+    <rect x="-9" y="-32" width="18" height="64" rx="3" fill="#10b981" />
+  </g>
+</svg>

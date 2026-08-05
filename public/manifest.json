@@ -1,0 +1,24 @@
+{
+  "name": "MedRevise - Sistema de Revisão Espaçada",
+  "short_name": "MedRevise",
+  "description": "App de revisão espaçada científico para estudantes e profissionais de medicina, baseado na curva de esquecimento de Ebbinghaus.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#141414",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icons/icon-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}

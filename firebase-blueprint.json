@@ -1,0 +1,171 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Subject": {
+      "title": "Subject",
+      "description": "A study subject (e.g., Cardiology, Pediatrics)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "color": { "type": "string" },
+        "icon": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Topic": {
+      "title": "Topic",
+      "description": "A specific topic within a subject",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "lastReviewDate": { "type": "string", "format": "date-time" },
+        "nextReviewDate": { "type": "string", "format": "date-time" },
+        "interval": { "type": "number", "description": "Current interval in days" },
+        "easinessFactor": { "type": "number", "description": "SM-2 easiness factor" },
+        "repetitions": { "type": "number", "description": "Number of successful repetitions" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "subjectId"]
+    },
+    "StudySession": {
+      "title": "Study Session",
+      "description": "A record of a study session",
+      "type": "object",
+      "properties": {
+        "topicId": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "questionsCount": { "type": "number" },
+        "correctCount": { "type": "number" },
+        "studyTimeMinutes": { "type": "number" }
+      },
+      "required": ["topicId", "subjectId", "date"]
+    },
+    "CalendarEvent": {
+      "title": "Calendar Event",
+      "description": "A manual calendar appointment",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" },
+        "googleEventId": { "type": "string" }
+      },
+      "required": ["title", "start", "end"]
+    },
+    "CollegeClass": {
+      "title": "College Class",
+      "description": "A recurring college class",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "location": { "type": "string" },
+        "dayOfWeek": { "type": "number", "description": "0-6 (Sunday-Saturday)" },
+        "startTime": { "type": "string", "description": "HH:mm" },
+        "endTime": { "type": "string", "description": "HH:mm" },
+        "color": { "type": "string" }
+      },
+      "required": ["title", "dayOfWeek", "startTime", "endTime"]
+    },
+    "MockExam": {
+      "title": "Mock Exam",
+      "description": "A past or mock exam record with scientific error-tracking metrics",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "totalQuestions": { "type": "number" },
+        "correctAnswers": { "type": "number" },
+        "timeSpentMinutes": { "type": "number" },
+        "tag": { "type": "string", "enum": ["Simulado", "Prova Antiga"] },
+        "conditions": { "type": "string", "enum": ["Simulado Real", "Estudo/Treino"] },
+        "errorsByReason": { "type": "object" },
+        "performanceBySubject": { "type": "array" },
+        "notes": { "type": "string" }
+      },
+      "required": ["title", "date", "totalQuestions", "correctAnswers", "tag", "conditions"]
+    },
+    "PreAuthorizedEmail": {
+      "title": "PreAuthorizedEmail",
+      "description": "Pre-authorized premium email record",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email"]
+    },
+    "Schedule": {
+      "title": "Study Schedule",
+      "description": "User's interactive study schedule configuration and dynamic plan",
+      "type": "object",
+      "properties": {
+        "exam": { "type": "string" },
+        "modality": { "type": "string", "enum": ["6meses", "1ano", "2anos", "extensivo", "intensivo"] },
+        "studyDays": { "type": "array" },
+        "hoursPerDay": { "type": "number" },
+        "weeks": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "progress": { "type": "number" }
+      },
+      "required": ["exam", "modality", "studyDays", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/pre_authorized_emails/{email}": {
+      "schema": "PreAuthorizedEmail",
+      "description": "Emails pre-authorized for immediate premium status upon sign up"
+    },
+    "/users/{userId}/schedules/{scheduleId}": {
+      "schema": "Schedule",
+      "description": "User's interactive study schedules"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile"
+    },
+    "/users/{userId}/subjects/{subjectId}": {
+      "schema": "Subject",
+      "description": "User's study subjects"
+    },
+    "/users/{userId}/topics/{topicId}": {
+      "schema": "Topic",
+      "description": "User's study topics"
+    },
+    "/users/{userId}/studySessions/{sessionId}": {
+      "schema": "StudySession",
+      "description": "User's study session history"
+    },
+    "/users/{userId}/calendarEvents/{eventId}": {
+      "schema": "CalendarEvent",
+      "description": "User's calendar events"
+    },
+    "/users/{userId}/collegeSchedule/{classId}": {
+      "schema": "CollegeClass",
+      "description": "User's recurring college classes"
+    },
+    "/users/{userId}/mockExams/{examId}": {
+      "schema": "MockExam",
+      "description": "User's mock and past exam records"
+    },
+    "/users/{userId}/secrets/{secretId}": {
+      "schema": "object",
+      "description": "User's private secrets (e.g., OAuth tokens)"
+    }
+  }
+}

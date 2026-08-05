@@ -1,0 +1,161 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields: uid, email, displayName, photoURL, createdAt, settings
+    //
+    // Collection: users/{userId}/subjects
+    // Fields: name, color, icon, createdAt
+    //
+    // Collection: users/{userId}/topics
+    // Fields: name, subjectId, lastReviewDate, nextReviewDate, interval, easinessFactor, repetitions, createdAt
+    //
+    // Collection: users/{userId}/studySessions
+    // Fields: topicId, subjectId, date, questionsCount, correctCount, studyTimeMinutes
+    //
+    // Collection: users/{userId}/calendarEvents
+    // Fields: title, description, start, end, googleEventId
+    //
+    // Collection: users/{userId}/collegeSchedule
+    // Fields: title, location, dayOfWeek, startTime, endTime, color
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          request.auth.token.email == "lucas1renck2melo@gmail.com" ||
+          request.auth.token.email == "ysabelleosaraiva@gmail.com");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidUser(data) {
+      return data.uid is string && 
+             (data.email == null || data.email is string) &&
+             (data.settings == null || data.settings is map);
+    }
+
+    function isValidSubject(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100;
+    }
+
+    function isValidTopic(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.subjectId is string;
+    }
+
+    function isValidStudySession(data) {
+      return data.topicId is string && data.subjectId is string &&
+             data.questionsCount is number && data.correctCount is number;
+    }
+
+    function isValidCalendarEvent(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.start is string && data.end is string;
+    }
+
+    function isValidCollegeClass(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.dayOfWeek is number && data.dayOfWeek >= 0 && data.dayOfWeek <= 6 &&
+             data.startTime is string && data.endTime is string;
+    }
+
+    function isValidMockExam(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.totalQuestions is number && data.correctAnswers is number &&
+             data.date is string && data.tag is string && data.conditions is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /pre_authorized_emails/{emailId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+
+      match /{allSubcollections=**} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      match /secrets/{secretId} {
+        allow read, write: if false; // Only accessible via Admin SDK
+      }
+    }
+
+    // Top-level collections for MedInternato
+    match /semesters/{semesterId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /subjects/{subjectId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /topics/{topicId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /questions/{questionId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /flashcards/{flashcardId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /quizAttempts/{attemptId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /studySessions/{sessionId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /calendarEvents/{eventId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /userProgress/{userId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /userTopics/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /userFlashcards/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /userQuestions/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /userNotes/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /userHighlightings/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /userSettings/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /global/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "MedRevise - Sistema de Revisão Espaçada",
+  "description": "App de revisão espaçada para estudantes, com cálculo científico de datas, calendário sincronizado e estatísticas detalhadas de desempenho.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

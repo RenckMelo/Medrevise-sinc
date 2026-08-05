@@ -1,0 +1,420 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@700&display=swap');
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-display: var(--font-display);
+    --font-sans: var(--font-sans);
+    
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+}
+
+.internato-mode {
+    --background: #E4E3E0;
+    --foreground: #141414;
+    --card: #FFFFFF;
+    --card-foreground: #141414;
+    --popover: #FFFFFF;
+    --popover-foreground: #141414;
+    --primary: #141414;
+    --primary-foreground: #FFFFFF;
+    --secondary: #E8E6E1;
+    --secondary-foreground: #141414;
+    --muted: #8E8A82;
+    --muted-foreground: #8E8A82;
+    --accent: #E8E6E1;
+    --accent-foreground: #141414;
+    --destructive: #991B1B;
+    --border: #141414;
+    --input: #F0EEE9;
+    --ring: #141414;
+    --radius: 0px;
+    --radius-sm: 0px;
+    --radius-md: 0px;
+    --radius-lg: 0px;
+    
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #141414;
+    --sidebar-primary: #141414;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #E8E6E1;
+    --sidebar-accent-foreground: #141414;
+    --sidebar-border: #141414;
+    --sidebar-ring: #141414;
+    
+    --font-display: "Playfair Display", serif;
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+.internato-mode * {
+  border-color: var(--border);
+}
+
+.internato-mode .markdown-body {
+  font-family: var(--font-sans);
+  line-height: 1.75;
+  color: #27272A;
+  font-size: 13.5px;
+}
+
+@media (min-width: 640px) {
+  .internato-mode .markdown-body {
+    font-size: 15.5px;
+  }
+}
+
+.internato-mode .markdown-body h1 { 
+  font-family: var(--font-display); 
+  font-weight: 900; 
+  margin-top: 2.25rem; 
+  margin-bottom: 1.25rem; 
+  font-size: 1.5rem; 
+  color: #111827; 
+  letter-spacing: -0.02em;
+  padding-bottom: 0.6rem;
+  border-bottom: 2px solid #E2E0D9;
+}
+@media (min-width: 640px) {
+  .internato-mode .markdown-body h1 { font-size: 2.15rem; }
+}
+
+.internato-mode .markdown-body h2 { 
+  font-family: var(--font-display); 
+  font-weight: 800; 
+  margin-top: 2rem; 
+  margin-bottom: 1rem; 
+  font-size: 1.25rem; 
+  color: #18181B; 
+  letter-spacing: -0.015em;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #E2E0D9;
+}
+@media (min-width: 640px) {
+  .internato-mode .markdown-body h2 { font-size: 1.6rem; }
+}
+
+.internato-mode .markdown-body h3 { 
+  font-family: var(--font-display); 
+  font-weight: 700; 
+  margin-top: 1.6rem; 
+  margin-bottom: 0.75rem; 
+  font-size: 1.05rem; 
+  color: #27272A; 
+}
+@media (min-width: 640px) {
+  .internato-mode .markdown-body h3 { font-size: 1.3rem; }
+}
+
+.internato-mode .markdown-body h4 {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  color: #3F3F46;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.internato-mode .markdown-body p { 
+  margin-bottom: 1.15rem; 
+  line-height: 1.75;
+  color: #27272A;
+}
+
+.internato-mode .markdown-body strong {
+  color: #09090B;
+  font-weight: 700;
+  background-color: rgba(212, 78, 61, 0.06);
+  padding: 0.1em 0.3em;
+  border-radius: 0.25rem;
+}
+
+.internato-mode .markdown-body ul { 
+  list-style-type: disc; 
+  padding-left: 1.5rem; 
+  margin-bottom: 1.15rem; 
+}
+.internato-mode .markdown-body ol { 
+  list-style-type: decimal; 
+  padding-left: 1.5rem; 
+  margin-bottom: 1.15rem; 
+}
+.internato-mode .markdown-body li { 
+  margin-bottom: 0.4rem; 
+  line-height: 1.7;
+}
+
+.internato-mode .markdown-body blockquote { 
+  border-left-width: 4px; 
+  border-left-color: #D44E3D; 
+  padding: 1rem 1.25rem; 
+  margin-top: 1.5rem; 
+  margin-bottom: 1.5rem; 
+  background-color: #FAF8F5; 
+  border-radius: 0 0.75rem 0.75rem 0; 
+  border-top: 1px solid #E2E0D9;
+  border-right: 1px solid #E2E0D9;
+  border-bottom: 1px solid #E2E0D9;
+  color: #2C2B29;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.internato-mode .markdown-body table { 
+  width: 100%; 
+  border-collapse: separate; 
+  border-spacing: 0;
+  margin-top: 1.5rem; 
+  margin-bottom: 1.5rem; 
+  border-radius: 0.75rem;
+  overflow: hidden;
+  border: 1px solid #E2E0D9;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+}
+
+.internato-mode .markdown-body th { 
+  background-color: #F6F5F1; 
+  padding: 0.75rem 1rem; 
+  text-align: left; 
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #383633;
+  border-bottom: 2px solid #E2E0D9;
+}
+
+.internato-mode .markdown-body td { 
+  padding: 0.75rem 1rem; 
+  border-bottom: 1px solid #F0EEE9; 
+  font-size: 0.9rem;
+  color: #27272A;
+  line-height: 1.6;
+}
+
+.internato-mode .markdown-body tr:last-child td {
+  border-bottom: none;
+}
+
+.internato-mode .markdown-body tr:nth-child(even) td {
+  background-color: #FAF9F6;
+}
+
+.internato-mode .markdown-body code {
+  background-color: #F3F1EC;
+  color: #912A1F;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875em;
+  padding: 0.2em 0.45em;
+  border-radius: 0.375rem;
+  border: 1px solid #E5E3DC;
+  font-weight: 500;
+}
+
+.editorial-highlight {
+    @apply bg-[#FFF9E6] border-l-4 border-[#FFD43B] p-5 my-5 rounded-sm;
+}
+
+/* Fix for html2canvas oklch unsupported error */
+.pdf-export-reset {
+  --background: #ffffff !important;
+  --foreground: #1a1a1a !important;
+  --primary: #d44e3d !important;
+  --border: #e2e0d9 !important;
+  --muted: #8e8a82 !important;
+  color: #1a1a1a !important;
+  background-color: #ffffff !important;
+}
+
+.pdf-export-reset * {
+  color-scheme: light !important;
+}
+
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@layer utilities {
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+  .backface-hidden {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+}
+
+/* HIGH-FIDELITY VECTOR PRINT STYLES FOR SELECTABLE MEDICAL PDF GENERATION */
+@media print {
+  /* 1. Reset all layout viewports (unconstrain height/overflow parents so that natural page breaks occur) */
+  html, 
+  body, 
+  #root, 
+  body.print-mode-active,
+  body.print-mode-active #root,
+  body.print-mode-active main,
+  body.print-mode-active div,
+  body.print-mode-active section,
+  body.print-mode-active article {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: relative !important;
+    display: block !important;
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+    box-shadow: none !important;
+  }
+
+  /* 2. Hide every UI helper, side panel, navigation controls, and other interactive tabs */
+  aside,
+  nav,
+  header,
+  footer,
+  button,
+  .no-print,
+  .sidebar-container,
+  [role="complementary"],
+  [role="navigation"] {
+    display: none !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+  }
+
+  /* Hide everything on the body except our main document hierarchy to prevent bleed */
+  body.print-mode-active > *:not(#root) {
+    display: none !important;
+  }
+
+  /* 3. Style and align the high-fidelity target wrapper */
+  .print-page-target {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    display: block !important;
+    background: #ffffff !important;
+  }
+
+  /* 4. Document-style page setup & custom A4 margins */
+  @page {
+    margin: 25mm 20mm;
+    size: A4 portrait;
+  }
+
+  /* 5. Force light-theme and preserve vector color adjustments for backgrounds/borders */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-scheme: light !important;
+  }
+
+  /* 6. Page break optimization: Never cut headings, images, SVGs, or table rows half-way */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    color: #1a1a1a !important;
+  }
+
+  p, li, tr, blockquote, pre, img, svg, iframe {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* 7. Beautiful academic markdown formatting specifically for PDF print outputs */
+  .pdf-export-reset, .markdown-body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+    background-color: #ffffff !important;
+    color: #1a1a1a !important;
+  }
+
+  .markdown-body {
+    font-size: 11pt !important;
+    line-height: 1.6 !important;
+  }
+
+  .markdown-body table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 15pt 0 !important;
+    page-break-inside: avoid !important;
+  }
+
+  .markdown-body th {
+    background-color: #d44e3d !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    border: 1px solid #d44e3d !important;
+    padding: 8pt !important;
+  }
+
+  .markdown-body td {
+    border: 1px solid #eeeeee !important;
+    padding: 8pt !important;
+    background-color: #ffffff !important;
+  }
+
+  .markdown-body tr:nth-child(even) td {
+    background-color: #fffcfb !important;
+  }
+
+  .markdown-body blockquote {
+    border-left: 4px solid #d44e3d !important;
+    background-color: #fff5f2 !important;
+    padding: 10pt 15pt !important;
+    margin: 15pt 0 !important;
+    font-style: italic !important;
+  }
+
+  /* Hide default links URL representation */
+  a[href]::after {
+    content: none !important;
+  }
+}

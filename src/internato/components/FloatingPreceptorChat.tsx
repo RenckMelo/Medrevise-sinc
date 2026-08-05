@@ -66,6 +66,11 @@ export default function FloatingPreceptorChat({ availableCredits }: FloatingPrec
   const hasMovedRef = useRef<boolean>(false);
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    // If clicking on or inside a button (close, expand, trash, etc.), do not initiate drag
+    if ((e.target as HTMLElement).closest('button')) {
+      return;
+    }
+
     // Only drag with primary mouse button / touch
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     

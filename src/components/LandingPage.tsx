@@ -1855,7 +1855,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                   <div className="space-y-1.5">
                     <span className="font-mono text-[9px] uppercase font-bold text-blue-800 block">Acesso na prática:</span>
                     <p className="text-xs text-neutral-700 leading-relaxed font-sans bg-blue-50/40 p-2.5 border border-blue-100">
-                      Organização teórica ilimitada de todas as matérias da faculdade, revisões agendadas pelo algoritmo SRS e 120 req/dia de IA para resumos.
+                      Organização teórica ilimitada de todas as matérias da faculdade, revisões agendadas pelo algoritmo SRS e 10 req/dia de IA (mesmo limite do plano Gratuito).
                     </p>
                   </div>
 
@@ -1869,7 +1869,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                       </li>
                       <li className="flex items-start gap-1.5">
                         <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                        <span>120 requisições diárias de IA para resumos e tópicos.</span>
+                        <span>10 requisições diárias de IA (igual ao plano Gratuito).</span>
                       </li>
                       <li className="flex items-start gap-1.5">
                         <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
@@ -2071,7 +2071,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                         <span className="block text-[10px] text-neutral-500">Limite de requisições de Inteligência Artificial para resumos, discussões e perguntas</span>
                       </td>
                       <td className="p-4 text-center font-mono text-neutral-500 bg-neutral-50/30 font-bold">10 requisições</td>
-                      <td className="p-4 text-center font-mono font-bold text-blue-900 bg-blue-50/10">120 requisições</td>
+                      <td className="p-4 text-center font-mono font-bold text-blue-900 bg-blue-50/10">10 requisições (Grátis)</td>
                       <td className="p-4 text-center font-mono font-bold text-emerald-900 bg-emerald-50/10">200 requisições</td>
                       <td className="p-4 text-center font-mono font-bold text-amber-500 bg-[#141414]">250 requisições</td>
                     </tr>

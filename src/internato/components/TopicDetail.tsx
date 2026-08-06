@@ -12,7 +12,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
-import { generateTopicContent, generateQuestions, generateFlashcards, GenerationDepth, deepenTopicSection, getGlobalUsage, importPdfWithAI, deepenNotebookArea, analyzeSummaryNeeds, generateCustomAnalyzedSummary, generateWithAI, resumeFailedSummaryContent, getChaptersFromMonograph } from '../services/geminiService';
+import { generateTopicContent, generateQuestions, generateFlashcards, GenerationDepth, deepenTopicSection, getGlobalUsage, importPdfWithAI, deepenNotebookArea, analyzeSummaryNeeds, generateCustomAnalyzedSummary, generateWithAI, resumeFailedSummaryContent, getChaptersFromMonograph, calculateExtraCredits } from '../services/geminiService';
 
 import { db, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc } from '../firebase';
 import jsPDF from 'jspdf';
@@ -941,7 +941,7 @@ export default function TopicDetail({ topic: initialTopic, userProgress, onBack,
         referralRewardGranted: false
       });
 
-      setTopicReferralMsg({ type: 'success', text: `Código ${cleanKey} vinculado com sucesso! O dono do código receberá 1 mês grátis assim que o seu pagamento for confirmado.` });
+      setTopicReferralMsg({ type: 'success', text: `Código ${cleanKey} vinculado com sucesso! O dono do código receberá +5 dias adicionais ao plano atual assim que o seu pagamento for confirmado.` });
     } catch (err) {
       console.error('Error applying referral code in TopicDetail:', err);
       setTopicReferralMsg({ type: 'error', text: 'Erro ao aplicar o código. Tente novamente.' });
@@ -1871,7 +1871,7 @@ DIRETRIZES CRÍTICAS PARA PRECISÃO DA PATOLOGIA:
 1. SEMPRE combine o nome da patologia/doença com o achado visual (ex: "trichomoniasis strawberry cervix", "vulvovaginal candidiasis discharge", "bacterial vaginosis clue cells", "acute cervicitis endocervix", "chlamydia cervicitis").
 2. NUNCA gere palavras isoladas ou ambíguas.
 Retorne APENAS os termos separados por vírgula.`;
-          const aiResponse = await generateWithAI(aiPrompt, "gemini-3.6-flash", 1);
+          const aiResponse = await generateWithAI(aiPrompt, "gemini-3.1-flash-lite", 1);
           if (aiResponse) {
             queryTermsToSearch = aiResponse.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
           }
@@ -2177,7 +2177,7 @@ ${candidatesToVerify.join('\n')}
 
 Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todos forem válidos ou se na dúvida, inclua o índice.`;
 
-          const aiFilterResponse = await generateWithAI(filterPrompt, "gemini-3.6-flash", 1);
+          const aiFilterResponse = await generateWithAI(filterPrompt, "gemini-3.1-flash-lite", 1);
           if (aiFilterResponse) {
             const validIndices = aiFilterResponse.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n >= 0 && n < results.length);
             if (validIndices.length > 0) {
@@ -3027,11 +3027,10 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
 
   const getAccountLabel = () => {
     const limit = globalQuota?.limit || 10;
-    if (limit === 3000) return "Administrador / Ilimitado";
+    if (limit >= 1000) return "Administrador / Ilimitado";
     if (limit === 250) return "Combo Ouro";
     if (limit === 200) return "Med Internato Premium";
-    if (limit === 120) return "Med Revise Pro";
-    return "Gratuita";
+    return "Med Revise / Grátis";
   };
 
   const hasErrorInContent = useMemo(() => {
@@ -3216,7 +3215,8 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
       master: 50,
       monograph: 100
     };
-    const requiredCredits = costMap[depth] || 1;
+    const base = costMap[depth] || 1;
+    const requiredCredits = Math.max(1, base + calculateExtraCredits(illustrationLevel, alertBoxLevel));
     if (!checkCreditsSufficient(requiredCredits)) {
       return;
     }
@@ -3385,15 +3385,20 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
   };
 
   const getCalculatedCost = () => {
-    if (depth === 'standard') return 1;
-    if (depth === 'deep') return 5;
-    if (depth === 'elite') return 10;
-    if (depth === 'master') return 50;
-    if (depth === 'monograph') return 100;
+    let base = 10;
+    if (depth === 'standard') base = 1;
+    else if (depth === 'deep') base = 5;
+    else if (depth === 'elite') base = 10;
+    else if (depth === 'master') base = 50;
+    else if (depth === 'monograph') base = 100;
+    else {
+      // Resumo Inteligente (custom_analyzed): cobrado estritamente por capítulo (10 créditos por capítulo)
+      const chapterCount = editedChapters?.length || (analysisResult?.chapters?.length || 5);
+      base = Math.max(10, chapterCount * 10);
+    }
 
-    // Resumo Inteligente (custom_analyzed): cobrado estritamente por capítulo (10 créditos por capítulo)
-    const chapterCount = editedChapters?.length || (analysisResult?.chapters?.length || 5);
-    return Math.max(10, chapterCount * 10);
+    const extra = calculateExtraCredits(illustrationLevel, alertBoxLevel);
+    return Math.max(1, base + extra);
   };
 
   const handleGenerateCustomAnalyzedSummary = async (overrideAnalysis?: any, overrideConfig?: any) => {
@@ -3443,16 +3448,18 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     }
 
     // Calcular custo usando os parâmetros target
-    let requiredCredits = 25;
-    if (targetDepth === 'standard') requiredCredits = 1;
-    else if (targetDepth === 'deep') requiredCredits = 5;
-    else if (targetDepth === 'elite') requiredCredits = 10;
-    else if (targetDepth === 'master') requiredCredits = 50;
-    else if (targetDepth === 'monograph') requiredCredits = 100;
+    let baseCost = 25;
+    if (targetDepth === 'standard') baseCost = 1;
+    else if (targetDepth === 'deep') baseCost = 5;
+    else if (targetDepth === 'elite') baseCost = 10;
+    else if (targetDepth === 'master') baseCost = 50;
+    else if (targetDepth === 'monograph') baseCost = 100;
     else {
       const chapterCount = targetChapters?.length || (analysisToUse?.chapters?.length || 5);
-      requiredCredits = Math.max(10, chapterCount * 10);
+      baseCost = Math.max(10, chapterCount * 10);
     }
+    const extraCost = calculateExtraCredits(targetIllLvl, targetAlertLvl);
+    const requiredCredits = Math.max(1, baseCost + extraCost);
     
     if (!checkCreditsSufficient(requiredCredits)) {
       return;
@@ -7703,7 +7710,7 @@ th { background: #F8F7F4; font-weight: bold; }
                   </h3>
                   <p className="text-white/90 text-sm mt-1 max-w-2xl font-medium">
                     Você está na conta <strong className="underline">{getAccountLabel()}</strong> e tem apenas <strong className="text-yellow-300">{globalQuota?.available || 0} de {globalQuota?.limit || 10}</strong> créditos restantes hoje.
-                    Esta operação requer <strong className="text-yellow-200">{depth === 'custom_analyzed' ? (analysisResult?.cost || 65) : (depth === 'standard' ? 1 : depth === 'deep' ? 5 : depth === 'elite' ? 10 : depth === 'master' ? 50 : 100)}</strong> créditos.
+                    Esta operação requer <strong className="text-yellow-200">{getCalculatedCost()}</strong> créditos.
                   </p>
                 </div>
 
@@ -7746,7 +7753,7 @@ th { background: #F8F7F4; font-weight: bold; }
                           <ul className="space-y-2 border-t border-[#F2F0EA] pt-4 text-xs text-stone-700">
                             <li className="flex items-center gap-2">
                               <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
-                              <span><strong>120 créditos / dia</strong> de IA</span>
+                              <span><strong>10 créditos / dia</strong> de IA (igual ao Gratuito)</span>
                             </li>
                             <li className="flex items-center gap-2">
                               <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />

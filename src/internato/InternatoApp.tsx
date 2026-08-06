@@ -571,12 +571,14 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
         />
       )}
 
-      {/* AI Provider Status Modal */}
-      <AiProviderStatusModal
-        isOpen={showProviderStatusModal}
-        onClose={() => setShowProviderStatusModal(false)}
-        userEmail={user?.email || ''}
-      />
+      {/* AI Provider Status Modal (Strictly for Special Users) */}
+      {isSpecialUser && (
+        <AiProviderStatusModal
+          isOpen={showProviderStatusModal}
+          onClose={() => setShowProviderStatusModal(false)}
+          userEmail={user?.email || ''}
+        />
+      )}
 
       {/* Dicas & Sugestões Box */}
       <SuggestionsBox

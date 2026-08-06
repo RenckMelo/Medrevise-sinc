@@ -78,6 +78,9 @@ export default function UpgradeModal({ isOpen, onClose, reason }: UpgradeModalPr
                 <li className="flex items-center gap-1.5 font-semibold">
                   <span className="text-emerald-600">✓</span> Simulados Ilimitados
                 </li>
+                <li className="flex items-center gap-1.5 font-normal text-neutral-600">
+                  <span className="text-amber-600">⚡</span> 10 créditos/dia de IA (mesmo limite do Grátis)
+                </li>
               </ul>
             </div>
           </div>

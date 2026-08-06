@@ -63,7 +63,7 @@ async function getUserFocusSettings(userId?: string) {
   return { residencyFocus, isCustom };
 }
 
-async function callGemini(action: 'generateContent' | 'generateJson', prompt: string, model: string = "gemini-3.6-flash", parts?: any[]) {
+async function callGemini(action: 'generateContent' | 'generateJson', prompt: string, model: string = "gemini-3.1-flash-lite", parts?: any[]) {
   return withRetry(async () => {
     try {
       const endpoint = '/api/gemini';
@@ -169,7 +169,7 @@ export async function checkUsageLimit() {
     const isPremium = !!userData?.isPremium;
     const premiumPlan = userData?.premiumPlan || 'med_revise_pro';
     
-    let limit = 10; // Default Free limit
+    let limit = 10; // Default Free limit & MedRevise Pro limit
     if (isSpecialUser) {
       limit = 1000;
     } else if (isPremium) {
@@ -178,7 +178,7 @@ export async function checkUsageLimit() {
       } else if (premiumPlan === 'med_internato_premium') {
         limit = 200;
       } else {
-        limit = 120; // med_revise_pro or legacy/fallback premium
+        limit = 10; // med_revise_pro: 10 créditos diários (mesmo do plano Gratuito)
       }
     }
 
@@ -204,7 +204,7 @@ export async function getGlobalUsage() {
     const isPremium = !!userData?.isPremium;
     const premiumPlan = userData?.premiumPlan || 'med_revise_pro';
     
-    let limit = 10; // Default Free limit
+    let limit = 10; // Default Free limit & MedRevise Pro limit
     if (isSpecialUser) {
       limit = 1000;
     } else if (isPremium) {
@@ -213,7 +213,7 @@ export async function getGlobalUsage() {
       } else if (premiumPlan === 'med_internato_premium') {
         limit = 200;
       } else {
-        limit = 120; // med_revise_pro or legacy/fallback premium
+        limit = 10; // med_revise_pro: 10 créditos diários (mesmo do plano Gratuito)
       }
     }
 
@@ -287,7 +287,7 @@ export async function recordUsage(credits: number = 1) {
 }
 
 // Exportar para uso em outros componentes
-export async function generateWithAI(prompt: string, model: string = "gemini-3.6-flash", credits: number = 1) {
+export async function generateWithAI(prompt: string, model: string = "gemini-3.1-flash-lite", credits: number = 1) {
   try {
     if (credits > 0) { await checkUsageLimit(); }
     const result = await callGemini('generateContent', prompt, model);
@@ -310,7 +310,7 @@ export type ProgressCallback = (data: { current: number; total: number; message:
  * MODO EXTENSIVO / MASTER (50cr): Geração intermediária com 3 partes altamente detalhadas cobrindo início, meio e fim (introdução, desenvolvimento e conclusão) sem repetição e com foco didático funcional.
  */
 async function generateMasterSummary(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate') {
-  const model = "gemini-3.6-flash";
+  const model = "gemini-3.1-flash-lite";
   
   try {
     await checkUsageLimit();
@@ -354,9 +354,9 @@ async function generateMasterSummary(title: string, area: string, reference?: st
       {
         title: "Início: Introdução Clínica, Anatomia/Fisiologia Aplicada e Indicações",
         prompt: `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite. Seu objetivo é TREINAR o aluno para as residências mais difíceis, com foco no Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE).
-        Escreva a **Parte 1 (Início: Introdução Clínica, Anatomia/Fisiologia Aplicada e Indicações)** para o tema da assistência/procedimento clínico: "${title}" (${area}). ${reference ? `Use como preferência de referência: "${reference}".` : ""}
-        
         REQUISITOS DO CONTEÚDO E COMPLETUDE TOTAL (MANDATÓRIO):
+        - DENSIDADE E APROFUNDAMENTO TÉCNICO: Aprofunde ao máximo com fisiopatologia explicada, dados anatômicos, posologias/doses exatas e procedimentos detalhados sem enrolações ou generalismos.
+        - ESCALAS E CLASSIFICAÇÕES QUE MAIS CAEM EM PROVAS: Inclua todas as escalas, escores e classificações de maior prevalência em provas de residência (ex: Glasgow, Mallampati, Cormack-Lehane, ASA, NYHA, Child-Pugh, CURB-65, CHADS-VASc, Ranson, Wells, Geneva, Alvarado, Apgar, qSOFA, Balthazar, Tisdale, Marshall, PIRADS, BI-RADS, Killip, TIMI, GINA, GOLD, NIHSS, etc. aplicáveis) com critérios, pontuações e condutas de prova.
         - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Forneça explicações extremamente detalhadas, didáticas, exaustivas e eficazes de todos os conceitos teóricos, fisiológicos ou anatômicos necessários. O foco é a máxima clareza e suficiência acadêmica para que o estudante compreenda todo o tema com profundidade e consiga responder com sucesso a qualquer questão de prova de residência médica.
         - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
         - INTRODUÇÃO DIDÁTICA: Apresente o procedimento de forma objetiva, seu papel no cenário nacional e importância prática.
@@ -430,7 +430,7 @@ async function generateMasterSummary(title: string, area: string, reference?: st
         - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Forneça explicações extremamente detalhadas, didáticas, exaustivas e eficazes de todos os conceitos teóricos, fisiológicos ou anatômicos necessários. O foco é a máxima clareza e suficiência acadêmica para que o estudante compreenda todo o tema com profundidade e consiga responder com sucesso a qualquer questão de prova de residência médica.
         - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
         - DISCUTIR EXAMES SUBSIDIÁRIOS: Detalhe a ordem lógica de indicação de exames propedêuticos (exames iniciais, triagem, confirmatório de imagem, métodos padrão-ouro) com respectivas sensibilidades/especificidades fundamentais se aplicável.
-        - ESCORES E CRITÉRIOS DIAGNÓSTICOS: Apresente criteriosamente escores diagnósticos formais estabelecidos ou classificações de gravidade, com tabelas limpas e fáceis de memorizar.
+        - ESCORES, ESCALAS E CRITÉRIOS DIAGNÓSTICOS QUE MAIS CAEM EM PROVAS: Apresente de forma exaustiva e em tabelas limpas todas as escalas, escores e classificações formais consagradas cobradas nas provas de residência (ex: Glasgow, Mallampati, Cormack-Lehane, ASA, NYHA, Child-Pugh, CURB-65, CHADS-VASc, Ranson, Wells, Geneva, Alvarado, Apgar, qSOFA, Balthazar, Tisdale, Marshall, PIRADS, BI-RADS, Killip, TIMI, GRACE, Framingham, GINA, GOLD, NIHSS, Hunt-Hess, Fisher, etc.). Para cada escala: detalhe pontuações exatas, estratificação de risco e conduta imediata.
         - DIAGNÓSTICO DIFERENCIAL CHAVE: Tabela ou lista pontual diferenciando clinicamente as principais patologias que simulam esse quadro clínico.
         - ALGORITMO DIAGNÓSTICO TEXTUAL: Descreva um algoritmo passo a passo de investigação no texto de forma lógica.
         - Use caixas de texto com estilo "MENSAGEM DO INTERNATO: Raciocínio Clínico Real".
@@ -486,7 +486,7 @@ async function generateMasterSummary(title: string, area: string, reference?: st
       let partContent = "";
       const finalPartPrompt = part.prompt + getPromptPreferenceInstructions(illustrationLevel, alertBoxLevel);
       
-      const modelsToTry = ["gemini-3.6-flash"];
+      const modelsToTry = ["gemini-3.1-flash-lite"];
       for (let attempt = 0; attempt < 6; attempt++) {
         try {
           const currentModel = modelsToTry[attempt % modelsToTry.length];
@@ -560,7 +560,7 @@ export async function generateTopicContent(
   const isElite = depth === 'elite';
   
   // Using stable model
-  const model = "gemini-3.6-flash";
+  const model = "gemini-3.1-flash-lite";
 
   const isProcedure = /parto|assistência|assistencia|técnica|tecnica|semiologia|exame|procedimento|manobra|reanimação|reanimacao|intubação|intubacao|acesso|sutura|curativo|planejamento|consulta|anamnese|avaliação|avaliacao|escore|escala|aleitamento|vacina|imunização|imunizacao|suporte|atendimento/i.test(title);
 
@@ -607,8 +607,10 @@ export async function generateTopicContent(
     ...etc).
   - Garanta que as seções reais ao longo do texto tenham exatamente os mesmos títulos de nível 2 (ex: "## 1. Epidemiologia e Impacto"), de modo que os hiperlinks e navegação por âncoras funcionem perfeitamente.
 
-  EXIGÊNCIA DE COMPLETUDE PARA PROVAS (RESOLUÇÃO DE QUESTÕES):
+  EXIGÊNCIA DE COMPLETUDE PARA PROVAS E APROFUNDAMENTO TÉCNICO (RESOLUÇÃO DE QUESTÕES):
   - AUTOSSUFICIÊNCIA ABSOLUTA DE LIVRO-TEXTO: Este resumo DEVE ser a única fonte de estudo necessária para o aluno dominar o tema na íntegra. Ele deve conter todas as informações necessárias para que o estudante nunca mais precise procurar sobre o assunto em livros-texto externos. Inclua todas as diretrizes brasileiras e internacionais vigentes, critérios de diagnóstico e classificação inteiros na íntegra (não simplificados), doses exatas de fármacos de primeira linha e esquemas posológicos detalhados, indicações, contraindicações e manejos clínicos completos.
+  - ESCALAS, ESCORES E CLASSIFICAÇÕES MAIS COBRADAS EM PROVAS: Apresente obrigatoriamente de forma exaustiva e em tabelas de fácil memorização todas as escalas, escores e classificações de maior prevalência nas provas de residência médica aplicáveis ao tópico (ex: Glasgow, Mallampati, Cormack-Lehane, ASA, NYHA, Child-Pugh, CURB-65, CHADS-VASc, Ranson, Wells, Geneva, Alvarado, Apgar, qSOFA/SOFA, Balthazar, Tisdale, Marshall, PIRADS, BI-RADS, Killip, TIMI, GRACE, Framingham, GINA, GOLD, NIHSS, Hunt-Hess, Fisher, Vancouver, etc.). Para CADA escala/escore: detalhe os critérios exatos, pontuações, estratificação de risco/gravidade e conduta prática associada a cada faixa de pontos.
+  - APROFUNDAMENTO DENSE SEM REDUNDÂNCIA: Explique o raciocínio fisiopatológico de cada alteração e os mecanismos de ação farmacológica (doses, vias, ajustes em insuficiência renal/hepática e conduta em falha terapêutica). Evite termos vazios ou frases de preenchimento.
   - Se o tema for ANESTESIOLOGIA/ANESTESIA (ou envolver bloqueio, analgesia ou sedação), o material deve cobrir obrigatoriamente e com alta precisão: classificação ASA completa com critérios claros e exemplos práticos para cada classe, tempos e diretrizes exatas de jejum pré-operatório para sólidos e líquidos, escores de classificação de via aérea difícil (Escore de Mallampati I-IV, graus de visualização laringoscópica de Cormack-Lehane 1-4) com descrições visuais detalhadas, mecanismos de ação detalhados dos anestésicos locais e gerais (venosos e inalatórios), doses clássicas, toxicidade sistêmica por anestésicos locais (LAST) com conduta passo a passo incluindo uso obrigatório de emulsão lipídica 20%, bloqueadores neuromusculares (adespolarizantes e despolarizantes, reversão com neostigmina/sugamadex), e fisiopatologia e manejo da Hipertermia Maligna (incluindo uso imediato de Dantrolene e medidas de resfriamento).
   - Para qualquer outro tema médico, a abordagem deve ser igualmente exaustiva, cobrindo todos os pilares fisiopatológicos, semiológicos, diagnósticos, terapêuticos e farmacológicos correspondentes de forma 100% autossuficiente e exata.
 
@@ -680,7 +682,7 @@ function slugify(text: any): string {
  * MODO MONOGRAFIA (100cr): Geração em múltiplas etapas para alcançar 10-20 páginas de conteúdo.
  */
 async function generateMonograph(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate') {
-  const model = "gemini-3.6-flash";
+  const model = "gemini-3.1-flash-lite";
   
   try {
     await checkUsageLimit();
@@ -760,9 +762,12 @@ async function generateMonograph(title: string, area: string, reference?: string
       
       ${nextChapterTitle ? `CRONOGRAMA DE CAPÍTULOS: O próximo capítulo sequencial após este será exatamente: "${nextChapterTitle}". Se for incluir uma frase de finalização ou sugestão de transição de leitura ao final do capítulo, refira-se obrigatoriamente a este título de forma exata e coincidente: "${nextChapterTitle}". Nunca sugira capítulos sequenciais com nomes diferentes deste.` : "Este é o capítulo final exaustivo da monografia."}
       
-      EXIGÊNCIA DE COMPLETUDE TOTAL E DIDÁTICA (MANDATÓRIO):
+      EXIGÊNCIA DE COMPLETUDE TOTAL, APROFUNDAMENTO E DIDÁTICA (MANDATÓRIO):
+      - DENSIDADE E METRAGEM PEDAGÓGICA (APROFUNDAMENTO SEM REDUNDÂNCIA): Redija um capítulo extremamente denso, rico e substancial (busque entre 800 e 1.200 palavras por capítulo). Aprofunde ao máximo cada subseção com riqueza conceitual, fisiopatologia explicada passo a passo (o porquê de cada alteração), dados farmacológicos completos (mecanismos, posologias exatas, ajustes em insuficiência renal/hepática, efeitos adversos) e condutas práticas de falha terapêutica.
+      - ESCALAS, ESCORES E CLASSIFICAÇÕES QUE MAIS CAEM EM PROVAS: Apresente obrigatoriamente de forma completa e em tabelas organizadas todas as escalas, escores e classificações de alta prevalência em provas de residência relevantes ao capítulo (ex: Glasgow, Mallampati, Cormack-Lehane, ASA, NYHA, Child-Pugh, CURB-65, CHADS-VASc, Ranson, Wells, Geneva, Alvarado, Apgar, qSOFA/SOFA, Balthazar, Tisdale, Marshall, PIRADS, BI-RADS, Killip, TIMI, GRACE, Framingham, GINA, GOLD, NIHSS, Hunt-Hess, Fisher, etc.). Inclua pontuações, estratificação de risco e a conduta de prova vinculada a cada escore.
+      - NARRATIVA TÉCNICA DIRETA: Evite frases vazias ou enrolações introdutórias ("Como sabemos...", "É importante destacar..."). Vá direto ao ponto técnico de alto valor para a prática médica e provas de residência.
       - Este capítulo DEVE ser extremamente didático, bem estruturado, compreensível e autossuficiente para esclarecer todo o tema correspondente ao título do capítulo e garantir que o aluno consiga acertar qualquer questão de prova sobre ele.
-      - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Se for necessário para detalhar ou explicar com alta didática e eficácia os mecanismos fisiológicos, farmacológicos, anatômicos ou técnicos, utilize parágrafos completos e densos.
+      - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Se for necessário para detalhar ou explicar com alta didática e eficácia os mecanismos fisiológicos, farmacológicos, anatômicos ou técnicos, utilize parágrafos completos, densos e bem encadeados.
       - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
       - Utilize formatação Markdown de alto impacto visual: listas numeradas para passos operatórios/clínicos, listas de marcadores (bullet points) aninhadas para classificações e critérios diagnósticos, termos-chave em negrito (**destaque**) e tabelas comparativas Markdown.
       - DIRETRIZ CONTRA REPETIÇÕES (CRÍTICO): Como este capítulo faz parte de uma monografia com 10 capítulos, você NÃO DEVE repetir tabelas, classificações completas ou definições exaustivas que já pertençam ou caibam em outros capítulos. Por exemplo, se a monografia aborda ANESTESIOLOGIA/ANESTESIA, classificações como a de ASA (I a VI), Mallampati (I a IV), Cormack-Lehane, tempos de jejum pré-operatório, ou toxicidade de anestésicos locais SÓ DEVERÃO SER DETALHADAS se o título do capítulo atual for EXPLICITAMENTE focado nisso (ex: Avaliação Pré-Anestésica, Via Aérea, etc.). Nos demais capítulos que tratam de outras fases ou técnicas, faça apenas menções breves de referência (ex: 'conforme critérios da classificação ASA do paciente') sem repetir as tabelas ou descrições minuciosas. Isso é fundamental para manter a monografia coesa, fluida e não repetitiva.
@@ -797,7 +802,7 @@ async function generateMonograph(title: string, area: string, reference?: string
       
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const currentModel = "gemini-3.6-flash";
+          const currentModel = "gemini-3.1-flash-lite";
           chapterContent = await callGemini('generateContent', finalChapterPrompt, currentModel);
           if (chapterContent && chapterContent.trim().length > 0) break;
         } catch (capErr: any) {
@@ -884,7 +889,7 @@ export async function resumeFailedSummaryContent(
   alertBoxLevel: string = 'moderate',
   analysis?: any
 ) {
-  const model = "gemini-3.6-flash";
+  const model = "gemini-3.1-flash-lite";
   
   try {
     await checkUsageLimit();
@@ -1112,7 +1117,7 @@ export async function deepenTopicSection(topicTitle: string, currentContent: str
     await checkUsageLimit();
     
     const credits = customPrompt ? 4 : 2;
-    const model = 'gemini-3.6-flash';
+    const model = 'gemini-3.1-flash-lite';
     
     const targetSubject = customPrompt || sectionTitle;
     
@@ -1395,7 +1400,7 @@ export async function deepenNotebookArea(
     
     // Cost: 3 credits for standard, 5 credits if multimodal
     const credits = base64Drawing ? 5 : 3;
-    const model = 'gemini-3.6-flash';
+    const model = 'gemini-3.1-flash-lite';
     
     const promptText = `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite.
 Você está prestando uma mentoria clínica hiper-personalizada para tirar a dúvida de um aluno de alto rendimento.
@@ -1523,7 +1528,7 @@ Retorne APENAS um JSON válido no seguinte formato:
 }
 `;
 
-  const result = await callGemini('generateJson', prompt, "gemini-3.6-flash");
+  const result = await callGemini('generateJson', prompt, "gemini-3.1-flash-lite");
   try {
     const data = typeof result === 'string' ? JSON.parse(result) : result;
     const chapters = Array.isArray(data.chapters) ? data.chapters : [
@@ -1707,28 +1712,28 @@ export async function generateCustomAnalyzedSummary(
         });
       }
 
-      // Pausa otimizada entre capítulos (1.5s)
+      // Pausa otimizada entre capítulos (3.0s) para garantir tempo adequado de processamento no Gemini 3.1 Flash-Lite
       if (i > startChapterIndex) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
 
       const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Estamos gerando um TRATADO PERSONALIZADO de Alta Performance para o aluno gabaritar qualquer questão e ter segurança absoluta na prática clínica.
 
-Sua missão com este capítulo é garantir a máxima qualidade científica, profundidade racional e clareza didática, mantendo o conteúdo COMPLETO, porém de forma ALTAMENTE CONCISA, DIRETA E SINTETIZADA para evitar rodeios e garantir uma resposta rápida.
+Sua missão com este capítulo é garantir a máxima qualidade científica, profundidade clínica, rigor técnico e clareza didática exaustiva, tornando o texto EXTENSO, COMPLETO E APROFUNDADO.
 
 Diretrizes de Conteúdo para este Capítulo:
-1. RACIOCÍNIO FISIOPATOLÓGICO DIRETO: Explique sucintamente o mecanismo biológico/clínico por trás de cada sintoma e conduta. Evite prolixidade ou explicações óbvias.
-2. TOMADA DE DECISÃO EM FLUXO: Estruture o diagnóstico e tratamento como um roteiro prático e acionável.
-3. SÍNTESES DE ALTO RENDIMENTO: Use tabelas comparativas e listas de marcadores (bullet points) para condensar condutas, diagnósticos diferenciais e doses de forma altamente visual e direta.
+1. RACIOCÍNIO FISIOPATOLÓGICO DETALHADO: Explique minuciosamente o mecanismo biológico/clínico por trás de cada sintoma, alteração laboratorial e conduta terapêutica.
+2. TOMADA DE DECISÃO EM FLUXO: Estruture o diagnóstico e tratamento como um roteiro prático, completo e acionável com algoritmos e condutas passo a passo.
+3. SÍNTESES DE ALTO RENDIMENTO: Use tabelas comparativas detalhadas, quadros e listas de marcadores (bullet points) para organizar condutas, diagnósticos diferenciais, classificações oficiais e esquemas de dosagem.
 
 Tema Geral: "${title}" (${area})
 Capítulo Atual a ser escrito agora: "${chapterTitle}"
 Capítulos Totais Planejados: ${chapters.join(', ')}
 
-DIRETRIZES DE RIGOR E VELOCIDADE PARA ESTE CAPÍTULO:
+DIRETRIZES DE RIGOR E APROFUNDAMENTO PARA ESTE CAPÍTULO:
 - ESCREVA APENAS O CONTEÚDO DESTE CAPÍTULO: Comece diretamente com o título do capítulo ("## ${chapterTitle}"). Não adicione introduções ou saudações.
-- LIMITE DE EXTENSÃO: O capítulo deve ser completo, mas muito sintético e ágil (tamanho recomendado: 350 a 550 palavras). Evite parágrafos longos ou paredes de texto. Use frases curtas e diretas.
-- MANTER ALTA QUALIDADE E DADOS PRECISOS: Não reduza a qualidade médica ou a precisão científica. Traga as tabelas oficiais, doses exatas (ataque, manutenção, 1ª/2ª linha), critérios de gravidade vigentes na íntegra, mas de forma esquematizada, sem enrolação.
+- EXTENSÃO E APROFUNDAMENTO (EXTENSO E EXAUSTIVO): Cada capítulo deve ser APROFUNDADO, EXTENSO E DETALHADO (meta: 1.000 a 1.600 palavras por capítulo). Desenvolva parágrafos explicativos e densos, trazendo todo o embasamento teórico, fisiopatológico completo, farmacológico (mecanismos, dosagens exatas de ataque e manutenção, alternativas de 1ª/2ª linha, ajustes na disfunção renal/hepática), condutas de falha terapêutica, diretrizes nacionais/internacionais e quadros de diagnóstico diferencial. Não faça resumos superficiais ou telegráficos.
+- MANTER ALTA QUALIDADE E DADOS PRECISOS: Não reduza a qualidade médica ou a precisão científica. Traga as tabelas oficiais, doses exatas, critérios de gravidade vigentes na íntegra de forma estruturada.
 - INCORPORE CAIXAS DE OBSERVAÇÃO LARANJAS (GFM ALERTS): Sempre que houver um detalhe clínico crucial ou pegadinha de prova, insira uma única caixa de alerta:
   > [!IMPORTANT]
   > **OBSERVAÇÃO CLÍNICA / HIGHLIGHT DE PROVA:**
@@ -1767,7 +1772,7 @@ Gere o capítulo completo, extremamente focado, científico e direto agora.`;
             await new Promise(r => setTimeout(r, 2000 * attempt));
           }
 
-          chapterText = await callGemini('generateContent', finalPrompt, "gemini-3.6-flash");
+          chapterText = await callGemini('generateContent', finalPrompt, "gemini-3.1-flash-lite");
           if (chapterText && chapterText.trim().length > 30) {
             chapterSuccess = true;
             break;
@@ -1827,6 +1832,8 @@ Gere o capítulo completo, extremamente focado, científico e direto agora.`;
     } else {
       finalCost = Math.max(10, chapters.length * 10);
     }
+    const extraCost = calculateExtraCredits(illustrationLevel, alertBoxLevel);
+    finalCost = Math.max(1, finalCost + extraCost);
     await recordUsage(finalCost);
 
     return removeDuplicateSumarios(fullContent);
@@ -1874,7 +1881,69 @@ export function removeDuplicateSumarios(content: string): string {
   return topPart + restPart;
 }
 
-function cleanLeadingChapterTitle(text: string, chapterTitle: string): string {
+function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate'): string {
+  let instructions = '\n\nREQUISITOS ADICIONAIS DE PERSONALIZAÇÃO E CONFIGURAÇÃO DO RESUMO (PREFERÊNCIA DO USUÁRIO):\n';
+  
+  // Prioridade absoluta para profundidade científica e raciocínio médico
+  instructions += `PRIORIDADE MÁXIMA - INVESTIMENTO EM CONTEÚDO MÉDICO E DIRETRIZES:
+- Dedique a vasta maioria do texto (mais de 80%) para o raciocínio clínico fisiopatológico detalhado, critérios de gravidade, tabelas oficiais, esquemas de tratamento com doses exatas e diretrizes das sociedades brasileiras relevantes (SBC, SBH, MS, FEBRASGO, SBP, etc.).
+- O conteúdo deve ser rico, denso e científico, focado no raciocínio médico aprofundado, evitando explicações óbvias ou enrolações vazias.
+- O caso clínico não deve dominar o texto de forma alguma.
+\n`;
+
+  instructions += `PROIBIÇÃO ABSOLUTA DE ARTE ASCII, CAIXAS BRUTAS E SETAS DE TRAÇO (\`┌─┐\`, \`│\`, \`└─┘\`, \`──►\`, \`───\`):
+- NUNCA desenhe quadros, tabelas, quadros duplos ou esquemas usando caracteres de arte ASCII ou unicode box-drawing (como ┌, ─, ┐, │, └, ┘, ├, ┤, ┼).
+- NUNCA crie diagramas com traços repetidos ou setas brutas como \`── Barreira Intestinal ──► ...\`.
+- Toda comparação, resumo de sinais/sintomas ou classificação DEVE ser formatada EXCLUSIVAMENTE em:
+  1. Tabelas Markdown oficiais com cabeçalhos (\`| Parâmetro | Sinal de Pega | Sinal de Posicionamento |\`).
+  2. Caixas de destaque GFM (\`> [!IMPORTANT]\`, \`> [!TIP]\`, \`> [!NOTE]\`, \`> [!CAUTION]\`).
+  3. Listas elegantes estruturadas com negrito e setas limpas (\`• **Barreira Intestinal**: ... → ...\`).
+\n`;
+
+  instructions += `REGRA DE SUMÁRIO DE NAVEGAÇÃO:
+- NUNCA crie nem insira nenhuma seção "## SUMÁRIO DE NAVEGAÇÃO", "## SUMÁRIO" ou "## ÍNDICE" dentro de capítulos individuais. O sumário de navegação geral do documento é gerado exclusivamente no topo do documento.
+- CASO O SISTEMA SOLICITE UM SUMÁRIO NO TOPO DO DOCUMENTO: Cada item DEVE usar a sintaxe Markdown completa com colchetes: \`1. [Título do Capítulo](#ancora-do-capitulo)\`.
+\n`;
+
+  instructions += `EXIGÊNCIA DE RIGOR E CONCREÇÃO NOS QUADROS DE DICAS, MACETES E PEGADINHAS (INVIOLÁVEL):
+- É TERMINANTEMENTE PROIBIDO gerar dicas vagas, superficiais, meta-conselhos de estudo ou truismos óbvios (ex: PROIBIDO "DICA DE ESTUDO: É importante lembrar que o pneumotórax requer avaliação cuidadosa... A escolha do tratamento depende da gravidade... Estude os tipos de pneumotórax...").
+- CADA CAIXA DE DICA (\`> [!TIP]\`), PEGADINHA (\`> [!CAUTION]\`), PONTO CRÍTICO (\`> [!IMPORTANT]\`) OU NOTA CLÍNICA (\`> [!NOTE]\`) DEVE OBRIGATORIAMENTE FORNECER:
+  1. A regra, número, escore ou dosagem EXPLÍCITA (ex: "Na cetoacidose diabética, o potássio deve estar > 3,3 mEq/L ANTES de iniciar a insulinoterapia").
+  2. O PORQUÊ / MECANISMO FISIOPATOLÓGICO CLARO (ex: "A insulina move o potássio para o intracelular; iniciar insulina com K < 3,3 mEq/L pode precipitar arritmia ventricular fatal ou parada em assistolia").
+  3. A pegadinha exata montada pelas bancas (ex: "As bancas ENARE e SES-DF adoram colocar 'iniciar insulina imediatamente' na alternativa A quando o potássio é 2,9 mEq/L — a conduta correta é repor potássio primeiro!").
+  4. Mnemônicos ou regras diretas e acionáveis para memorização sem encheção de linguiça.
+\n`;
+
+  // DIRETRIZ EXPLÍCITA PARA CASOS CLÍNICOS / QUADROS CLÍNICOS (illustrationLevel):
+  const lowerIll = (illustrationLevel || 'moderate').toLowerCase();
+  if (lowerIll === 'minimum' || lowerIll === 'off' || lowerIll === 'desativado') {
+    instructions += 'DIRETRIZ DE CASOS CLÍNICOS (QUADROS CLÍNICOS): DESATIVADO / SEM CASOS. É PROIBIDO incluir simulações de casos clínicos ao longo das patologias; mantenha 100% do texto focado estritamente em conceitos teóricos, diretrizes, algoritmos e tabelas.\n\n';
+  } else if (lowerIll === 'maximum' || lowerIll === 'academic' || lowerIll === 'extreme' || lowerIll === 'alto') {
+    instructions += 'DIRETRIZ DE CASOS CLÍNICOS (QUADROS CLÍNICOS): OBRIGATÓRIO E APROFUNDADO (NÍVEL MÁXIMO/EXTREMO). Ao final de cada patologia descrita, inclua OBRIGATORIAMENTE uma seção dedicada intitulada "### 🏥 Caso Clínico & Resolução Comentada", contendo uma vinheta clínica completa com história do paciente, achados de exame físico, exames complementares, conduta rápida de prova e justificativa médica comentada.\n\n';
+  } else if (lowerIll === 'light' || lowerIll === 'leve') {
+    instructions += 'DIRETRIZ DE CASOS CLÍNICOS (QUADROS CLÍNICOS): LEVE / MÍNIMO. Inclua no máximo 1 caso clínico ilustrativo conciso ao longo do texto todo em formato de vinheta clínica curta.\n\n';
+  } else {
+    instructions += 'DIRETRIZ DE CASOS CLÍNICOS (QUADROS CLÍNICOS): MODERADO (PADRÃO). Se houver casos clínicos, utilize formato de vinheta clínica ultra-curta (1 parágrafo de história + 1 parágrafo de resolução comentada, max 100-120 palavras por patologia) para priorizar o espaço da fundamentação teórica.\n\n';
+  }
+  
+  // DIRETRIZ EXPLÍCITA PARA CAIXAS DE ALERTA / QUADRADOS LARANJAS (alertBoxLevel):
+  const lowerAlert = (alertBoxLevel || 'moderate').toLowerCase();
+  if (lowerAlert === 'minimum' || lowerAlert === 'off' || lowerAlert === 'desativado') {
+    instructions += 'DIRETRIZ DE CAIXAS DE ALERTA / QUADRADOS LARANJAS (`> [!CAUTION]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!NOTE]`): DESATIVADO / MÍNIMO. É PROIBIDO usar caixas de aviso GFM; apresente as informações estritamente em parágrafos normais e listas Markdown.\n\n';
+  } else if (lowerAlert === 'light' || lowerAlert === 'leve') {
+    instructions += 'DIRETRIZ DE CAIXAS DE ALERTA / QUADRADOS LARANJAS (`> [!CAUTION]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!NOTE]`): LEVE / MÍNIMO. Use caixas de aviso GFM com moderação extrema, limitando a no máximo 1 ou 2 caixas de destaque por capítulo, reservando-as apenas para o ponto de maior risco de pegadinha da prova.\n\n';
+  } else if (lowerAlert === 'academic' || lowerAlert === 'maximum' || lowerAlert === 'alto') {
+    instructions += 'DIRETRIZ DE CAIXAS DE ALERTA / QUADRADOS LARANJAS (`> [!CAUTION]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!NOTE]`): OBRIGATÓRIO ABUNDANTE (MÁXIMO/ACADÊMICO). OBRIGATÓRIO inserir caixas de destaque GFM variadas (`> [!CAUTION]` para avisos/pegadinhas laranjas de provas, `> [!TIP]` para macetes e mnemônicos, `> [!IMPORTANT]` para pontos cruciais de conduta, `> [!NOTE]` para observações fisiopatológicas) em TODA seção principal e patologia do resumo.\n\n';
+  } else if (lowerAlert === 'extreme' || lowerAlert === 'extremo') {
+    instructions += 'DIRETRIZ DE CAIXAS DE ALERTA / QUADRADOS LARANJAS (`> [!CAUTION]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!NOTE]`): OBRIGATÓRIO EXTREMO / DENSIDADE MÁXIMA. Insira caixas de destaque GFM variadas (`> [!CAUTION]`, `> [!TIP]`, `> [!NOTE]`, `> [!CAUTION]`) em quase TODA subseção, passo a passo de procedimento e doença descrita, ressaltando minuciosamente armadilhas de bancas e alertas vermelhos/laranjas de emergência médica.\n\n';
+  } else {
+    instructions += 'DIRETRIZ DE CAIXAS DE ALERTA / QUADRADOS LARANJAS (`> [!CAUTION]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!NOTE]`): MODERADO (PADRÃO). Insira caixas de destaque GFM de forma equilibrada nas seções principais do resumo (`> [!CAUTION]` para alertas/pegadinhas de prova, `> [!TIP]` para macetes, `> [!IMPORTANT]` para pontos vitais).\n\n';
+  }
+  
+  return instructions;
+}
+
+export function cleanLeadingChapterTitle(text: string, chapterTitle: string): string {
   if (!text) return text;
 
   // Remove qualquer bloco de SUMÁRIO DE NAVEGAÇÃO / SUMÁRIO gerado no topo do capítulo individual
@@ -1892,10 +1961,7 @@ function cleanLeadingChapterTitle(text: string, chapterTitle: string): string {
       continue;
     }
     
-    // Remove markdown headers (#), bold (**), italic (*), and trim
     let lineText = rawLine.replace(/^[#\s*_]+|[#\s*_]+$/g, '').trim();
-    
-    // Check if line looks like "Capítulo X: ...", "Capítulo X - ...", "Capítulo 4: ..." or simply "4. ..."
     const capRegex = /^(Cap[íi]tulo\s+\w+[:\-\s]*|\d+[\.\-\s]+)/i;
     let lineWithoutPrefix = lineText.replace(capRegex, '').trim();
     
@@ -1929,60 +1995,30 @@ function cleanLeadingChapterTitle(text: string, chapterTitle: string): string {
   return lines.join('\n').trim();
 }
 
-function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate'): string {
-  let instructions = '\n\nREQUISITOS ADICIONAIS DE PERSONALIZAÇÃO E QUALIDADE DE CONTEÚDO (PREFERÊNCIA DO USUÁRIO):\n';
+export function calculateExtraCredits(illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate'): number {
+  let extra = 0;
   
-  // Prioridade absoluta para profundidade científica e raciocínio médico
-  instructions += `PRIORIDADE MÁXIMA - INVESTIMENTO EM CONTEÚDO MÉDICO E DIRETRIZES:
-- Dedique a vasta maioria do texto (mais de 80%) para o raciocínio clínico fisiopatológico detalhado, critérios de gravidade, tabelas oficiais, esquemas de tratamento com doses exatas e diretrizes das sociedades brasileiras relevantes (SBC, SBH, MS, etc.).
-- O conteúdo deve ser rico, denso e científico, focado no raciocínio médico aprofundado, evitando explicações óbvias ou enrolações vazias.
-- O caso clínico não deve dominar o texto de forma alguma.
-\n`;
-
-  instructions += `PROIBIÇÃO ABSOLUTA DE ARTE ASCII, CAIXAS BRUTAS E SETAS DE TRAÇO (\`┌─┐\`, \`│\`, \`└─┘\`, \`──►\`, \`───\`):
-- NUNCA desenhe quadros, tabelas, quadros duplos ou esquemas usando caracteres de arte ASCII ou unicode box-drawing (como ┌, ─, ┐, │, └, ┘, ├, ┤, ┼).
-- NUNCA crie diagramas com traços repetidos ou setas brutas como \`── Barreira Intestinal ──► ...\`.
-- Toda comparação, resumo de sinais/sintomas ou classificação DEVE ser formatada EXCLUSIVAMENTE em:
-  1. Tabelas Markdown oficiais com cabeçalhos (\`| Parâmetro | Sinal de Pega | Sinal de Posicionamento |\`).
-  2. Caixas de destaque GFM (\`> [!IMPORTANT]\`, \`> [!TIP]\`, \`> [!NOTE]\`, \`> [!CAUTION]\`).
-  3. Listas elegantes estruturadas com negrito e setas limpas (\`• **Barreira Intestinal**: ... → ...\`).
-\n`;
-
-  instructions += `REGRA DE SUMÁRIO DE NAVEGAÇÃO:
-- NUNCA crie nem insira nenhuma seção "## SUMÁRIO DE NAVEGAÇÃO", "## SUMÁRIO" ou "## ÍNDICE" dentro de capítulos individuais. O sumário de navegação geral do documento é gerado exclusivamente no topo do documento.
-- CASO O SISTEMA SOLICITE UM SUMÁRIO NO TOPO DO DOCUMENTO: Cada item DEVE usar a sintaxe Markdown completa com colchetes: \`1. [Título do Capítulo](#ancora-do-capitulo)\`.
-\n`;
-
-  instructions += `EXIGÊNCIA DE RIGOR E CONCREÇÃO NOS QUADROS DE DICAS, MACETES E PEGADINHAS (INVIOLÁVEL):
-- É TERMINANTEMENTE PROIBIDO gerar dicas vagas, superficiais, meta-conselhos de estudo ou truismos óbvios (ex: PROIBIDO "DICA DE ESTUDO: É importante lembrar que o pneumotórax requer avaliação cuidadosa... A escolha do tratamento depende da gravidade... Estude os tipos de pneumotórax...").
-- CADA CAIXA DE DICA (\`> [!TIP]\`), PEGADINHA (\`> [!CAUTION]\`), PONTO CRÍTICO (\`> [!IMPORTANT]\`) OU NOTA CLÍNICA (\`> [!NOTE]\`) DEVE OBRIGATORIAMENTE FORNECER:
-  1. A regra, número, escore ou dosagem EXPLÍCITA (ex: "Na cetoacidose diabética, o potássio deve estar > 3,3 mEq/L ANTES de iniciar a insulinoterapia").
-  2. O PORQUÊ / MECANISMO FISIOPATOLÓGICO CLARO (ex: "A insulina move o potássio para o intracelular; iniciar insulina com K < 3,3 mEq/L pode precipitar arritmia ventricular fatal ou parada em assistolia").
-  3. A pegadinha exata montada pelas bancas (ex: "As bancas ENARE e SES-DF adoram colocar 'iniciar insulina imediatamente' na alternativa A quando o potássio é 2,9 mEq/L — a conduta correta é repor potássio primeiro!").
-  4. Mnemônicos ou regras diretas e acionáveis para memorização sem encheção de linguiça.
-\n`;
-
-  if (illustrationLevel === 'minimum') {
-    instructions += '- CASOS CLÍNICOS POR PATOLOGIA: DESATIVADO / SEM CASOS. Não inclua simulações de casos clínicos ao final das patologias; mantenha o texto focado estritamente em critérios teóricos, algoritmos e diretrizes.\n';
-  } else if (illustrationLevel === 'maximum') {
-    instructions += '- CASOS CLÍNICOS POR PATOLOGIA: CONCISO E INTEGRADO. Ao final de cada patologia descrita, inclua uma seção dedicada intitulada "### 🏥 Caso Clínico & Resolução Comentada", contendo um caso clínico em formato de vinheta clínica breve e concisa (máximo de 2-3 parágrafos curtos no total), focado diretamente na conduta prática rápida de emergência/ambulatorial e no raciocínio médico aprofundado, sem encher linguiça narrativa.\n';
-  } else {
-    instructions += '- CASOS CLÍNICOS POR PATOLOGIA: VINHETA ULTRA-CONCISA (PADRÃO). Se houver caso clínico, faça-o em formato de uma vinheta clínica ultra-curta (máximo de 1 parágrafo para a história clínica e 1 parágrafo para a resolução comentada, somando no máximo 100-120 palavras). O caso deve servir apenas como ilustração prática rápida de fixação, priorizando o tempo do leitor e garantindo mais espaço para a profundidade científica teórica e diretrizes brasileiras do restante do capítulo.\n';
+  const lowerIll = (illustrationLevel || 'moderate').toLowerCase();
+  if (lowerIll === 'minimum' || lowerIll === 'off' || lowerIll === 'desativado') {
+    extra -= 3;
+  } else if (lowerIll === 'maximum' || lowerIll === 'academic' || lowerIll === 'extreme' || lowerIll === 'alto') {
+    extra += 10;
   }
-  
-  if (alertBoxLevel === 'minimum' || alertBoxLevel === 'off') {
-    instructions += '- QUADROS DICAS E ALERTAS: DESATIVADO (MÍNIMO). Não use caixas de avisos; prefira usar parágrafos normais.\n';
-  } else if (alertBoxLevel === 'light') {
-    instructions += '- QUADROS DICAS E ALERTAS: LEVE. Use caixas de avisos GFM (`> [!IMPORTANT]`, `> [!TIP]`, `> [!NOTE]`, `> [!CAUTION]`) apenas para os pontos cruciais e de alta frequência nas provas.\n';
-  } else if (alertBoxLevel === 'academic' || alertBoxLevel === 'maximum') {
-    instructions += '- QUADROS DICAS E ALERTAS: ALTO / ACADÊMICO. Use abundantemente caixas de avisos variadas (`> [!IMPORTANT]` para pontos chave, `> [!TIP]` para dicas/macetes, `> [!NOTE]` para notas clínicas, `> [!CAUTION]` para pegadinhas e sinais de alerta).\n';
-  } else if (alertBoxLevel === 'extreme') {
-    instructions += '- QUADROS DICAS E ALERTAS: EXTREMO. Integre caixas de avisos variadas (`> [!IMPORTANT]`, `> [!TIP]`, `> [!NOTE]`, `> [!CAUTION]`) para quase toda seção crítica, destacando armadilhas de exames e condutas.\n';
-  } else {
-    instructions += '- QUADROS DICAS E ALERTAS: MODERADO (PADRÃO). Use a sintaxe GFM variada (`> [!IMPORTANT]` para pontos-chave, `> [!TIP]` para macetes de prova, `> [!CAUTION]` para pegadinhas/alertas, `> [!NOTE]` para observações) de forma equilibrada.\n';
+
+  const lowerAlert = (alertBoxLevel || 'moderate').toLowerCase();
+  if (lowerAlert === 'minimum' || lowerAlert === 'off' || lowerAlert === 'desativado') {
+    extra -= 2;
+  } else if (lowerAlert === 'light' || lowerAlert === 'leve') {
+    extra += 0;
+  } else if (lowerAlert === 'moderate') {
+    extra += 2;
+  } else if (lowerAlert === 'academic' || lowerAlert === 'maximum' || lowerAlert === 'alto') {
+    extra += 5;
+  } else if (lowerAlert === 'extreme' || lowerAlert === 'extremo') {
+    extra += 10;
   }
-  
-  return instructions;
+
+  return extra;
 }
 
 async function callAiForPdfChunk(
@@ -2583,7 +2619,7 @@ NÃO inclua formatação markdown, tags \`\`\`json, explicações ou texto extra
 
   try {
     await checkUsageLimit();
-    const result = await callGemini('generateContent', prompt, "gemini-3.6-flash");
+    const result = await callGemini('generateContent', prompt, "gemini-3.1-flash-lite");
     await recordUsage(20); // 20 credits as requested / established
     
     if (!result) return [];

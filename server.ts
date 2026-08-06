@@ -431,7 +431,7 @@ app.post("/api/admin/test-key-billing", async (req, res) => {
       console.log(`[Billing Test] Running burst test on ${name} (${maskedKey})...`);
       
       const ai = new GoogleGenerativeAI(apiKey);
-      const modelInstance = ai.getGenerativeModel({ model: "gemini-3.6-flash" });
+      const modelInstance = ai.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 
       const burstCount = 18;
       const promises = Array.from({ length: burstCount }).map(async () => {
@@ -522,11 +522,11 @@ app.post("/api/gemini", async (req, res) => {
     const userEmail = (email || "").toLowerCase().trim();
     const isSpecialUser = userEmail === 'ysabelleosaraiva@gmail.com' || userEmail === 'yasabelleosaraiva@gmail.com' || userEmail === 'lucas1renck2melo@gmail.com';
     const { prompt, model } = payload;
-    let modelToUse = model || "gemini-3.6-flash";
+    let modelToUse = model || "gemini-3.1-flash-lite";
     if (typeof modelToUse === 'string') {
       const lowerModel = modelToUse.toLowerCase();
-      if (lowerModel.includes("pro") || lowerModel.includes("1.5-pro") || lowerModel.includes("2.0") || lowerModel.includes("1.5")) {
-        modelToUse = "gemini-3.6-flash";
+      if (lowerModel.includes("1.5") || lowerModel.includes("2.5-flash-lite") || lowerModel === "gemini-1.5-flash-8b") {
+        modelToUse = "gemini-3.1-flash-lite";
       }
     }
     const promptText = prompt || payload.promptText || "";
@@ -544,7 +544,7 @@ app.post("/api/gemini", async (req, res) => {
 
     const key1 = allEnv['GEMINI_API_KEY_1'] || allEnv['GEMINI_API_KEY'] || process.env.GEMINI_API_KEY_1 || process.env.GEMINI_API_KEY;
     const key2 = allEnv['GEMINI_API_KEY_2'] || process.env.GEMINI_API_KEY_2;
-    const key3: string = 'AIzaSyAWH3Rvgzj2ku_i-Vy7iizZ1TeqGFVKMSo';
+    const key3 = allEnv['GEMINI_API_KEY_3'] || process.env.GEMINI_API_KEY_3 || key2 || key1;
 
     if (key2 && key2 !== "MY_GEMINI_API_KEY" && key2.trim().length > 10) vipGeminiKeys.push(key2);
     if (key3 && key3.trim().length > 10) vipGeminiKeys.push(key3);
@@ -628,11 +628,8 @@ app.post("/api/gemini", async (req, res) => {
         const keysToTry = step.keys || [];
         const keysInOrder = keysToTry.length === 1 ? keysToTry : [...keysToTry].sort(() => Math.random() - 0.5);
 
-        // Fast, high-capacity Gemini models
-        const candidateModels = Array.from(new Set([
-          modelToUse,
-          "gemini-3.6-flash"
-        ])).filter((m): m is string => Boolean(m) && typeof m === 'string' && m.trim().length > 0);
+        // Only gemini-3.1-flash-lite as requested
+        const candidateModels = ["gemini-3.1-flash-lite"];
 
         // Try keys and models intelligently with rate limit backoff
         for (let i = 0; i < keysInOrder.length; i++) {
@@ -689,7 +686,7 @@ app.post("/api/gemini", async (req, res) => {
               let currentResult = "";
 
               if (action === 'generateImage') {
-                const imageModels = ["gemini-3.1-flash-lite-image", "gemini-3.6-flash"];
+                const imageModels = ["gemini-3.1-flash-lite"];
                 let imageSuccess = false;
                 for (const imgModel of imageModels) {
                   try {
@@ -770,7 +767,7 @@ app.post("/api/gemini", async (req, res) => {
           for (const apiKey of keys) {
             if (success) break;
             const ai = new GoogleGenerativeAI(apiKey);
-            const models = ["gemini-3.6-flash"];
+            const models = ["gemini-3.1-flash-lite"];
             
             for (const currentModelName of models) {
               try {
@@ -1435,9 +1432,9 @@ async function processReferralRewardForUser(userId: string) {
           if (friendData?.premiumUntil) {
             const currentUntilMs = new Date(friendData.premiumUntil).getTime();
             const baseMs = currentUntilMs > nowMs ? currentUntilMs : nowMs;
-            newUntilDate = new Date(baseMs + 30 * 24 * 60 * 60 * 1000);
+            newUntilDate = new Date(baseMs + 5 * 24 * 60 * 60 * 1000);
           } else {
-            newUntilDate = new Date(nowMs + 30 * 24 * 60 * 60 * 1000);
+            newUntilDate = new Date(nowMs + 5 * 24 * 60 * 60 * 1000);
           }
 
           const currentNotifications = Array.isArray(friendData?.referralNotifications) ? friendData.referralNotifications : [];
@@ -1445,7 +1442,8 @@ async function processReferralRewardForUser(userId: string) {
             id: Math.random().toString(36).substring(2, 9),
             fromName: userData.displayName || userData.email || 'Um usuário indicado',
             date: new Date().toISOString(),
-            type: 'bonus_received'
+            type: 'bonus_received',
+            daysGranted: 5
           };
 
           await db.collection('users').doc(friendUid).update({
@@ -1464,10 +1462,11 @@ async function processReferralRewardForUser(userId: string) {
             referralKey: cleanKey,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             status: 'reward_granted',
-            type: 'payment_confirmed'
+            type: 'payment_confirmed',
+            daysGranted: 5
           });
 
-          console.log(`[Referral Process] Successfully granted +30 days free premium to key owner ${friendUid}`);
+          console.log(`[Referral Process] Successfully granted +5 days extended plan access to key owner ${friendUid}`);
         }
       }
 

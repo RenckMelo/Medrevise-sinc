@@ -23,7 +23,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { 
   analyzeSummaryNeeds, 
   recordUsage, 
-  getGlobalUsage 
+  getGlobalUsage,
+  calculateExtraCredits
 } from '../services/geminiService';
 
 interface TopicSyncWizardProps {
@@ -191,13 +192,13 @@ export default function TopicSyncWizard({
   };
 
   const getExtraCost = () => {
-    return 0; // No extra credit surcharges for configuration options
+    return calculateExtraCredits(illustrationLevel, alertBoxLevel);
   };
   
   const getBaseCost = (d: string) => {
     if (d === 'custom_analyzed') {
       const count = customChapters.length > 0 ? customChapters.length : (analysisResult?.chapters?.length || 5);
-      return Math.max(5, count * 5);
+      return Math.max(10, count * 10);
     }
     const costMap: Record<string, number> = {
       standard: 1,

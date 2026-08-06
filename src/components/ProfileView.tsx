@@ -211,18 +211,16 @@ export default function ProfileView() {
             const friendData = friendDoc.data();
             
             if (friendUid !== user.uid) {
-              // Calculate new expiration date
+              // Calculate new expiration date (+5 days bonus added to current plan)
               let newUntilDate: Date;
+              const nowMs = Date.now();
               
               if (friendData.premiumUntil) {
-                newUntilDate = new Date(new Date(friendData.premiumUntil).getTime() + 30 * 24 * 60 * 60 * 1000);
-              } else if (friendData.premiumSince) {
-                let sinceTime = 0;
-                if (friendData.premiumSince.seconds) sinceTime = friendData.premiumSince.seconds * 1000;
-                else sinceTime = new Date(friendData.premiumSince).getTime();
-                newUntilDate = new Date(sinceTime + 60 * 24 * 60 * 60 * 1000); // 30 days active + 30 days bonus
+                const currentUntilMs = new Date(friendData.premiumUntil).getTime();
+                const baseMs = currentUntilMs > nowMs ? currentUntilMs : nowMs;
+                newUntilDate = new Date(baseMs + 5 * 24 * 60 * 60 * 1000);
               } else {
-                newUntilDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                newUntilDate = new Date(nowMs + 5 * 24 * 60 * 60 * 1000);
               }
               
               const friendRef = doc(db, 'users', friendUid);
@@ -233,7 +231,8 @@ export default function ProfileView() {
                 id: Math.random().toString(36).substring(2, 9),
                 fromName: profile.displayName || 'Um usuário indicado',
                 date: new Date().toISOString(),
-                type: 'bonus_received'
+                type: 'bonus_received',
+                daysGranted: 5
               };
               
               await updateDoc(friendRef, {
@@ -242,7 +241,7 @@ export default function ProfileView() {
                 referralNotifications: [...currentNotifications, newNotification]
               });
               
-              console.log('[Referral] Friend updated successfully with bonus month and notification.');
+              console.log('[Referral] Friend updated successfully with +5 days bonus and notification.');
               
               // Log to referralLogs collection
               try {
@@ -257,7 +256,8 @@ export default function ProfileView() {
                   referralKey: profile.usedReferralKey.trim().toUpperCase(),
                   createdAt: serverTimestamp(),
                   status: 'reward_granted',
-                  type: 'premium_activation'
+                  type: 'premium_activation',
+                  daysGranted: 5
                 });
               } catch (logErr) {
                 console.error('[Referral] Error creating referral log:', logErr);
@@ -329,7 +329,7 @@ export default function ProfileView() {
       
       setReferralFeedback({
         type: 'success',
-        message: `Chave ${cleanKey} vinculada com sucesso! O dono da chave (${friendData.displayName || 'Usuário'}) receberá 1 mês grátis assim que o seu pagamento for confirmado.`
+        message: `Chave ${cleanKey} vinculada com sucesso! O dono da chave (${friendData.displayName || 'Usuário'}) receberá +5 dias adicionais no plano atual assim que o seu pagamento for confirmado.`
       });
       
       setEnteredReferralKey('');
@@ -394,7 +394,7 @@ export default function ProfileView() {
       name: 'MedRevise Pro',
       price: 19.90,
       priceStr: 'R$ 19,90/mês',
-      desc: 'SRS ilimitado, matérias, tópicos, simulações de estudos e gráficos no MedRevise.',
+      desc: 'SRS ilimitado, matérias, tópicos, simulações de estudos e gráficos no MedRevise (10 créditos/dia de IA, igual ao Gratuito).',
       badge: 'Foco em Fixação'
     },
     {
@@ -710,7 +710,7 @@ export default function ProfileView() {
             <div className="space-y-1">
               <h4 className="font-serif italic text-lg font-bold">Parabéns! Sua Chave de Compartilhamento foi Utilizada! 🌟</h4>
               <p className="text-xs text-neutral-700 leading-relaxed font-sans">
-                Seu colega utilizou sua chave de acesso e assinado a plataforma. Como recompensa, <strong>você acaba de receber +1 mês (30 dias) de acesso Pro gratuito</strong>! Seu plano de estudos foi estendido com sucesso na nuvem.
+                Seu colega utilizou sua chave de acesso e assinou a plataforma. Como recompensa, <strong>você acaba de receber +5 dias de extensão no seu plano cadastrado</strong>! Seu acesso foi estendido com sucesso na nuvem.
               </p>
               <div className="pt-2 flex flex-wrap gap-2">
                 <button
@@ -949,7 +949,7 @@ export default function ProfileView() {
             </div>
             
             <p className="text-xs text-neutral-600 leading-relaxed font-sans">
-              Compartilhe o MedRevise com seus amigos e colegas de internato! Se algum colega assinar qualquer plano utilizando a sua chave exclusiva de acesso, <strong>você receberá +1 mês (30 dias) totalmente gratuito</strong> adicionado ao seu plano de estudos!
+              Compartilhe o MedRevise com seus amigos e colegas de internato! Se algum colega assinar qualquer plano utilizando a sua chave exclusiva de acesso, <strong>você receberá +5 dias adicionais no seu plano atual</strong> por cada indicação!
             </p>
 
             {/* User's own key */}

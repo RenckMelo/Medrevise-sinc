@@ -3,7 +3,7 @@ import { Sparkles, Check, ArrowRight, ArrowLeft, BookOpen, Stethoscope, AlertTri
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { recordUsage } from '../services/geminiService';
+import { recordUsage, calculateExtraCredits } from '../services/geminiService';
 
 interface SummaryGenerationWizardProps {
   topicTitle: string;
@@ -177,15 +177,20 @@ export default function SummaryGenerationWizard({
   };
 
   const getCost = () => {
-    if (depth === 'standard') return 1;
-    if (depth === 'deep') return 5;
-    if (depth === 'elite') return 10;
-    if (depth === 'master') return 50;
-    if (depth === 'monograph') return 100;
+    let base = 10;
+    if (depth === 'standard') base = 1;
+    else if (depth === 'deep') base = 5;
+    else if (depth === 'elite') base = 10;
+    else if (depth === 'master') base = 50;
+    else if (depth === 'monograph') base = 100;
+    else {
+      // For custom_analyzed (Resumo Inteligente), strictly priced by chapter count (10 credits per chapter)
+      const chapterCount = analysis?.chapters?.length || 5;
+      base = Math.max(10, chapterCount * 10);
+    }
     
-    // For custom_analyzed (Resumo Inteligente), strictly priced by chapter count (10 credits per chapter)
-    const chapterCount = analysis?.chapters?.length || 5;
-    return Math.max(10, chapterCount * 10);
+    const extra = calculateExtraCredits(illustrationLevel, alertBoxLevel);
+    return Math.max(1, base + extra);
   };
 
   const cost = getCost();
@@ -522,7 +527,7 @@ export default function SummaryGenerationWizard({
                           : "bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100"
                       )}
                     >
-                      {lvl === 'minimum' ? 'Sem Casos (+0cr)' : lvl === 'moderate' ? 'Moderado (+2cr)' : 'Detalhado (+5cr)'}
+                      {lvl === 'minimum' ? 'Sem Casos (-3cr)' : lvl === 'moderate' ? 'Moderado (+0cr)' : 'Detalhado (+10cr)'}
                     </button>
                   ))}
                 </div>
@@ -543,7 +548,7 @@ export default function SummaryGenerationWizard({
                           : "bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100"
                       )}
                     >
-                      {lvl === 'minimum' ? 'Mínimo (+0cr)' : lvl === 'moderate' ? 'Médio (+2cr)' : 'Máximo (+5cr)'}
+                      {lvl === 'minimum' ? 'Mínimo (-2cr)' : lvl === 'moderate' ? 'Médio (+2cr)' : 'Máximo (+5cr)'}
                     </button>
                   ))}
                 </div>

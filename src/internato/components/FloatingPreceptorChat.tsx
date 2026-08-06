@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Stethoscope, Send, X, Sparkles, Loader2, Bot, User, HelpCircle, Maximize2, Minimize2, Trash2 } from 'lucide-react';
+import { Stethoscope, Send, X, Sparkles, Loader2, Bot, User, HelpCircle, Maximize2, Minimize2, Trash2, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -66,12 +66,15 @@ export default function FloatingPreceptorChat({ availableCredits }: FloatingPrec
   const hasMovedRef = useRef<boolean>(false);
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    // If clicking on or inside a button (close, expand, trash, etc.), do not initiate drag
-    if ((e.target as HTMLElement).closest('button')) {
-      return;
+    // If chat is open, ignore clicks on action buttons inside the header or inputs/textareas
+    const targetEl = e.target as HTMLElement;
+    if (isOpen) {
+      if (targetEl.closest('button') || targetEl.closest('input') || targetEl.closest('textarea')) {
+        return;
+      }
     }
 
-    // Only drag with primary mouse button / touch
+    // Only drag with primary mouse button or touch
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     
     isDraggingRef.current = true;
@@ -83,30 +86,31 @@ export default function FloatingPreceptorChat({ availableCredits }: FloatingPrec
       initialPosY: position.y
     };
 
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
+    const handleWindowPointerMove = (moveEvent: PointerEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = moveEvent.clientX - dragStartRef.current.startX;
+      const dy = moveEvent.clientY - dragStartRef.current.startY;
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDraggingRef.current) return;
-    const dx = e.clientX - dragStartRef.current.startX;
-    const dy = e.clientY - dragStartRef.current.startY;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        hasMovedRef.current = true;
+      }
 
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      hasMovedRef.current = true;
-    }
+      setPosition({
+        x: dragStartRef.current.initialPosX + dx,
+        y: dragStartRef.current.initialPosY + dy
+      });
+    };
 
-    setPosition({
-      x: dragStartRef.current.initialPosX + dx,
-      y: dragStartRef.current.initialPosY + dy
-    });
-  };
+    const handleWindowPointerUp = () => {
+      isDraggingRef.current = false;
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('pointercancel', handleWindowPointerUp);
+    };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (!isDraggingRef.current) return;
-    isDraggingRef.current = false;
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {}
+    window.addEventListener('pointermove', handleWindowPointerMove);
+    window.addEventListener('pointerup', handleWindowPointerUp);
+    window.addEventListener('pointercancel', handleWindowPointerUp);
   };
 
   const handleButtonClick = () => {
@@ -197,11 +201,9 @@ Dúvida do aluno: "${userMsgText}"`;
       {!isOpen && (
         <button
           onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
           onClick={handleButtonClick}
           className="group relative bg-[#1A1A1A] hover:bg-[#D44E3D] text-white p-4 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 cursor-grab active:cursor-grabbing border-2 border-white/20 select-none"
-          title="Falar com Preceptor IA (Arraste para mover)"
+          title="Falar com Preceptor IA (Clique para abrir, segure e arraste para mover)"
         >
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full animate-ping" />
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full" />
@@ -222,11 +224,11 @@ Dúvida do aluno: "${userMsgText}"`;
           {/* Header (Draggable Handle) */}
           <div 
             onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
             className="bg-gradient-to-r from-stone-900 via-indigo-950 to-stone-900 p-4 text-white flex items-center justify-between border-b border-stone-800 cursor-grab active:cursor-grabbing select-none"
+            title="Clique e arraste este cabeçalho para mover a janela"
           >
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
+              <GripVertical className="w-4 h-4 text-stone-400 shrink-0" />
               <div className="w-9 h-9 rounded-xl bg-indigo-600/40 border border-indigo-400/50 flex items-center justify-center text-indigo-200 shrink-0">
                 <Stethoscope className="w-5 h-5" />
               </div>

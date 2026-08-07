@@ -1417,15 +1417,17 @@ export function ModerationManager({
               <div className="flex items-center gap-3">
                 <div className={cn(
                   "w-10 h-10 rounded-full flex items-center justify-center font-black text-sm border",
-                  getAvatarColorClass(foundUser.displayName || 'S')
+                  getAvatarColorClass(foundUser.displayName || (foundUser as any).name || (foundUser as any).nome || (foundUser.email || '').split('@')[0] || 'S')
                 )}>
-                  {foundUser.displayName ? foundUser.displayName.charAt(0).toUpperCase() : '?'}
+                  {(foundUser.displayName || (foundUser as any).name || (foundUser as any).nome || (foundUser.email || '').split('@')[0] || '?').charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-neutral-900">{foundUser.displayName || 'Estudante Sem Nome'}</h4>
+                  <h4 className="font-bold text-sm text-neutral-900">
+                    {foundUser.displayName || (foundUser as any).name || (foundUser as any).nome || (foundUser.email || '').split('@')[0] || 'Aluno Visitante (Anônimo)'}
+                  </h4>
                   <p className="text-[11px] font-mono text-[#8E8A82] flex items-center gap-1 mt-0.5">
                     <Mail className="w-3.5 h-3.5 text-[#8E8A82]" />
-                    {foundUser.email}
+                    {foundUser.email || 'Acesso de Visitante (Sem e-mail)'}
                   </p>
                 </div>
               </div>
@@ -1511,16 +1513,24 @@ export function ModerationManager({
               {recentUsers.map((u, uIdx) => (
                 <div key={`usr-admin-${u.id || 'id'}-${uIdx}`} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3.5 bg-white border border-[#E2E0D9] hover:border-neutral-450 rounded-xl transition-all gap-3">
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shrink-0 border",
-                      getAvatarColorClass(u.displayName || 'S')
-                    )}>
-                      {u.displayName ? u.displayName.charAt(0).toUpperCase() : '?'}
-                    </div>
-                    <div className="space-y-0.5 min-w-0">
-                      <p className="font-bold text-xs text-neutral-900 truncate leading-tight">{u.displayName || 'Sem Nome'}</p>
-                      <p className="text-[10px] text-[#8E8A82] font-mono truncate">{u.email}</p>
-                    </div>
+                    {(() => {
+                      const finalName = u.displayName || u.name || u.nome || (u.email || u.emailAddress || '').split('@')[0] || 'Aluno Visitante (Anônimo)';
+                      const finalEmail = u.email || u.emailAddress || u.email_address || u.userEmail || 'Acesso de Visitante (Sem e-mail)';
+                      return (
+                        <>
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shrink-0 border",
+                            getAvatarColorClass(finalName)
+                          )}>
+                            {finalName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="space-y-0.5 min-w-0">
+                            <p className="font-bold text-xs text-neutral-900 truncate leading-tight">{finalName}</p>
+                            <p className="text-[10px] text-[#8E8A82] font-mono truncate">{finalEmail}</p>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -1746,16 +1756,24 @@ export function AdminDashboard({
                   {recentUsers.slice(0, 4).map((u, uIdx) => (
                     <div key={`usr-slice-${u.id || 'id'}-${uIdx}`} className="p-3 bg-[#FBFBFA] border border-[#E2E0D9] rounded-xl flex items-center justify-between">
                       <div className="min-w-0 pr-2 flex items-center gap-2">
-                        <div className={cn(
-                          "w-7 h-7 rounded-full flex items-center justify-center font-black text-[10px] shrink-0 border",
-                          getAvatarColorClass(u.displayName || 'S')
-                        )}>
-                          {u.displayName ? u.displayName.charAt(0).toUpperCase() : '?'}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-xs text-neutral-950 truncate leading-tight">{u.displayName || 'Sem Nome'}</p>
-                          <p className="text-[9.5px] text-[#8E8A82] font-mono truncate">{u.email}</p>
-                        </div>
+                        {(() => {
+                          const finalName = u.displayName || u.name || u.nome || (u.email || u.emailAddress || '').split('@')[0] || 'Aluno Visitante (Anônimo)';
+                          const finalEmail = u.email || u.emailAddress || u.email_address || u.userEmail || 'Acesso de Visitante (Sem e-mail)';
+                          return (
+                            <>
+                              <div className={cn(
+                                "w-7 h-7 rounded-full flex items-center justify-center font-black text-[10px] shrink-0 border",
+                                getAvatarColorClass(finalName)
+                              )}>
+                                {finalName.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-bold text-xs text-neutral-950 truncate leading-tight">{finalName}</p>
+                                <p className="text-[9.5px] text-[#8E8A82] font-mono truncate">{finalEmail}</p>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={cn(

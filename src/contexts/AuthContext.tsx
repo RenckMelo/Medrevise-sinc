@@ -66,6 +66,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (docSnap.exists()) {
             const data = docSnap.data() as UserProfile;
             
+            // Auto-update missing or outdated profile email, name, or photoURL
+            if (
+              (firebaseUser.email && data.email !== firebaseUser.email) ||
+              (firebaseUser.displayName && data.displayName !== firebaseUser.displayName) ||
+              (firebaseUser.photoURL && data.photoURL !== firebaseUser.photoURL)
+            ) {
+              console.log("Updating missing/changed profile fields from authenticated user...");
+              try {
+                await updateDoc(userRef, {
+                  email: firebaseUser.email || data.email || null,
+                  displayName: firebaseUser.displayName || data.displayName || null,
+                  photoURL: firebaseUser.photoURL || data.photoURL || null
+                });
+                return; // Let the next snapshot trigger update context
+              } catch (e) {
+                console.error("Error syncing profile fields:", e);
+              }
+            }
+            
             // Check if they are pre-authorized but not marked premium yet
             const normalizedEmail = (firebaseUser.email || '').toLowerCase().trim();
             const isLucas = normalizedEmail === 'lucas1renck2melo@gmail.com';

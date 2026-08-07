@@ -562,29 +562,43 @@ app.post("/api/gemini", async (req, res) => {
 
     let providerSteps: { provider: 'groq' | 'gemini', keys?: string[] }[] = [];
 
-    // Strictly prioritize requested Gemini Key without unwanted fallbacks
-    if (preferredProvider === 'gemini_key1' && isValidKey(key1)) {
-      providerSteps.push({ provider: 'gemini', keys: [key1!] });
-    } else if (preferredProvider === 'gemini_key2' && isValidKey(key2)) {
+    // Strictly prioritize requested fixed Gemini Key / Groq if selected by VIP user
+    if (preferredProvider === 'gemini_key2' && isValidKey(key2)) {
       providerSteps.push({ provider: 'gemini', keys: [key2!] });
     } else if (preferredProvider === 'gemini_key3' && isValidKey(key3)) {
       providerSteps.push({ provider: 'gemini', keys: [key3!] });
     } else if (preferredProvider === 'groq' && isValidKey(groqKey)) {
       providerSteps.push({ provider: 'groq' });
+    } else if (preferredProvider === 'gemini_key1' && isValidKey(key1)) {
+      providerSteps.push({ provider: 'gemini', keys: [key1!] });
     } else if (preferredProvider === 'gemini' && uniqueGeminiKeys.length > 0) {
       providerSteps.push({ provider: 'gemini', keys: uniqueGeminiKeys });
     }
 
+    // Default "AUTO" mode sequence requested by user:
+    // Priority 1: Free Gemini Keys (Key 2 & Key 3)
+    // Priority 2: Free Groq Key
+    // Priority 3: Paid Gemini Key 1 (Fallback after Keys 2/3 & Groq fail)
     if (providerSteps.length === 0) {
-      if (isSpecialUser) {
-        // Sequência padrão inteligente para usuários especiais: Chave 1 -> Chave 2 -> Chave 3
-        if (isValidKey(key1)) providerSteps.push({ provider: 'gemini', keys: [key1!] });
-        if (isValidKey(key2)) providerSteps.push({ provider: 'gemini', keys: [key2!] });
-        if (isValidKey(key3)) providerSteps.push({ provider: 'gemini', keys: [key3!] });
-        if (isValidKey(groqKey)) providerSteps.push({ provider: 'groq' });
-      } else {
-        if (uniqueGeminiKeys.length > 0) providerSteps.push({ provider: 'gemini', keys: uniqueGeminiKeys });
-        if (isValidKey(groqKey)) providerSteps.push({ provider: 'groq' });
+      // 1. Free Gemini Keys 2 and 3
+      const freeGeminiKeys = [key2, key3].filter(k => isValidKey(k)) as string[];
+      if (freeGeminiKeys.length > 0) {
+        providerSteps.push({ provider: 'gemini', keys: freeGeminiKeys });
+      }
+
+      // 2. Free Groq LPU
+      if (isValidKey(groqKey)) {
+        providerSteps.push({ provider: 'groq' });
+      }
+
+      // 3. Paid Gemini Key 1 (Primary paid fallback)
+      if (isValidKey(key1)) {
+        providerSteps.push({ provider: 'gemini', keys: [key1!] });
+      }
+
+      // Safety: If somehow key1/2/3/groq weren't caught above, include any available keys
+      if (providerSteps.length === 0 && uniqueGeminiKeys.length > 0) {
+        providerSteps.push({ provider: 'gemini', keys: uniqueGeminiKeys });
       }
     }
 
@@ -599,155 +613,162 @@ app.post("/api/gemini", async (req, res) => {
     let resultText = "";
     let lastError: any = null;
 
-    // Execute provider steps sequentially
-    for (const step of providerSteps) {
+    // Execute provider steps in up to 3 rounds (initial attempt + retries)
+    const MAX_ROUNDS = 3;
+    for (let round = 1; round <= MAX_ROUNDS; round++) {
       if (success) break;
 
-      if (step.provider === 'groq') {
-        try {
-          console.log(`[AI Engine] Tentando Groq LPU para ${userEmail}...`);
-          resultText = await callGroqApi(groqKey!, action, promptText, payload);
-          success = true;
-          aiUsageStats.groq.requestsToday++;
-          aiUsageStats.groq.status = "OK";
-          aiUsageStats.groq.lastError = null;
-          aiUsageStats.groq.lastUsed = new Date().toISOString();
-          aiUsageStats.lastActiveProvider = "Groq Cloud";
-          aiUsageStats.lastActiveModel = "llama-3.3-70b-versatile";
-          aiUsageStats.lastCallTime = new Date().toLocaleTimeString('pt-BR');
-          console.log(`[AI Engine] Sucesso total com Groq Llama 3.3 70B!`);
-          await persistProviderCall('groq', userEmail);
-        } catch (err: any) {
-          lastError = err;
-          aiUsageStats.groq.errorsToday++;
-          aiUsageStats.groq.lastError = err.message || "Erro";
-          aiUsageStats.groq.status = `Erro: ${err.message?.substring(0, 30)}`;
-          console.warn(`[AI Engine] Falha no Groq (${err.message}).`);
-        }
-      } else if (step.provider === 'gemini') {
-        const keysToTry = step.keys || [];
-        const keysInOrder = keysToTry.length === 1 ? keysToTry : [...keysToTry].sort(() => Math.random() - 0.5);
+      if (round > 1) {
+        console.warn(`[AI Engine] Rodada ${round}/${MAX_ROUNDS} de retentativas... Aguardando 1.2s para reset de cota/bucket...`);
+        await new Promise(r => setTimeout(r, 1200));
+      }
 
-        // Only gemini-3.1-flash-lite as requested
-        const candidateModels = ["gemini-3.1-flash-lite"];
+      for (const step of providerSteps) {
+        if (success) break;
 
-        // Try keys and models intelligently with rate limit backoff
-        for (let i = 0; i < keysInOrder.length; i++) {
-          if (success) break;
-          const apiKey = keysInOrder[i];
-          const keyObfuscated = apiKey.substring(0, 6) + "..." + apiKey.substring(apiKey.length - 4);
-          
-          let contentsToUse: any = [{ role: "user", parts: [{ text: promptText }] }];
-          if (payload.parts && Array.isArray(payload.parts)) {
-            const cleanParts = payload.parts.map((p: any) => {
-              const part: any = {};
-              if (p.text) part.text = p.text;
-              if (p.inlineData) {
-                part.inlineData = {
-                  data: p.inlineData.data,
-                  mimeType: p.inlineData.mimeType
-                };
-              }
-              return part;
-            });
-            contentsToUse = [{ role: "user", parts: cleanParts }];
-          } else if (action === 'importPdf') {
-            const { fileData, mimeType, promptText: pText } = payload;
-            const isBase64Binary = typeof fileData === 'string' && (
-              fileData.startsWith('JVBERi0') || 
-              fileData.startsWith('iVBORw0') || 
-              fileData.startsWith('/9j/') ||
-              fileData.startsWith('R0lGOD')
-            );
-            
-            if (isBase64Binary) {
-              const cleanMime = (mimeType || '').toLowerCase();
-              const finalMime = cleanMime.includes('image') ? cleanMime : 'application/pdf';
-              contentsToUse = [{
-                role: "user",
-                parts: [
-                  { inlineData: { data: fileData, mimeType: finalMime } },
-                  { text: pText || "Analise este documento de medicina e extraia as semanas e tópicos." }
-                ]
-              }];
-            } else {
-              contentsToUse = [{
-                role: "user",
-                parts: [{ text: `${pText || "Analise este documento de medicina e extraia as semanas e tópicos."}\n\nCONTEÚDO DO DOCUMENTO:\n${fileData}` }]
-              }];
-            }
+        if (step.provider === 'groq') {
+          try {
+            console.log(`[AI Engine - Rodada ${round}] Tentando Groq LPU para ${userEmail}...`);
+            resultText = await callGroqApi(groqKey!, action, promptText, payload);
+            success = true;
+            aiUsageStats.groq.requestsToday++;
+            aiUsageStats.groq.status = "OK";
+            aiUsageStats.groq.lastError = null;
+            aiUsageStats.groq.lastUsed = new Date().toISOString();
+            aiUsageStats.lastActiveProvider = "Groq Cloud";
+            aiUsageStats.lastActiveModel = "llama-3.3-70b-versatile";
+            aiUsageStats.lastCallTime = new Date().toLocaleTimeString('pt-BR');
+            console.log(`[AI Engine] Sucesso total com Groq Llama 3.3 70B!`);
+            await persistProviderCall('groq', userEmail);
+          } catch (err: any) {
+            lastError = err;
+            aiUsageStats.groq.errorsToday++;
+            aiUsageStats.groq.lastError = err.message || "Erro";
+            aiUsageStats.groq.status = `Erro: ${err.message?.substring(0, 30)}`;
+            console.warn(`[AI Engine] Falha no Groq (${err.message}).`);
           }
+        } else if (step.provider === 'gemini') {
+          const keysToTry = step.keys || [];
+          const keysInOrder = keysToTry.length === 1 ? keysToTry : [...keysToTry].sort(() => Math.random() - 0.5);
 
-          const ai = new GoogleGenerativeAI(apiKey);
+          const candidateModels = ["gemini-3.1-flash-lite"];
 
-          for (const currentModelName of candidateModels) {
-            try {
-              console.log(`[AI Engine] Tentando Gemini (${keyObfuscated}) com modelo ${currentModelName}...`);
-              let currentResult = "";
+          for (let i = 0; i < keysInOrder.length; i++) {
+            if (success) break;
+            const apiKey = keysInOrder[i];
+            const keyObfuscated = apiKey.substring(0, 6) + "..." + apiKey.substring(apiKey.length - 4);
+            
+            let contentsToUse: any = [{ role: "user", parts: [{ text: promptText }] }];
+            if (payload.parts && Array.isArray(payload.parts)) {
+              const cleanParts = payload.parts.map((p: any) => {
+                const part: any = {};
+                if (p.text) part.text = p.text;
+                if (p.inlineData) {
+                  part.inlineData = {
+                    data: p.inlineData.data,
+                    mimeType: p.inlineData.mimeType
+                  };
+                }
+                return part;
+              });
+              contentsToUse = [{ role: "user", parts: cleanParts }];
+            } else if (action === 'importPdf') {
+              const { fileData, mimeType, promptText: pText } = payload;
+              const isBase64Binary = typeof fileData === 'string' && (
+                fileData.startsWith('JVBERi0') || 
+                fileData.startsWith('iVBORw0') || 
+                fileData.startsWith('/9j/') ||
+                fileData.startsWith('R0lGOD')
+              );
+              
+              if (isBase64Binary) {
+                const cleanMime = (mimeType || '').toLowerCase();
+                const finalMime = cleanMime.includes('image') ? cleanMime : 'application/pdf';
+                contentsToUse = [{
+                  role: "user",
+                  parts: [
+                    { inlineData: { data: fileData, mimeType: finalMime } },
+                    { text: pText || "Analise este documento de medicina e extraia as semanas e tópicos." }
+                  ]
+                }];
+              } else {
+                contentsToUse = [{
+                  role: "user",
+                  parts: [{ text: `${pText || "Analise este documento de medicina e extraia as semanas e tópicos."}\n\nCONTEÚDO DO DOCUMENTO:\n${fileData}` }]
+                }];
+              }
+            }
 
-              if (action === 'generateImage') {
-                const imageModels = ["gemini-3.1-flash-lite"];
-                let imageSuccess = false;
-                for (const imgModel of imageModels) {
-                  try {
-                    const modelInstance = ai.getGenerativeModel({ model: imgModel });
-                    const result = await modelInstance.generateContent(promptText);
-                    const response = result.response;
-                    let imageBase64 = "";
-                    const parts = response.candidates?.[0]?.content?.parts || [];
-                    for (const part of parts) {
-                      if (part.inlineData?.data) {
-                        imageBase64 = part.inlineData.data;
+            const ai = new GoogleGenerativeAI(apiKey);
+
+            for (const currentModelName of candidateModels) {
+              try {
+                console.log(`[AI Engine - Rodada ${round}] Tentando Gemini (${keyObfuscated}) com modelo ${currentModelName}...`);
+                let currentResult = "";
+
+                if (action === 'generateImage') {
+                  const imageModels = ["gemini-3.1-flash-lite"];
+                  let imageSuccess = false;
+                  for (const imgModel of imageModels) {
+                    try {
+                      const modelInstance = ai.getGenerativeModel({ model: imgModel });
+                      const result = await modelInstance.generateContent(promptText);
+                      const response = result.response;
+                      let imageBase64 = "";
+                      const parts = response.candidates?.[0]?.content?.parts || [];
+                      for (const part of parts) {
+                        if (part.inlineData?.data) {
+                          imageBase64 = part.inlineData.data;
+                          break;
+                        }
+                      }
+                      if (imageBase64) {
+                        currentResult = `data:image/png;base64,${imageBase64}`;
+                        imageSuccess = true;
                         break;
                       }
+                    } catch (imgErr) {
+                      // continue
                     }
-                    if (imageBase64) {
-                      currentResult = `data:image/png;base64,${imageBase64}`;
-                      imageSuccess = true;
-                      break;
-                    }
-                  } catch (imgErr) {
-                    // continue
                   }
+                  if (!imageSuccess) throw new Error("Não foi possível gerar imagem.");
+                } else {
+                  const isJsonReq = action === 'generateJson' || (typeof promptText === 'string' && (promptText.includes('"weeks":') || promptText.toLowerCase().includes('retorne estritamente um objeto json')));
+                  const genConfig: any = isJsonReq ? { responseMimeType: "application/json" } : {};
+                  if (action === 'importPdf') genConfig.maxOutputTokens = 65536;
+
+                  const modelInstance = ai.getGenerativeModel({
+                    model: currentModelName,
+                    generationConfig: genConfig,
+                  });
+
+                  const result = await modelInstance.generateContent({ contents: contentsToUse });
+                  currentResult = result.response.text() || "";
                 }
-                if (!imageSuccess) throw new Error("Não foi possível gerar imagem.");
-              } else {
-                const isJsonReq = action === 'generateJson' || (typeof promptText === 'string' && (promptText.includes('"weeks":') || promptText.toLowerCase().includes('retorne estritamente um objeto json')));
-                const genConfig: any = isJsonReq ? { responseMimeType: "application/json" } : {};
-                if (action === 'importPdf') genConfig.maxOutputTokens = 65536;
 
-                const modelInstance = ai.getGenerativeModel({
-                  model: currentModelName,
-                  generationConfig: genConfig,
-                });
-
-                const result = await modelInstance.generateContent({ contents: contentsToUse });
-                currentResult = result.response.text() || "";
-              }
-
-              if (currentResult && currentResult.trim().length > 0) {
-                success = true;
-                resultText = currentResult;
-                aiUsageStats.gemini.requestsToday++;
-                aiUsageStats.gemini.status = "OK";
-                aiUsageStats.gemini.lastError = null;
-                aiUsageStats.gemini.lastUsed = new Date().toISOString();
-                aiUsageStats.lastActiveProvider = "Google Gemini";
-                aiUsageStats.lastActiveModel = currentModelName;
-                aiUsageStats.lastCallTime = new Date().toLocaleTimeString('pt-BR');
-                console.log(`[AI Engine] Sucesso total com Gemini (${currentModelName})!`);
-                await persistProviderCall('gemini', userEmail);
-                break;
-              }
-            } catch (mErr: any) {
-              lastError = mErr;
-              const isRateLimit = mErr?.message?.includes('429') || mErr?.message?.includes('RESOURCE_EXHAUSTED') || mErr?.message?.includes('quota');
-              console.warn(`[Gemini] Falha (${isRateLimit ? '429 Rate Limit' : 'Erro'}) no modelo ${currentModelName} da chave ${keyObfuscated}: ${mErr?.message || 'Erro'}.`);
-              
-              if (isRateLimit) {
-                // Short pause to allow rate limit bucket to reset
-                await new Promise(r => setTimeout(r, 1000));
-                continue;
+                if (currentResult && currentResult.trim().length > 0) {
+                  success = true;
+                  resultText = currentResult;
+                  aiUsageStats.gemini.requestsToday++;
+                  aiUsageStats.gemini.status = "OK";
+                  aiUsageStats.gemini.lastError = null;
+                  aiUsageStats.gemini.lastUsed = new Date().toISOString();
+                  aiUsageStats.lastActiveProvider = "Google Gemini";
+                  aiUsageStats.lastActiveModel = currentModelName;
+                  aiUsageStats.lastCallTime = new Date().toLocaleTimeString('pt-BR');
+                  console.log(`[AI Engine] Sucesso total com Gemini (${currentModelName})!`);
+                  await persistProviderCall('gemini', userEmail);
+                  break;
+                }
+              } catch (mErr: any) {
+                lastError = mErr;
+                const isRateLimit = mErr?.message?.includes('429') || mErr?.message?.includes('RESOURCE_EXHAUSTED') || mErr?.message?.includes('quota');
+                console.warn(`[Gemini] Falha (${isRateLimit ? '429 Rate Limit' : 'Erro'}) no modelo ${currentModelName} da chave ${keyObfuscated}: ${mErr?.message || 'Erro'}.`);
+                
+                if (isRateLimit) {
+                  await new Promise(r => setTimeout(r, 800));
+                  continue;
+                }
               }
             }
           }
@@ -863,7 +884,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'openi') {
       try {
         const url = `https://openi.nlm.nih.gov/api/search?query=${encodeURIComponent(qStr)}&m=1&n=${limit || 25}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent } });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
         if (!response.ok) return res.status(200).json({ list: [] });
         const text = await response.text();
         const data = JSON.parse(text);
@@ -890,7 +911,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'internetarchive') {
       try {
         const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(qStr)}&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=year&rows=${limit || 15}&page=1&output=json`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent } });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
         if (!response.ok) return res.status(200).json({ docs: [] });
         const data = await response.json();
         return res.json(data.response || { docs: [] });
@@ -903,7 +924,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'plos') {
       try {
         const url = `https://api.plos.org/search?q=everything:${encodeURIComponent(qStr)}&fl=id,title_display,author_display,publication_date,journal&rows=${limit || 15}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent } });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
         if (!response.ok) return res.status(200).json({ response: { docs: [] } });
         const data = await response.json();
         return res.json(data);
@@ -916,7 +937,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'zenodo') {
       try {
         const url = `https://zenodo.org/api/records?q=${encodeURIComponent(qStr)}&type=image&size=${limit || 20}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent } });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
         if (!response.ok) return res.status(200).json({ hits: { hits: [] } });
         const data = await response.json();
         return res.json(data);
@@ -929,7 +950,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'europepmc') {
       try {
         const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(qStr + ' HAS_FT:Y')}&format=json&pageSize=${limit || 20}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent } });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
         if (!response.ok) return res.status(200).json({ resultList: { result: [] } });
         const data = await response.json();
         return res.json(data);
@@ -942,7 +963,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'openlibrary') {
       try {
         const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(qStr)}&limit=${limit || 12}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent } });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
         if (!response.ok) return res.status(200).json({ docs: [] });
         const data = await response.json();
         return res.json(data);
@@ -959,7 +980,8 @@ app.get("/api/proxy-scientific", async (req, res) => {
           headers: { 
             'Accept': 'application/json',
             'User-Agent': userAgent
-          }
+          },
+          signal: AbortSignal.timeout(6000)
         });
         if (!response.ok) {
           return res.status(200).json({ items: [] });
@@ -976,7 +998,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
       try {
         const apiKey = process.env.GEMINI_API_KEY ? `&key=${process.env.GEMINI_API_KEY}` : '';
         const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(qStr)}&maxResults=${limit || 8}${apiKey}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent } });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
         if (!response.ok) return res.status(200).json({ items: [] });
         const data = await response.json();
         return res.json(data);
@@ -1041,7 +1063,7 @@ app.get("/api/proxy-image", async (req, res) => {
       headers["Referer"] = "https://journals.plos.org/";
     }
 
-    let response = await fetch(imageUrl, { headers, redirect: 'follow' });
+    let response = await fetch(imageUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(8000) });
 
     // Fallback: If a Wikimedia thumbnail URL fails, try to fetch the full resolution file directly
     if (!response.ok && (parsedUrl.hostname.includes("wikimedia.org") || parsedUrl.hostname.includes("wikipedia.org"))) {
@@ -1051,7 +1073,7 @@ app.get("/api/proxy-image", async (req, res) => {
         if (thumbIdx !== -1 && parts.length > thumbIdx + 3) {
           const fullResUrl = [...parts.slice(0, thumbIdx), ...parts.slice(thumbIdx + 1, thumbIdx + 4)].join('/');
           console.log(`[Proxy Fallback] Attempting direct full-res Wikimedia URL: ${fullResUrl}`);
-          const fallbackRes = await fetch(fullResUrl, { headers, redirect: 'follow' });
+          const fallbackRes = await fetch(fullResUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(8000) });
           if (fallbackRes.ok) {
             response = fallbackRes;
           }
@@ -1079,7 +1101,7 @@ app.get("/api/proxy-image", async (req, res) => {
     res.send(Buffer.from(arrayBuffer));
   } catch (err: any) {
     console.error("[Proxy Exception]", err.message);
-    res.status(500).send("Proxy server-side error: " + err.message);
+    res.status(504).send("Proxy server-side error: " + err.message);
   }
 });
 

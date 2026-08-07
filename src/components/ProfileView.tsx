@@ -386,7 +386,29 @@ export default function ProfileView() {
   
   const remainingDays = getRemainingDays();
 
-  const [selectedPlanId, setSelectedPlanId] = useState('med_revise_pro');
+  const [selectedPlanId, setSelectedPlanId] = useState<string>(() => {
+    return localStorage.getItem('profile_auto_select_plan') || 'med_revise_pro';
+  });
+
+  useEffect(() => {
+    const autoSelect = localStorage.getItem('profile_auto_select_plan');
+    if (autoSelect) {
+      setSelectedPlanId(autoSelect);
+      localStorage.removeItem('profile_auto_select_plan');
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleAutoSelect = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      if (customEvent.detail) {
+        setSelectedPlanId(customEvent.detail);
+        localStorage.removeItem('profile_auto_select_plan');
+      }
+    };
+    window.addEventListener('auto-select-plan', handleAutoSelect);
+    return () => window.removeEventListener('auto-select-plan', handleAutoSelect);
+  }, []);
 
   const PLANS = [
     {

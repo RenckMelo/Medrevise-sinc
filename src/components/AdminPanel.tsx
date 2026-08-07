@@ -611,14 +611,16 @@ export default function AdminPanel() {
                               />
                             ) : (
                               <div className="w-9 h-9 rounded-full bg-[#F0EEE9] border border-[#E2E0D9] flex items-center justify-center font-black text-xs text-[#8E8A82] shrink-0">
-                                {item.displayName ? item.displayName.charAt(0).toUpperCase() : '?'}
+                                {((item as any).displayName || (item as any).name || (item as any).nome || ((item as any).email || (item as any).emailAddress || '').split('@')[0] || 'V').charAt(0).toUpperCase()}
                               </div>
                             )}
                             <div className="min-w-0">
-                              <h5 className="font-display font-bold text-xs text-neutral-800 truncate">{item.displayName || 'Sem Nome'}</h5>
+                              <h5 className="font-display font-bold text-xs text-neutral-800 truncate">
+                                {(item as any).displayName || (item as any).name || (item as any).nome || ((item as any).email || (item as any).emailAddress || '').split('@')[0] || 'Aluno Visitante (Anônimo)'}
+                              </h5>
                               <p className="text-[9.5px] font-mono text-[#8E8A82] truncate flex items-center gap-1 mt-0.5">
                                 <Mail className="w-3 h-3 text-[#8E8A82]/70" />
-                                {item.email}
+                                {(item as any).email || (item as any).emailAddress || (item as any).email_address || (item as any).userEmail || 'Acesso de Visitante (Sem e-mail)'}
                               </p>
                             </div>
                           </div>

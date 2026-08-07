@@ -368,9 +368,9 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {/* AI Credits Badge */}
           <div 
-            onClick={() => isSpecialUser && setShowProviderStatusModal(true)}
-            className={`flex items-center gap-1 sm:gap-1.5 bg-amber-50 text-amber-900 border border-amber-200/90 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-extrabold shadow-xs shrink-0 ${isSpecialUser ? 'cursor-pointer hover:bg-amber-100 transition-all' : ''}`}
-            title="Créditos diários de Inteligência Artificial disponíveis"
+            onClick={() => setShowProviderStatusModal(true)}
+            className="flex items-center gap-1 sm:gap-1.5 bg-amber-50 text-amber-900 border border-amber-200/90 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-extrabold shadow-xs shrink-0 cursor-pointer hover:bg-amber-100 transition-all"
+            title="Clique para ver seus créditos e horário de renovação"
           >
             <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600 fill-amber-500 animate-pulse" />
             <span>{availableCredits} cr</span>
@@ -571,14 +571,12 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
         />
       )}
 
-      {/* AI Provider Status Modal (Strictly for Special Users) */}
-      {isSpecialUser && (
-        <AiProviderStatusModal
-          isOpen={showProviderStatusModal}
-          onClose={() => setShowProviderStatusModal(false)}
-          userEmail={user?.email || ''}
-        />
-      )}
+      {/* AI Provider Status / Credits Modal */}
+      <AiProviderStatusModal
+        isOpen={showProviderStatusModal}
+        onClose={() => setShowProviderStatusModal(false)}
+        userEmail={user?.email || ''}
+      />
 
       {/* Dicas & Sugestões Box */}
       <SuggestionsBox
@@ -595,7 +593,19 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
       />
 
       {/* Floating Preceptor Tira-Dúvidas Chat */}
-      <FloatingPreceptorChat availableCredits={availableCredits} />
+      <FloatingPreceptorChat 
+        availableCredits={availableCredits}
+        topics={topics}
+        subjects={subjects}
+        selectedTopic={currentView === 'topicDetail' ? selectedTopic : null}
+        userId={userId}
+        onTopicUpdate={(updatedTopic) => {
+          if (selectedTopic && selectedTopic.id === updatedTopic.id) {
+            setSelectedTopic(updatedTopic);
+          }
+          setTopics(prev => prev.map(t => t.id === updatedTopic.id ? updatedTopic : t));
+        }}
+      />
 
       {/* Mobile Bottom Navigation Bar */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[#E2E0D9] z-40 px-2 py-2 flex items-center justify-around shadow-xl pb-safe">

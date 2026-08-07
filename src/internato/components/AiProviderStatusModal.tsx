@@ -170,7 +170,100 @@ export default function AiProviderStatusModal({ isOpen, onClose, userEmail }: Ai
   const isSpecialUser = normalizedEmail === 'lucas1renck2melo@gmail.com' || normalizedEmail === 'ysabelleosaraiva@gmail.com' || normalizedEmail === 'yasabelleosaraiva@gmail.com';
   const isOwner = isSpecialUser;
 
-  if (!isOpen || !isSpecialUser) return null;
+  if (!isOpen) return null;
+
+  // Regular Users View (Non-special users: Only see credit balance, limit, and Brazil reset time)
+  if (!isSpecialUser) {
+    const userLimit = siteUsage?.limit || 10;
+    const remaining = Math.max(0, userLimit - (siteUsage?.count || 0));
+    let userPlanName = "Plano MedRevise / Grátis (10 cr/dia)";
+    if (userLimit >= 250) userPlanName = "Plano Combo Ouro VIP";
+    else if (userLimit >= 200) userPlanName = "Plano MedInternato Premium";
+
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-[#E2E0D9] relative overflow-hidden my-auto space-y-6">
+          
+          {/* Header */}
+          <div className="flex items-center justify-between pb-4 border-b border-[#E2E0D9]">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200/80 flex items-center justify-center font-black shrink-0">
+                <Sparkles className="w-6 h-6 text-amber-600 fill-amber-500 animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-[#1A1A1A]">Seus Créditos de IA</h2>
+                <p className="text-xs text-[#6E6A62] font-medium">Consumo diário e limite do seu plano</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-[#F4F3EF] hover:bg-[#E2E0D9] text-[#6E6A62] flex items-center justify-center transition-all cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Balance & Limit Stats Card */}
+          <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-md border border-slate-700 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-300 font-extrabold uppercase tracking-wider">
+                {userPlanName}
+              </span>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> Plano Ativo
+              </span>
+            </div>
+
+            <div className="flex items-baseline gap-2 pt-1">
+              <span className="text-3xl font-black text-amber-400">{remaining}</span>
+              <span className="text-sm font-semibold text-slate-300">/ {userLimit} créditos disponíveis hoje</span>
+            </div>
+
+            <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+              <div 
+                className="bg-amber-400 h-full transition-all duration-500 rounded-full" 
+                style={{ width: `${Math.min(100, Math.max(5, (remaining / userLimit) * 100))}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">
+              Consumidos hoje: <strong className="text-slate-200">{siteUsage?.count || 0} cr</strong>
+            </p>
+          </div>
+
+          {/* Reset Time Card - Explicit Brazil Time */}
+          <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/90 text-amber-950 space-y-2">
+            <div className="flex items-center gap-2 text-amber-900 font-extrabold text-sm">
+              <RotateCcw className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Horário de Renovação dos Créditos</span>
+            </div>
+            <p className="text-xs text-amber-900/90 leading-relaxed font-medium">
+              A sua cota diária é renovada e normalizada automaticamente todos os dias às <strong className="text-amber-950 font-black bg-amber-200/80 px-1.5 py-0.5 rounded">04:00 (Horário de Brasília) / 00:00 PST</strong>, momento oficial de reset das APIs de Inteligência Artificial.
+            </p>
+            <p className="text-[11px] text-amber-800/80 leading-normal font-normal">
+              Às 04:00 BRT, seu saldo diário é restaurado para o valor total do seu plano (<strong>{userLimit} créditos</strong>).
+            </p>
+          </div>
+
+          {/* Protection Note */}
+          <div className="p-3.5 rounded-xl bg-[#F4F3EF] border border-[#E2E0D9] text-xs text-[#6E6A62] flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <span>
+              <strong>Garantia do Sistema:</strong> Falhas temporárias de conexão ou indisponibilidades de servidor nunca descontam nem consomem seus créditos.
+            </span>
+          </div>
+
+          {/* Action Button */}
+          <Button
+            onClick={onClose}
+            className="w-full py-3 bg-[#1A1A1A] hover:bg-black text-white font-bold rounded-xl text-xs cursor-pointer transition-all shadow-md"
+          >
+            Entendi, Voltar aos Estudos
+          </Button>
+
+        </div>
+      </div>
+    );
+  }
 
   // Determine user plan details and Groq quota proportional to plan
   const userLimit = siteUsage?.limit || 10;

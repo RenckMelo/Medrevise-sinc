@@ -363,10 +363,9 @@ async function generateMasterSummary(title: string, area: string, reference?: st
         - EMBASAMENTO ANATÔMICO/FISIOLÓGICO: Explique a anatomia e a fisiologia e correlações essenciais necessárias para guiar o procedimento de ponta a ponta.
         - INDICAÇÕES E CONTRAINDICAÇÕES: Forneça uma tabela ou uma lista lógica com indicações formais claras e contraindicações absolutas e relativas secundárias.
         - PREPARAÇÃO BEIRA DE LEITO: Preparação inicial básica do leito, materiais/instrumentais fundamentais.
-        - Use caixas de texto com "DICA DO PRECEPTOR" e "ANALOGIA CLÍNICA".
+        - Use caixas de texto with "DICA DO PRECEPTOR" e "ANALOGIA CLÍNICA".
         - AVISO DE EVITAÇÃO DE REPETIÇÃO: Concentre-se apenas na fundamentação conceitual e anatômica inicial. NÃO descreva o passo a passo operatório ou condutas tardias de alta aqui, pois serão abordadas nas próximas partes.
-        - DIRETRIZ DE ILUSTRAÇÃO MANDATÓRIA (MÁXIMAS IMAGENS): Visando um material ricamente visual com alto valor pedagógico, você deve obrigatoriamente identificar todas as oportunidades para ilustração de marcos anatômicos, exames reais, sinais e preparação. Insira pelo menos de 2 a 4 imagens médicas de alta qualidade nesta parte. Use a sintaxe clássica do Markdown: ![Legenda descriptiva em português. Fonte: Wikimedia Commons](URL_DO_WIKIMEDIA_COMMONS).
-        - DIRETRIZ DE SEGURANÇA CONTRA LINKS QUEBRADOS: Para garantir que todas as imagens abram perfeitamente sem erros 404, formule links diretos do Wikimedia Commons baseados em nomes de arquivos em inglês extremamente curtos, simples, genéricos e conhecidos (exemplo de formatos seguros: /wikipedia/commons/d/d4/Secondary_syphilis.jpg ou /wikipedia/commons/f/ff/Congenital_cataract.jpg ou /wikipedia/commons/4/4b/CT_scan_brain.jpg). Nunca utilize nomes de arquivos gigantescos, com códigos aleatórios longos, data hashes ou tags complexas.
+        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
         - Formate em Markdown elegante. Use LaTeX para termos matemáticos/médicos (como $ \rightarrow $, $ \beta $-bloqueadores, etc).`
       },
       {
@@ -382,8 +381,7 @@ async function generateMasterSummary(title: string, area: string, reference?: st
         - MONITORIZAÇÃO: Parâmetros fisiológicos obrigatórios beira de leito a serem observados pelo interno médico de elite durante o procedimento.
         - Use caixas de texto estilizadas "TÉCNICA PRÁTICA" ou "BOX DE PRESCRIÇÃO/MANOBRA".
         - AVISO DE EVITAÇÃO DE REPETIÇÃO: NÃO reintroduza o tema, não revise a epidemiologia ou indicações e não cite as complicações tardias. Vá diretamente ao "como fazer" de forma funcional and altamente procedimental.
-        - DIRETRIZ DE ILUSTRAÇÃO MANDATÓRIA (MÁXIMAS IMAGENS): Visando um material ricamente visual com alto valor pedagógico, você deve obrigatoriamente identificar todas as oportunidades para ilustração de marcos anatômicos, exames reais, sinais e preparação. Insira pelo menos de 2 a 4 imagens médicas de alta qualidade nesta parte. Use a sintaxe clássica do Markdown: ![Legenda descriptiva em português. Fonte: Wikimedia Commons](URL_DO_WIKIMEDIA_COMMONS).
-        - DIRETRIZ DE SEGURANÇA CONTRA LINKS QUEBRADOS: Para garantir que todas as imagens abram perfeitamente sem erros 404, formule links diretos do Wikimedia Commons baseados em nomes de arquivos em inglês extremamente curtos, simples, genéricos e conhecidos (exemplo de formatos seguros: /wikipedia/commons/d/d4/Secondary_syphilis.jpg ou /wikipedia/commons/f/ff/Congenital_cataract.jpg ou /wikipedia/commons/4/4b/CT_scan_brain.jpg). Nunca utilize nomes de arquivos gigantescos, com códigos aleatórios longos, data hashes ou tags complexas.
+        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
         - Formate com LaTeX para símbolos e fórmulas médicas e use Markdown profissional.`
       },
       {
@@ -399,8 +397,7 @@ async function generateMasterSummary(title: string, area: string, reference?: st
         - REGIONALIZAÇÃO (GO/DF): Crie uma seção mestre chamada "PECULIARIDADES DE EXAME EM GO/DF" com caixas de destaque descrevendo de forma resolutiva como as grandes bancas do Centro-Oeste (UFG, UnB, PSU-GO, PSU-DF) abordam essa assistência.
         - CHECKLIST FINAL: Conclua com uma lista estruturada de verificação de segurança no pós-procedimento beira-de-leito.
         - AVISO DE EVITAÇÃO DE REPETIÇÃO: NÃO repita discussões fisiopatológicas iniciais ou passos detalhados do procedimento. Concentre-se inteiramente no desfecho, prevenção de danos, conclusão e particularidades locais.
-        - DIRETRIZ DE ILUSTRAÇÃO MANDATÓRIA (MÁXIMAS IMAGENS): Visando um material ricamente visual com alto valor pedagógico, você deve obrigatoriamente identificar todas as oportunidades para ilustração de marcos anatômicos, exames reais, sinais e preparação. Insira pelo menos de 2 a 4 imagens médicas de alta qualidade nesta parte. Use a sintaxe clássica do Markdown: ![Legenda descriptiva em português. Fonte: Wikimedia Commons](URL_DO_WIKIMEDIA_COMMONS).
-        - DIRETRIZ DE SEGURANÇA CONTRA LINKS QUEBRADOS: Para garantir que todas as imagens abram perfeitamente sem erros 404, formule links diretos do Wikimedia Commons baseados em nomes de arquivos em inglês extremamente curtos, simples, genéricos e conhecidos (exemplo de formatos seguros: /wikipedia/commons/d/d4/Secondary_syphilis.jpg ou /wikipedia/commons/f/ff/Congenital_cataract.jpg ou /wikipedia/commons/4/4b/CT_scan_brain.jpg). Nunca utilize nomes de arquivos gigantescos, com códigos aleatórios longos, data hashes ou tags complexas.
+        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
         - Formate usando LaTeX para fórmulas e notações e use Markdown puro.`
       }
     ] : [
@@ -417,8 +414,7 @@ async function generateMasterSummary(title: string, area: string, reference?: st
         - SEMIOLOGIA BEIRA DE LEITO: Descreva as manifestações clínicas com riqueza de detalhes de exame físico (sinais epônimos, manobras especiais diagnósticas, segredos propedêuticos de inspeção/palpação/ausculta).
         - Use caixas de texto com "DICA DO PRECEPTOR" and "ANALOGIA CLÍNICA".
         - AVISO DE EVITAÇÃO DE REPETIÇÃO: Esta é a introdução. NÃO cite exames subsidiários específicos (laboratório/imagem) e NÃO descreva condutas ou posologias de tratamento aqui para garantir zero repetição.
-        - DIRETRIZ DE ILUSTRAÇÃO MANDATÓRIA (MÁXIMAS IMAGENS): Visando um material ricamente visual com alto valor pedagógico, você deve obrigatoriamente identificar todas as oportunidades para ilustração de marcos anatômicos, exames reais, sinais e preparação. Insira pelo menos de 2 a 4 imagens médicas de alta qualidade nesta parte. Use a sintaxe clássica do Markdown: ![Legenda descriptiva em português. Fonte: Wikimedia Commons](URL_DO_WIKIMEDIA_COMMONS).
-        - DIRETRIZ DE SEGURANÇA CONTRA LINKS QUEBRADOS: Para garantir que todas as imagens abram perfeitamente sem erros 404, formule links diretos do Wikimedia Commons baseados em nomes de arquivos em inglês extremamente curtos, simples, genéricos e conhecidos (exemplo de formatos seguros: /wikipedia/commons/d/d4/Secondary_syphilis.jpg ou /wikipedia/commons/f/ff/Congenital_cataract.jpg ou /wikipedia/commons/4/4b/CT_scan_brain.jpg). Nunca utilize nomes de arquivos gigantescos, com códigos aleatórios longos, data hashes ou tags complexas.
+        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
         - Formate em Markdown elegante. Use LaTeX para termos matemáticos/médicos (como $ \rightarrow $, $ \beta $-bloqueadores, etc).`
       },
       {
@@ -435,8 +431,7 @@ async function generateMasterSummary(title: string, area: string, reference?: st
         - ALGORITMO DIAGNÓSTICO TEXTUAL: Descreva um algoritmo passo a passo de investigação no texto de forma lógica.
         - Use caixas de texto com estilo "MENSAGEM DO INTERNATO: Raciocínio Clínico Real".
         - AVISO DE EVITAÇÃO DE REPETIÇÃO: NÃO reintroduza a definição da patologia ou sua fisiologia. NÃO inicie discussões sobre fármacos ou dosagens terapêuticas aqui, pois as condutas específicas e medicamentosas pertencem exclusivamente à próxima parte (Conclusão).
-        - DIRETRIZ DE ILUSTRAÇÃO MANDATÓRIA (MÁXIMAS IMAGENS): Visando um material ricamente visual com alto valor pedagógico, você deve obrigatoriamente identificar todas as oportunidades para ilustração de marcos anatômicos, exames reais, sinais e preparação. Insira pelo menos de 2 a 4 imagens médicas de alta qualidade nesta parte. Use a sintaxe clássica do Markdown: ![Legenda descriptiva em português. Fonte: Wikimedia Commons](URL_DO_WIKIMEDIA_COMMONS).
-        - DIRETRIZ DE SEGURANÇA CONTRA LINKS QUEBRADOS: Para garantir que todas as imagens abram perfeitamente sem erros 404, formule links diretos do Wikimedia Commons baseados em nomes de arquivos em inglês extremamente curtos, simples, genéricos e conhecidos (exemplo de formatos seguros: /wikipedia/commons/d/d4/Secondary_syphilis.jpg ou /wikipedia/commons/f/ff/Congenital_cataract.jpg ou /wikipedia/commons/4/4b/CT_scan_brain.jpg). Nunca utilize nomes de arquivos gigantescos, com códigos aleatórios longos, data hashes ou tags complexas.
+        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
         - Formate com LaTeX para símbolos e fórmulas médicas e use Markdown profissional.`
       },
       {
@@ -447,14 +442,13 @@ async function generateMasterSummary(title: string, area: string, reference?: st
         REQUISITOS DO CONTEÚDO E COMPLETUDE TOTAL (MANDATÓRIO):
         - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Forneça explicações extremamente detalhadas, didáticas, exaustivas e eficazes de todos os conceitos teóricos, fisiológicos ou anatômicos necessários. O foco é a máxima clareza e suficiência acadêmica para que o estudante compreenda todo o tema com profundidade e consiga responder com sucesso a qualquer questão de prova de residência médica.
         - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
-        - CONDUTA TERAPÊUTICA COMPLETA DE ALTA PERFORMANCE: Especifique a estratégia terapêutica medicamentosa e não-medicamentosa com precisão cirúrgica: doses exatas, vias preferenciais, intervalos e período total de tratamento e manejo de falha da primeira linha.
+        - CONDUTA TERAPÊUTICA COMPLETA DE ALTA PERFORMANCE: Especifique a strategy terapêutica medicamentosa e não-medicamentosa com precisão cirúrgica: doses exatas, vias preferenciais, intervalos e período total de tratamento e manejo de falha da primeira linha.
         - FLUXOS DO SUS E DIRETRIZES: Enquadre a conduta de acordo com as diretrizes oficiais do Ministério da Saúde e notas técnicas regionais (SES-GO / SES-DF).
         - REGIONALIZAÇÃO DA COBRANÇA (GO/DF): Escreva uma rica seção intitulada "PECULIARIDADES DE EXAME EM GO/DF" revelando o foco de abordagem predileto de bancas como UnB, UFG, PSU-GO, PSU-DF e SES sobre este tema terapêutico.
         - CHECKLIST DE CONVENÇÃO: Resuma as ações críticas de salvamento ou alta através de um checklist resolutivo.
         - SEÇÃO FINAL OBRIGATÓRIA - REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS: Ao final da Parte 3, inclua obrigatoriamente a seção "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS" listando e descrevendo detalhadamente (de 3 a 5 fontes) com o nome do livro/diretriz (ex: UpToDate 2025/2026, Diretrizes do Ministério da Saúde, FEBRASGO, SBP, Harrison's, Sabiston, etc.), explicando resumidamente por que cada fonte respalda as condutas descritas. ${reference ? `Destaque a referência preferencial informada: "${reference}".` : ""}
         - AVISO DE EVITAÇÃO DE REPETIÇÃO: NÃO gaste tempo explicando epidemiologia, exame físico ou escores diagnósticos. Vá direto ao tratamento, prognóstico de alta e as questões regionais específicas.
-        - DIRETRIZ DE ILUSTRAÇÃO MANDATÓRIA (MÁXIMAS IMAGENS): Visando um material ricamente visual com alto valor pedagógico, você deve obrigatoriamente identificar todas as oportunidades para ilustração de marcos anatômicos, exames reais, sinais e preparação. Insira pelo menos de 2 a 4 imagens médicas de alta qualidade nesta parte. Use a sintaxe clássica do Markdown: ![Legenda descriptiva em português. Fonte: Wikimedia Commons](URL_DO_WIKIMEDIA_COMMONS).
-        - DIRETRIZ DE SEGURANÇA CONTRA LINKS QUEBRADOS: Para garantir que todas as imagens abram perfeitamente sem erros 404, formule links diretos do Wikimedia Commons baseados em nomes de arquivos em inglês extremamente curtos, simples, genéricos e conhecidos (exemplo de formatos seguros: /wikipedia/commons/d/d4/Secondary_syphilis.jpg ou /wikipedia/commons/f/ff/Congenital_cataract.jpg ou /wikipedia/commons/4/4b/CT_scan_brain.jpg). Nunca utilize nomes de arquivos gigantescos, com códigos aleatórios longos, data hashes ou tags complexas.
+        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
         - Formate usando LaTeX para fórmulas e notações e use Markdown puro.`
       }
     ];
@@ -553,19 +547,52 @@ export async function generateTopicContent(
   const focusTargetClean = isCustom ? residencyFocus : "Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)";
   const regionalShort = isCustom ? residencyFocus : "GO/DF";
 
-  // Exact plan tier credits with no extra surcharges
   const finalCredits = credits;
 
-  const isDeep = depth !== 'standard';
+  const isDeep = depth === 'deep';
   const isElite = depth === 'elite';
+  const isStandard = depth === 'standard';
   
   // Using stable model
   const model = "gemini-3.1-flash-lite";
 
   const isProcedure = /parto|assistência|assistencia|técnica|tecnica|semiologia|exame|procedimento|manobra|reanimação|reanimacao|intubação|intubacao|acesso|sutura|curativo|planejamento|consulta|anamnese|avaliação|avaliacao|escore|escala|aleitamento|vacina|imunização|imunizacao|suporte|atendimento/i.test(title);
 
-  const structure = isProcedure ? `
-  ESTRUTURA DO CONTEÚDO SINALIZADA:
+  let structure = "";
+  if (isStandard) {
+    structure = isProcedure ? `
+  ESTRUTURA DO CONTEÚDO (PADRÃO - 1 CRÉDITO: CONCISO E DIRETO):
+  1. **Indicações e Anatomia/Fisiologia Essencial**: Definição rápida, importância prática, indicações e contraindicações principais.
+  2. **Materiais e Preparação**: Equipamentos indispensáveis e checklist objetivo.
+  3. **Passo a Passo da Técnica e Doses**: Algoritmo direto do procedimento e drogas de 1ª linha.
+  4. **Intercorrências e Pegadinhas de Prova**: Complicações clássicas e tópicos mais cobrados em bancas.
+  ` : `
+  ESTRUTURA DO CONTEÚDO (PADRÃO - 1 CRÉDITO: CONCISO E DIRETO):
+  1. **Visão Geral e Fisiopatologia Direta**: Definição sucinta, epidemiologia chave e mecanismo fisiopatológico principal.
+  2. **Quadro Clínico e Propedêutica Diagnóstica**: Sinais/sintomas marcantes, exames de 1ª linha e escore/critério principal.
+  3. **Tratamento e Condutas Imediatas**: Medicamento de 1ª escolha, doses essenciais e fluxo rápido de conduta.
+  4. **Pegadinhas de Prova e Dicas de Ouro**: Pontos mais cobrados em bancas de residência do Centro-Oeste / ENARE.
+  `;
+  } else if (isDeep) {
+    structure = isProcedure ? `
+  ESTRUTURA DO CONTEÚDO (AVANÇADO - 5 CRÉDITOS: DIDÁTICO E PRÁTICO):
+  1. **Indicações e Fundamentos Aplicados**: Definição, indicações e contraindicações.
+  2. **Anatomia, Preparação e Biossegurança**: Conceitos fundamentais, materiais e posicionamento.
+  3. **Técnicas e Passo a Passo de Execução**: Roteiro sequencial detalhando como realizar cada fase.
+  4. **Prevenção e Tratamento de Intercorrências**: Principais complicações e condutas de resgate.
+  5. **Peculiaridades de Provas (GO/DF) e Checklist**: Pontos mais cobrados e resumo prático.
+  ` : `
+  ESTRUTURA DO CONTEÚDO (AVANÇADO - 5 CRÉDITOS: DIDÁTICO E PRÁTICO):
+  1. **Epidemiologia e Fisiopatologia Aplicada**: Mecanismos explicados com clareza didática.
+  2. **Semiologia e Quadro Clínico**: Sinais característicos e apresentação.
+  3. **Propedêutica e Escores Clínicos**: Exames complementares e tabelas de classificação principais.
+  4. **Tratamento Farmacológico e Algoritmo**: Doses de 1ª e 2ª linha, fluxogramas e condutas.
+  5. **Particularidades Regionais (GO/DF) e Dicas de Prova**: Destaques de bancas locais.
+  `;
+  } else {
+    // Elite (10 créditos)
+    structure = isProcedure ? `
+  ESTRUTURA DO CONTEÚDO (ELITE - 10 CRÉDITOS: DETALHADO E COMPLETO):
   1. **Introdução e Indicações Clínicas**: Definição clara, importância prática, indicações do procedimento/assistência e contraindicações secundárias.
   2. **Anatomia, Fisiologia ou Fundamentos Aplicados**: Conceitos estruturais fundamentais para beira de leito.
   3. **Preparação, Materiais e Biossegurança**: Parâmetros de segurança, equipamentos necessários, posições de exame, assepsia, e check de preparação.
@@ -575,84 +602,58 @@ export async function generateTopicContent(
   7. **Controvérsias e Atualizações**: Novidades baseadas em diretrizes de portarias recentes (2024/2025).
   8. **Checklist Prático e Monitoramento Pós-Assistência**: Tabelas úteis de beira-de-leito pós-condução.
   ` : `
-  ESTRUTURA DO CONTEÚDO SINALIZADA:
+  ESTRUTURA DO CONTEÚDO (ELITE - 10 CRÉDITOS: DETALHADO E COMPLETO):
   1. **Epidemiologia e Impacto**: Dados reais e incidência no Centro-Oeste.
-  2. **Etiopatogenia e Fisiopatologia**: Mecanismos celulares e moleculares detalhados.
-  3. **Semiologia e Clínica**: Sinais epônimos, manobras físicas e "pegadinhas" de exame.
-  4. **Propedêutica e Diagnóstico**: Discussão profunda de exames e scores.
-  5. **Tratamento e Condutas**: 
-     - Fluxogramas e doses precisas.
-     - Particularidades do SUS e protocolos SES-GO/SES-DF.
-  6. **Peculiaridades GO/DF**: O que cai em cada uma das grandes provas locais.
-  7. **Controvérsias e Atualizações**: O que há de novo em 2024/2025.
-  8. **Checklist de Elite**: Tabelas gigantescas de diagnóstico diferencial.
+  2. **Etiopatogenia e Fisiopatologia Celular/Molecular**: Mecanismos detalhados.
+  3. **Semiologia e Clínica**: Sinais epônimos, manobras físicas e pegadinhas.
+  4. **Propedêutica, Diagnóstico e Escores**: Discussão profunda de exames e tabelas de escores.
+  5. **Tratamento e Condutas Completas**: Fluxogramas, doses exatas mg/kg, 1ª e 2ª linhas.
+  6. **Peculiaridades GO/DF**: O que cai nas grandes provas regionais.
+  7. **Controvérsias e Atualizações 2024/2025**: Diretrizes recentes.
+  8. **Checklist de Elite**: Tabelas comparativas e diagnósticos diferenciais.
   `;
+  }
 
-  const prompt = `Você é o Coordenador-Preceptor de um Internato de Elite Médica. Seu objetivo não é apenas informar, mas TREINAR o aluno para as residências mais difíceis, com foco absoluto em GOIÁS (SES-GO, UFG, PSU-GO) e DISTRITO FEDERAL (SES-DF, UnB, ENARE DF, PSU-DF).
+  const depthScopeInstruction = isStandard 
+    ? `MODO PADRÃO (1 CRÉDITO): O aluno pagou 1 crédito por este resumo conciso. Crie um resumo SINTÉTICO, DIRETO e OBJETIVO de alto rendimento (~1.000 a 1.500 palavras). NUNCA crie um texto monográfico longo, prolixo ou gigantesco. Evite introduções longas ou divagações. Seja cirúrgico e focado em pontos de prova e condutas práticas diretas.`
+    : isDeep
+    ? `MODO AVANÇADO (5 CRÉDITOS): O aluno pagou 5 créditos por este resumo avançado (~2.500 a 3.500 palavras). Forneça explicações didáticas e bem encadeadas com fisiopatologia e tabelas essenciais, mantendo o equilíbrio perfeito entre profundidade e clareza de estudo, sem atingir tamanho de monografia.`
+    : `MODO ELITE (10 CRÉDITOS): O aluno usou 10 créditos por este resumo completo em geração única (~3.500 a 4.500 palavras). Forneça texto rico, altamente detalhado e de excelente rendimento com tabelas de escores, posologias, condutas e particularidades de bancas, mantendo estrutura limpa sem prolixidade.`;
 
-  SUA PRINCIPAL MISSÃO: PROFUNDIDADE RACIONAL E CLAREZA DIDÁTICA CLÍNICA
-  O aluno deseja compreender perfeitamente o raciocínio por trás de condutas e fisiopatologias complexas. Evite gastar espaço explicando termos extremamente básicos ou jargões óbvios de nível de graduação inicial. Em vez disso:
-  1. RACIOCÍNIO FISIOPATOLÓGICO PROFUNDO: Sempre explique detalhadamente o *mecanismo fisiológico/clínico* por trás de cada sintoma crítico, critério de gravidade ou escolha medicamentosa (o "porquê" de forma completa, estruturada e sequencial).
-  2. CONEXÃO CLÍNICA E TOMADA DE DECISÃO: Estruture o diagnóstico e o tratamento como um roteiro de raciocínio clínico ativo. Mostre o passo a passo mental que o médico deve ter na beira do leito ou ao responder uma questão de prova complexa.
-  3. COMPARAÇÕES DIDÁTICAS DE ALTO NÍVEL: Ao final de tópicos críticos ou seções principais, insira tabelas comparativas, analogias sofisticadas ou sínteses clínicas que comparem condutas, diagnósticos diferenciais essenciais ou classes de drogas, evidenciando as diferenças práticas sutis de forma clara.
+  const prompt = `Você é o Coordenador-Preceptor de um Internato de Elite Médica. Seu objetivo é TREINAR o aluno para as residências mais difíceis, com foco em GOIÁS (SES-GO, UFG, PSU-GO) e DISTRITO FEDERAL (SES-DF, UnB, ENARE DF, PSU-DF).
 
-  STATUS: RIGOR MÁXIMO, COMPREENSÃO PLENA E PROFUNDIDADE ${isElite ? 'ENCICLOPÉDICA E ILIMITADA' : 'TOTAL'}.
-  TAREFA: CRIE UM TRATADO ${isElite ? 'NÍVEL LIVRO-TEXTO (EXTREMAMENTE LONGO, EXAUSTIVO E DIDATICAMENTE IMPECÁVEL)' : (isDeep ? 'EXTREMAMENTE DETALHADO, DIDÁTICO E EXTENSO' : 'COMPLETO E DIDÁTICO')} para o tópico: "${title}" (${area}).
+  SUA PRINCIPAL MISSÃO: DIRECIONAMENTO ADEQUADO AO CUSTO EM CRÉDITOS
+  ${depthScopeInstruction}
+
+  TAREFA: CRIE UM RESUMO MÉDICO PROPORCIONAL AO CUSTO (${credits} CRÉDITO(S)) para o tópico: "${title}" (${area}).
 
   DIRETRIZ DE SUMÁRIO INTERATIVO (MANDATÓRIO):
   - No início do seu texto, logo após o cabeçalho/título inicial, você DEVE gerar uma seção intitulada "## SUMÁRIO DE NAVEGAÇÃO".
-  - Este sumário deve conter uma lista numerada com links de ancoragem Markdown para cada uma das seções estruturadas principais que você vai detalhar no texto (exemplo:
-    1. [1. Epidemiologia e Impacto](#1-epidemiologia-e-impacto)
-    2. [2. Etiopatogenia e Fisiopatologia](#2-etiopatogenia-e-fisiopatologia)
-    ...etc).
-  - Garanta que as seções reais ao longo do texto tenham exatamente os mesmos títulos de nível 2 (ex: "## 1. Epidemiologia e Impacto"), de modo que os hiperlinks e navegação por âncoras funcionem perfeitamente.
+  - Este sumário deve conter uma lista numerada com links de ancoragem Markdown para cada uma das seções estruturadas principais que você vai detalhar no texto.
+  - Garanta que as seções reais ao longo do texto tenham exatamente os mesmos títulos de nível 2 (ex: "## 1. Visão Geral e Fisiopatologia Direta"), de modo que os hiperlinks e navegação por âncoras funcionem perfeitamente.
 
-  EXIGÊNCIA DE COMPLETUDE PARA PROVAS E APROFUNDAMENTO TÉCNICO (RESOLUÇÃO DE QUESTÕES):
-  - AUTOSSUFICIÊNCIA ABSOLUTA DE LIVRO-TEXTO: Este resumo DEVE ser a única fonte de estudo necessária para o aluno dominar o tema na íntegra. Ele deve conter todas as informações necessárias para que o estudante nunca mais precise procurar sobre o assunto em livros-texto externos. Inclua todas as diretrizes brasileiras e internacionais vigentes, critérios de diagnóstico e classificação inteiros na íntegra (não simplificados), doses exatas de fármacos de primeira linha e esquemas posológicos detalhados, indicações, contraindicações e manejos clínicos completos.
-  - ESCALAS, ESCORES E CLASSIFICAÇÕES MAIS COBRADAS EM PROVAS: Apresente obrigatoriamente de forma exaustiva e em tabelas de fácil memorização todas as escalas, escores e classificações de maior prevalência nas provas de residência médica aplicáveis ao tópico (ex: Glasgow, Mallampati, Cormack-Lehane, ASA, NYHA, Child-Pugh, CURB-65, CHADS-VASc, Ranson, Wells, Geneva, Alvarado, Apgar, qSOFA/SOFA, Balthazar, Tisdale, Marshall, PIRADS, BI-RADS, Killip, TIMI, GRACE, Framingham, GINA, GOLD, NIHSS, Hunt-Hess, Fisher, Vancouver, etc.). Para CADA escala/escore: detalhe os critérios exatos, pontuações, estratificação de risco/gravidade e conduta prática associada a cada faixa de pontos.
-  - APROFUNDAMENTO DENSE SEM REDUNDÂNCIA: Explique o raciocínio fisiopatológico de cada alteração e os mecanismos de ação farmacológica (doses, vias, ajustes em insuficiência renal/hepática e conduta em falha terapêutica). Evite termos vazios ou frases de preenchimento.
-  - Se o tema for ANESTESIOLOGIA/ANESTESIA (ou envolver bloqueio, analgesia ou sedação), o material deve cobrir obrigatoriamente e com alta precisão: classificação ASA completa com critérios claros e exemplos práticos para cada classe, tempos e diretrizes exatas de jejum pré-operatório para sólidos e líquidos, escores de classificação de via aérea difícil (Escore de Mallampati I-IV, graus de visualização laringoscópica de Cormack-Lehane 1-4) com descrições visuais detalhadas, mecanismos de ação detalhados dos anestésicos locais e gerais (venosos e inalatórios), doses clássicas, toxicidade sistêmica por anestésicos locais (LAST) com conduta passo a passo incluindo uso obrigatório de emulsão lipídica 20%, bloqueadores neuromusculares (adespolarizantes e despolarizantes, reversão com neostigmina/sugamadex), e fisiopatologia e manejo da Hipertermia Maligna (incluindo uso imediato de Dantrolene e medidas de resfriamento).
-  - Para qualquer outro tema médico, a abordagem deve ser igualmente exaustiva, cobrindo todos os pilares fisiopatológicos, semiológicos, diagnósticos, terapêuticos e farmacológicos correspondentes de forma 100% autossuficiente e exata.
-
-  DIRETRIZES DE DIDÁTICA E EXTREMA CLAREZA DE ESTRUTURAÇÃO (EVITE PAREDES DE TEXTO):
-  - NÃO utilize blocos de texto maciços ("walls of text"). Divida as informações em parágrafos curtos, objetivos e repletos de tópicos estruturados.
-  - Utilize formatação Markdown de alto impacto visual: listas numeradas para passos clínicos sequenciais, listas de marcadores (bullet points) aninhadas para classificações, termos-chave em negrito (**destaque**), e tabelas Markdown comparativas fáceis de memorizar.
-  - Crie seções visualmente limpas e use títulos e subtítulos hierárquicos bem delimitados.
-
-  TOM DE VOZ DO PRECEPTOR:
-  - Seja didático, use analogias clínicas e "beira de leito".
-  - Chame a atenção para detalhes que passam despercebidos pelo aluno comum.
-  - Intercale o conteúdo com boxes de "QUADRO CLÍNICO DE PROVA", "EXAM CLINICAL SCENARIO" ou "DICA DO PRECEPTOR".
-  - Use o estilo "Questão Comentada" para explicar conceitos difíceis.
-
-  REQUISITOS DE EXTENSÃO:
-  - EXPANDA exaustivamente. No modo ${depth}, você deve exaurir o tema.
-  - Cada subtópico deve ser denso e rico em nuances.
-  
-  FOCO REGIONAL (MUITO IMPORTANTE):
-  - Ao longo do texto, cite especificamente: "Na UFG costuma-se cobrar...", "No PSU-GO o foco é...", "ENARE e UnB divergem aqui...", etc.
+  ORIENTAÇÃO DIDÁTICA E TÉCNICA:
+  - ESCALAS, ESCORES E CLASSIFICAÇÕES: Apresente as escalas e escores mais cobrados (ex: Glasgow, Mallampati, NYHA, CURB-65, CHADS-VASc, Wells, Geneva, Alvarado, qSOFA/SOFA, NIHSS, BI-RADS, etc.) em tabelas limpas e diretas.
+  - EVITE PAREDES DE TEXTO: Divida as informações em parágrafos curtos, tópicos estruturados em bullet points e tabelas comparativas Markdown.
+  - TOM DE VOZ DO PRECEPTOR: Didático, focado em prova e beira de leito, intercalado com boxes de "DICA DO PRECEPTOR" e "PEGA-RATÃO DE BANCA".
 
   ${structure}
 
-  ${isElite ? 'MODO ELITE: Detalhamento técnico extremo.' : (isDeep ? 'MODO AVANÇADO: Explicação completa.' : '')}
-  
   REGRAS DE FORMATAÇÃO MATEMÁTICA/MÉDICA OBRIGATÓRIAS:
   - Use notação LaTeX para símbolos e fórmulas: $ \rightarrow $, $ \le $, $ \ge $, $ \alpha $, $ \beta $.
   - Fórmulas isoladas devem usar $$ formula $$.
   - Exemplos: $ \text{Ca}^{2+} $, $ \text{HCO}_3^- $.
   
-  DIRETRIZ DE ILUSTRAÇÃO MANDATÓRIA (MÁXIMAS IMAGENS): Visando um material ricamente visual com alto valor pedagógico, você deve obrigatoriamente identificar todas as oportunidades para ilustração de marcos anatômicos, exames reais, sinais e preparação. Insira pelo menos ${isElite ? '8 a 12' : (isDeep ? '5 a 8' : '3 a 5')} imagens médicas de alta qualidade neste tratado. Use a sintaxe clássica do Markdown: ![Legenda explicativa em português. Fonte: Wikimedia Commons](nome_do_arquivo_especifico_em_ingles.jpg).
-  
-  DIRETRIZ DE EXATIDÃO E RELEVÂNCIA TOTAL DE IMAGENS: Cada imagem médica inserida deve ter o nome de arquivo in inglês (dentro do parênteses do Markdown) estritamente e especificamente focado no termo clínico real abordado naquele trecho do texto (exemplo: se o trecho fala de derrame pleural, use 'Pleural_effusion.jpg'; se fala de ascite, use 'Ascites.jpg'; se fala de reanimação neonatal, use 'Neonatal_resuscitation.jpg'). NUNCA gere nomes de arquivos ou termos de outros assuntos (como catarata ou sífilis) se o capítulo não for sobre esse assunto. O sistema cliente interceptará automaticamente o nome do arquivo, fará uma busca refinada e validada no acervo do Wikimedia Commons e corrigirá para o link correto 100% relacionado ao tópico. Nunca utilize nomes de arquivos com hashes aleatórios longos.
+  PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
   
   SEÇÃO FINAL OBRIGATÓRIA - REFERÊNCIAS BIBLIOGRÁFICAS DESCRITAS:
-  Ao final do resumo, crie obrigatoriamente a seção intitulada:
+  Ao final do resumo, crie a seção:
   "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS"
-  Liste e descreva detalhadamente (de 3 a 5 fontes) com o nome completo do livro, tratado, diretriz ou sociedade científica (ex: UpToDate 2025/2026, Diretrizes da Sociedade Brasileira pertinente, Ministério da Saúde, FEBRASGO, SBP, Harrison's, Nelson, Sabiston, Protocolos Oficiais, etc.). Para CADA fonte citada, escreva 1 a 2 frases explicativas detalhando por que a fonte foi utilizada, qual conduta ou algoritmo ela respalda e como ela guia a prática médica. ${reference ? `Destaque obrigatoriamente a preferência informada pelo estudante: "${reference}".` : ""}
+  Liste de 2 a 4 fontes oficiais (UpToDate, Diretrizes Brasileiras, Ministério da Saúde, Harrison, etc.). ${reference ? `Destaque a preferência informada: "${reference}".` : ""}
 
   Formate em Markdown profissional. NÃO use tags HTML.
   ${getPromptPreferenceInstructions(illustrationLevel, alertBoxLevel)}`;
-  
+
   const customPrompt = prompt
     .replace(/com foco absoluto em GOIÁS \(SES-GO, UFG, PSU-GO\) e DISTRITO FEDERAL \(SES-DF, UnB, ENARE DF, PSU-DF\)/g, `com foco absoluto em: ${focusTarget}`)
     .replace(/foco no Centro-Oeste \(UFG, SES-GO, SES-DF, UnB, ENARE\)/g, `foco em: ${focusTargetClean}`)
@@ -791,7 +792,7 @@ async function generateMonograph(title: string, area: string, reference?: string
       REQUISITOS DO CAPÍTULO:
       - Profundidade máxima de livro-texto (Harrison, Nelson, Sabiston, Diretrizes Oficiais SBC/SBPT/Febrasgo).
       - BOXES DE FOCO REGIONAL (OBRIGATÓRIO): Intercale exemplos de como este assunto cai em: UFG, UnB, PSU-GO, PSU-DF, SES-GO, SES-DF, ENAMED e ENARE. 
-      - ALGORITMO E CONDUTAS CLÍNICAS: Sempre que o capítulo tratar de Algoritmo de Diagnóstico, Manejo Terapêutico, ou Classificação Clínica, descreva o passo a passo de forma detalhada e estruturada usando tabelas Markdown ou listas numeradas. Você está sob DIRETRIZ DE ILUSTRAÇÃO MANDATÓRIA (MÁXIMAS IMAGENS): como este é um Tratado Magnum Opus (Monografia), você deve obrigatoriamente identificar todas as oportunidades para ilustração de marcos anatômicos, exames reais, sinais e preparação. Insira pelo menos 2 a 4 imagens médicas de alta qualidade neste capítulo em particular. Use a sintaxe clássica do Markdown: ![Legenda explicativa em português. Fonte: Wikimedia Commons](nome_do_arquivo_especifico_em_ingles.jpg). Cada imagem médica inserida deve ter o nome de arquivo em inglês (no parênteses do Markdown) estritamente e especificamente focado no termo clínico real abordado naquele trecho do texto (exemplo: se o trecho fala de derrame pleural, use 'Pleural_effusion.jpg'; se fala de ascite, use 'Ascites.jpg'; se fala de reanimação neonatal, use 'Neonatal_resuscitation.jpg'). NUNCA gere nomes de arquivos ou termos de outros assuntos (como catarata ou sífilis) se o capítulo não for sobre esse assunto. O sistema cliente interceptará automaticamente o nome do arquivo, fará uma busca refinada e validada no acervo do Wikimedia Commons e corrigirá para o link correto 100% relacionado ao tópico. Não use tags SVG ou HTML.
+      - ALGORITMO E CONDUTAS CLÍNICAS: Sempre que o capítulo tratar de Algoritmo de Diagnóstico, Manejo Terapêutico, ou Classificação Clínica, descreva o passo a passo de forma detalhada e estruturada usando tabelas Markdown ou listas numeradas. Você está sob PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: é terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica. Não use tags SVG ou HTML.
       - TABELAS E FLUXOGRAMAS: Use tabelas Markdown para comparar condutas e diagnósticos diferenciais.
       - Seja denso e técnico, vá direto ao ponto, mas mantenha o tom de mentoria.
       
@@ -1480,33 +1481,47 @@ export async function analyzeSummaryNeeds(title: string, area: string, depth: Ge
     custom_analyzed: null
   }[depth];
 
-  const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Sua especialidade é analisar editais e provas de residência (SUS, SES-GO, SES-DF, ENARE, etc.) para desenhar materiais de estudo impecáveis e autossuficientes.
+  const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Sua especialidade é analisar editais e provas de residência (SUS, SES-GO, SES-DF, ENARE, USP, UNIFESP, etc.) para desenhar materiais de estudo impecáveis, exaustivos e 100% autossuficientes.
 
 Analise o seguinte tópico médico de estudo:
 Título: "${title}"
 Grande Área: "${area}"
 Nível de Profundidade Desejado: ${depthText}
 
-Seu objetivo é definir as necessidades exatas para que o aluno receba um resumo completo, profundamente detalhado, didático e autossuficiente (capaz de substituir livros-texto), cobrindo tanto a BASE DIDÁTICA FISIOPATOLÓGICA (o porquê das coisas para garantir entendimento real) quanto o CONTEÚDO PRÁTICO DE PROVA (critérios oficiais na íntegra, doses exatas e pegadinhas de bancas).
+Seu objetivo é definir as necessidades exatas para que o aluno receba um resumo completo, profundamente detalhado, didático e autossuficiente (capaz de substituir livros-texto), cobrindo tanto a BASE DIDÁTICA FISIOPATOLÓGICA/FISIOLÓGICA quanto o CONTEÚDO PRÁTICO DE PROVA E MANEJO COMPLETO (critérios oficiais na íntegra, doses exatas mg/kg, checklists de procedimento, todas as escalas e escores relevantes e pegadinhas de bancas).
+
+DIRETRIZES DE ESTRUTURAÇÃO DE CAPÍTULOS CONFORME A NATUREZA DO TEMA:
+1. SE O TÓPICO FOR UMA PATOLOGIA/DOENÇA: Crie capítulos cobrindo: Introdução/Epidemiologia -> Fisiopatologia Celular e Mecanismos -> Quadro Clínico e Propedêutica -> Classificações e Escores Oficiais -> Tratamento Medicamentoso (Doses, Vias, Linhas) -> Peculiaridades e Casos Complexos.
+2. SE O TÓPICO FOR UM PROCEDIMENTO, MANEJO DE EMERGÊNCIA OU TEMA PRÁTICO NÃO-DOENÇA (ex: Manejo de Via Aérea, Ventilação Mecânica, Sequência Rápida de Intubação, Parada Cardiorrespiratória, Acesso Venoso Central, ATLS/Trauma, Reposição Volêmica, Distúrbios Eletrolíticos/Ácido-Básicos, DVA/Vasopressores, etc.):
+   Garantir obrigatoriamente capítulos estruturados para abranger o MANEJO COMPLETO:
+   - Cap. 1: Fundamentos Fisiológicos, Anatômicos, Indicações e Fisiologia Aplicada
+   - Cap. 2: Avaliação Preditiva de Dificuldade, Escores/Escalas (LEMON, Mallampati, Cormack-Lehane, MOANS, SHORT, etc.) e Preparação de Materiais/Equipamentos
+   - Cap. 3: Farmacologia Completa (Doses mg/kg, Indutores, Bloqueadores Neuromusculares, Vasoativos) e Algoritmo Passo a Passo do Procedimento (ex: 7 Ps da SRI)
+   - Cap. 4: Confirmação Beira-Leito, Cuidados Pós-Procedimento, Metas Terapêuticas e Monitorização
+   - Cap. 5: Complicações Imediatas, Plano de Resgate / Manejo de Falhas ('Não Intubo, Não Oxigeno', Crico de Urgência) e Pegadinhas de Prova
 
 Determine:
 1. Um custo justo em créditos: ${costText !== null ? `DEVE ser exatamente ${costText} créditos para este nível de profundidade.` : 'Um custo justo calculado diretamente pela quantidade de capítulos necessários para cobrir 100% do tema (ex: 5 créditos por capítulo).'}
 2. Justificativa didática profunda em português (por que esse tema exige essa estrutura, a razão fisiopatológica e as particularidades de provas cobradas pelas bancas).
-3. Uma lista "chapters" de capítulos/seções sugeridos para o resumo principal. ATENÇÃO: NÃO UTILIZE NENHUMA TRAVA OU LIMITE ARTIFICIAL DE CAPÍTULOS! A quantidade de capítulos é 100% livre e deve ser estritamente proporcional à necessidade real de ensino e cobrança do assunto.
-4. Uma lista "suggestedExtraChapters" de 2 a 4 capítulos COMPLEMENTARES OPCIONAIS que NÃO estão na lista principal "chapters", mas que seriam acréscimos excelentes caso o aluno queira aprofundamento específico para provas exigentes (USP, Unifesp, ENARE, etc.). Para cada capítulo sugerido a mais, informe:
+3. Uma lista "chapters" de capítulos/seções sugeridos para o resumo principal. 
+   - ATENÇÃO A DELIMITAÇÃO DE ESCOPO: Crie capítulos com títulos claros, específicos e NENHUMA SOBREPOSIÇÃO entre eles.
+   - OBRIGATÓRIO PARA ESCALAS/ESCORES: Se o tema envolver qualquer escala médica, escore de risco, estratificação de gravidade ou critérios oficiais de diagnóstico (ex: Wells, PERC, CURB-65, CHA2DS2-VASc, HAS-BLED, NIHSS, Glasgow, Child-Pugh, MELD, Alvarado, Centor, Ranson, qSOFA/SOFA, TIMI, GRACE, BI-RADS, Mallampati, Cormack-Lehane, LEMON, ASA, etc.), GARANTA que haja capítulo dedicado ou subseção explícita no sumário para contemplá-los inteiramente em tabelas de pontuação.
+4. Uma lista "suggestedExtraChapters" de 2 a 4 capítulos COMPLEMENTARES OPCIONAIS que NÃO estão na lista principal "chapters", mas que seriam acréscimos excelentes para provas exigentes. Para cada capítulo sugerido a mais, informe:
    - "title": Título claro do capítulo
    - "reason": Breve justificativa de 1 frase apontando a relevância
-   - "insertAtIndex": Número inteiro de 0 a N indicando o índice exato na lista "chapters" onde este capítulo se ENCAIXA MELHOR DIDATICAMENTE para que a leitura mantenha uma sequência didática perfeita (ex: se deve entrar logo após Fisiopatologia e antes de Tratamento, informe o índice exato correspondente).
-5. Uma lista de "clinicalHighlights" (Destaques Clínicos Essenciais) que DEVEM ser incluídos (doses exatas, classificações, pegadinhas de provas regionais, etc.).
+   - "insertAtIndex": Número inteiro de 0 a N indicando o índice exato na lista "chapters" onde este capítulo se ENCAIXA MELHOR DIDATICAMENTE.
+5. Uma lista de "clinicalHighlights" (Destaques Clínicos Essenciais) que DEVEM ser incluídos (exigem tabelas de escalas completas, doses exatas mg/kg, classificações oficiais e pegadinhas de provas regionais).
 
 Retorne APENAS um JSON válido no seguinte formato:
 {
   "cost": ${costText !== null ? costText : 35},
   "justification": "Justificativa detalhada em português...",
   "chapters": [
-    "1. Epidemiologia e Critérios Diagnósticos",
-    "2. Fisiopatologia e Quadro Clínico",
-    "3. ... etc"
+    "1. Introdução, Definições e Epidemiologia",
+    "2. Fisiopatologia e Quadro Clínico Detalhado",
+    "3. Classificações Oficiais, Escores de Risco e Escalas Clínicas",
+    "4. Propedêutica Diagnóstica e Algoritmo de Investigação",
+    "5. Tratamento Medicamentoso, Doses e Manejo de Complicações"
   ],
   "suggestedExtraChapters": [
     {
@@ -1521,7 +1536,7 @@ Retorne APENAS um JSON válido no seguinte formato:
     }
   ],
   "clinicalHighlights": [
-    "Exigir classificação oficial X na íntegra",
+    "Tabela oficial da escala X na íntegra com pontuação e conduta",
     "Fornecer dose exata de Y para primeira linha",
     "Destacar a pegadinha de prova Z"
   ]
@@ -1717,40 +1732,61 @@ export async function generateCustomAnalyzedSummary(
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
 
+      const previousChaptersStr = i > 0 ? chapters.slice(0, i).map((c, idx) => `Capítulo ${idx+1}: "${c}"`).join(' | ') : 'Nenhum (Este é o Capítulo 1)';
+      const futureChaptersStr = i < totalChapters - 1 ? chapters.slice(i + 1).map((c, idx) => `Capítulo ${i+2+idx}: "${c}"`).join(' | ') : 'Nenhum (Este é o Capítulo Final)';
+
       const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Estamos gerando um TRATADO PERSONALIZADO de Alta Performance para o aluno gabaritar qualquer questão e ter segurança absoluta na prática clínica.
 
-Sua missão com este capítulo é garantir a máxima qualidade científica, profundidade clínica, rigor técnico e clareza didática exaustiva, tornando o texto EXTENSO, COMPLETO E APROFUNDADO.
+Tema Geral do Tratado: "${title}" (${area})
+Capítulo Atual (${i + 1}/${totalChapters}): "${chapterTitle}"
 
-Diretrizes de Conteúdo para este Capítulo:
-1. RACIOCÍNIO FISIOPATOLÓGICO DETALHADO: Explique minuciosamente o mecanismo biológico/clínico por trás de cada sintoma, alteração laboratorial e conduta terapêutica.
-2. TOMADA DE DECISÃO EM FLUXO: Estruture o diagnóstico e tratamento como um roteiro prático, completo e acionável com algoritmos e condutas passo a passo.
-3. SÍNTESES DE ALTO RENDIMENTO: Use tabelas comparativas detalhadas, quadros e listas de marcadores (bullet points) para organizar condutas, diagnósticos diferenciais, classificações oficiais e esquemas de dosagem.
+ESTRUTURA GLOBAL E DELIMITAÇÃO RÍGIDA DE ESCOPO DESTE CAPÍTULO:
+- Capítulos Anteriores (Já escritos no resumo): ${previousChaptersStr}
+- Capítulo Atual a ser escrito AGORA: Capítulo ${i + 1} de ${totalChapters} ("${chapterTitle}")
+- Capítulos Seguintes (Serão escritos depois): ${futureChaptersStr}
 
-Tema Geral: "${title}" (${area})
-Capítulo Atual a ser escrito agora: "${chapterTitle}"
-Capítulos Totais Planejados: ${chapters.join(', ')}
+DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO E NÃO REPETIÇÃO:
+1. COMECE IMEDIATAMENTE PELO TÍTULO DO CAPÍTULO: O texto do capítulo DEVE começar na PRIMEIRA LINHA com "## ${chapterTitle}". É ESTRITAMENTE PROIBIDO incluir saudações, frases preparatórias, introduções gerais sobre o tema ou re-gerar o sumário de navegação.
+2. PROIBIÇÃO ABSOLUTA DE RE-INTRODUÇÃO E DUPLICIDADES:
+   - SE ESTE NÃO FOR O CAPÍTULO 1, NÃO REINICIE O TEMA! Não escreva introduções gerais ou definições básicas que pertençam aos capítulos iniciais. O aluno já leu as seções anteriores.
+   - NÃO REPITA conceitos, epidemiologia, definições, quadros ou tabelas que pertençam ou já foram explicados nos capítulos anteriores (${previousChaptersStr}).
+   - NÃO ANTECIPE tópicos, condutas ou fármacos que pertencem aos capítulos seguintes (${futureChaptersStr}).
+   - Mantenha foco 100% EXCLUSIVO e aprofundado nas especificidades do título do capítulo atual: "${chapterTitle}".
 
-DIRETRIZES DE RIGOR E APROFUNDAMENTO PARA ESTE CAPÍTULO:
-- ESCREVA APENAS O CONTEÚDO DESTE CAPÍTULO: Comece diretamente com o título do capítulo ("## ${chapterTitle}"). Não adicione introduções ou saudações.
-- EXTENSÃO E APROFUNDAMENTO (EXTENSO E EXAUSTIVO): Cada capítulo deve ser APROFUNDADO, EXTENSO E DETALHADO (meta: 1.000 a 1.600 palavras por capítulo). Desenvolva parágrafos explicativos e densos, trazendo todo o embasamento teórico, fisiopatológico completo, farmacológico (mecanismos, dosagens exatas de ataque e manutenção, alternativas de 1ª/2ª linha, ajustes na disfunção renal/hepática), condutas de falha terapêutica, diretrizes nacionais/internacionais e quadros de diagnóstico diferencial. Não faça resumos superficiais ou telegráficos.
-- MANTER ALTA QUALIDADE E DADOS PRECISOS: Não reduza a qualidade médica ou a precisão científica. Traga as tabelas oficiais, doses exatas, critérios de gravidade vigentes na íntegra de forma estruturada.
-- INCORPORE CAIXAS DE OBSERVAÇÃO LARANJAS (GFM ALERTS): Sempre que houver um detalhe clínico crucial ou pegadinha de prova, insira uma única caixa de alerta:
-  > [!IMPORTANT]
-  > **OBSERVAÇÃO CLÍNICA / HIGHLIGHT DE PROVA:**
-  > [Insira a dica clínica direta e acionável]
-  Evite dicas genéricas ou vazias.
-- HIGHLIGHTS CLÍNICOS DA PRÉ-ANÁLISE: Incorpore de forma sucinta os pontos essenciais exigidos:
-  ${analysis.clinicalHighlights.map(h => `- ${h}`).join('\n  ')}
-- EVITE REPETIÇÕES: Não repita sob nenhuma hipótese tabelas, conceitos ou dosagens já abordados ou planejados para outros capítulos.
-- PROIBIÇÃO DE DUPLICAR SUMÁRIO: NUNCA gere nenhuma seção "## SUMÁRIO DE NAVEGAÇÃO", "## SUMÁRIO" ou "## ÍNDICE" neste capítulo. Comece e mantenha o foco estritamente no conteúdo médico do capítulo.
-${i === totalChapters - 1 ? `- SEÇÃO FINAL MANDATÓRIA DE REFERÊNCIAS: Como este é o capítulo final, inclua ao final a seção "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS" detalhando de 3 a 5 fontes e diretrizes oficiais utilizadas (UpToDate, Ministério da Saúde, FEBRASGO, SBP, Harrison, etc.).` : ''}
+3. OBRIGATORIEDADE DE TABELAS COMPLETAS DE ESCALAS, ESCORES DE RISCO E CRITÉRIOS DIAGNÓSTICOS:
+   - Se este capítulo abordar ou se aplicar a qualquer escala médica, escore de risco ou critérios diagnósticos consagrados em provas e na prática (ex: Escores de Wells, PERC, Geneva, CURB-65, CRB-65, PSI, CHA2DS2-VASc, HAS-BLED, NIHSS, ABCD2, Glasgow, qSOFA, SOFA, Child-Pugh, MELD, Alvarado, Centor, Ranson, Balthazar, Atlanta, TIMI, GRACE, Killip, NYHA, ACC/AHA, GOLD, GINA, BI-RADS, PIRADS, Mallampati, Cormack-Lehane, ASA, Apgar, Tisdale, Hunt-Hess, Fisher, Light, Jones, Duke, McDonald, etc.), você DEVE OBRIGATORIAMENTE incluir a TABELA COMPLETA do escore/escala.
+   - A tabela DEVE conter: cada critério individual, sua pontuação exata, a pontuação total máxima, as faixas de estratificação de risco (baixo, intermediário, alto) e a CONDUTA CLÍNICA / TRATAMENTO EXATO associado a cada faixa de pontos.
+   - NUNCA mencione uma escala apenas pelo nome sem colocar a sua tabela exaustiva e pronta para prova.
 
-Capítulo Anterior já escrito:
-${i > 0 ? `Seção anterior finalizou tratando de: "${chapters[i-1]}". Garanta uma transição suave e evite repetir as mesmas informações.` : 'Início do documento.'}
+4. APROFUNDAMENTO FISIOLÓGICO E FISIOPATOLÓGICO RIGOROSO:
+   - Explique minuciosamente a base fisiológica, anatômica e fisiopatológica celular/molecular por trás de cada sintoma, exame e conduta. O aluno exige saber o PORQUÊ de cada achado: dinâmica de receptores, mecânica ventilatória, trocas gasosas, perfusão/hemodinâmica, gradientes iônicos, cascatas de sinalização e alterações de órgão-alvo.
+
+5. MANEJO COMPLETO E EXAUSTIVO PARA TEMAS PROCEDIMENTAIS, DE EMERGÊNCIA OU NÃO-DOENÇAS (EX: MANEJO DE VIA AÉREA, VENTILAÇÃO MECÂNICA, SEDAÇÃO/SRI, PARADA CARDIORRESPIRATÓRIA, DISTÚRBIOS ELETROLÍTICOS/ÁCIDO-BÁSICOS, ATLS, ACESSO VENOSO CENTRAL, DVA, ETC.):
+   - Se o capítulo ou tema for um procedimento, técnica ou manejo prático de urgência/emergência, forneça O MANEJO COMPLETO, INCLUINDO TUDO O QUE É NECESSÁRIO PARA A COMPREENSÃO E APLICAÇÃO:
+     a) Raciocínio fisiológico e anatômico essencial (ex: desnitrogenação da CRF na pré-oxigenação, curvas de dissociação da hemoglobina, complacência x resistência);
+     b) Preparação beira-leito e checklist de equipamentos/materiais;
+     c) Escores e classificações de predição de dificuldade em TABELAS COMPLETAS (ex: LEMON, Mallampati, Cormack-Lehane, MOANS, SHORT, etc.);
+     d) Farmacologia completa com DOSES EXATAS EM mg/kg (indutores, bloqueadores neuromusculares, vasopressores, analgésicos), tempo de ação e perfil hemodinâmico de cada droga;
+     e) Algoritmo passo a passo sequencial e prático da técnica (ex: Os 7 Ps da SRI);
+     f) Confirmação, monitorização, metas terapêuticas e ajustes pós-procedimento;
+     g) Manejo imediato de intercorrências e plano de resgate de falhas (ex: algoritmo 'Não Intubo, Não Oxigeno', cricotireoidostomia de urgência, via aérea difícil).
+
+6. EXTENSÃO E DENSIDADE TÉCNICA (SEJA DETALHADO E COMPLETO):
+   - Não faça resumos superficiais ou tópicos genéricos. Traga dados exatos: mecanismos fisiopatológicos celulares/moleculares, dosagens de medicamentos (ataque, manutenção, via, frequência, ajuste renal/hepático), conduta em falha terapêutica, diretrizes brasileiras e internacionais atualizadas (2024/2025).
+
+7. HIGHLIGHTS E ALERTAS:
+   - Incorpore os destaques solicitados na análise prévia:
+     ${analysis.clinicalHighlights.map(h => `- ${h}`).join('\n     ')}
+   - Sempre que houver uma dica crucial de prova ou pegadinha de banca, insira um alerta no formato:
+     > [!IMPORTANT]
+     > **OBSERVAÇÃO CLÍNICA / HIGHLIGHT DE PROVA:**
+     > [Dica clínica objetiva, acionável e relevante para prova]
+
+${i === totalChapters - 1 ? `- SEÇÃO FINAL MANDATÓRIA DE REFERÊNCIAS: Como este é o capítulo final do tratado, inclua ao final a seção "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS" detalhando de 3 a 5 fontes e diretrizes oficiais utilizadas (UpToDate, Diretrizes da SBC/SBPT/FEBRASGO/SBP, Ministério da Saúde, Harrison, etc.).` : ''}
 
 Referência ou contexto adicional do aluno: ${reference || 'Nenhuma'}
 
-Gere o capítulo completo, extremamente focado, científico e direto agora.`;
+Escreva o capítulo "${chapterTitle}" de forma exaustiva, 100% aprofundada, sem repetições e pronta para alta performance médica.`;
 
       const finalPrompt = prompt + getPromptPreferenceInstructions(illustrationLevel, alertBoxLevel);
       let chapterText = "";
@@ -1884,6 +1920,12 @@ export function removeDuplicateSumarios(content: string): string {
 function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate'): string {
   let instructions = '\n\nREQUISITOS ADICIONAIS DE PERSONALIZAÇÃO E CONFIGURAÇÃO DO RESUMO (PREFERÊNCIA DO USUÁRIO):\n';
   
+  // PROIBIÇÃO ABSOLUTA DE IMAGENS AUTOMÁTICAS
+  instructions += `PROIBIÇÃO ABSOLUTA DE INSERÇÃO AUTOMÁTICA DE IMAGENS:
+- É TERMINANTEMENTE PROIBIDO gerar, sugerir ou inserir links de imagens, figuras ou Markdown de imagens (por exemplo, \`![legenda](nome_da_imagem.jpg)\` ou \`![legenda](url)\`) de forma automática no corpo do resumo.
+- O resumo gerado deve ser estritamente textual, conceitual e teórico, sem nenhuma imagem pré-inserida. Imagens só poderão ser inseridas manualmente pelo aluno selecionando termos após a geração.
+\n`;
+
   // Prioridade absoluta para profundidade científica e raciocínio médico
   instructions += `PRIORIDADE MÁXIMA - INVESTIMENTO EM CONTEÚDO MÉDICO E DIRETRIZES:
 - Dedique a vasta maioria do texto (mais de 80%) para o raciocínio clínico fisiopatológico detalhado, critérios de gravidade, tabelas oficiais, esquemas de tratamento com doses exatas e diretrizes das sociedades brasileiras relevantes (SBC, SBH, MS, FEBRASGO, SBP, etc.).

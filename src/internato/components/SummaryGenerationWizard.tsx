@@ -10,7 +10,7 @@ interface SummaryGenerationWizardProps {
   onGenerate: (config: {
     depth: string;
     illustrationLevel: 'minimum' | 'moderate' | 'maximum';
-    alertBoxLevel: 'minimum' | 'moderate' | 'maximum';
+    alertBoxLevel: string;
     referencePref: string;
     chapters: string[];
     analysisResult?: any;
@@ -32,9 +32,9 @@ export default function SummaryGenerationWizard({
   onRunAnalysis
 }: SummaryGenerationWizardProps) {
   const [step, setStep] = useState<number>(1);
-  const [depth, setDepth] = useState<string>('custom_analyzed');
+  const [depth, setDepth] = useState<string>('standard');
   const [illustrationLevel, setIllustrationLevel] = useState<'minimum' | 'moderate' | 'maximum'>('moderate');
-  const [alertBoxLevel, setAlertBoxLevel] = useState<'moderate' | 'minimum' | 'maximum'>('moderate');
+  const [alertBoxLevel, setAlertBoxLevel] = useState<string>('light');
   const [referencePref, setReferencePref] = useState<string>('');
   
   const [hasAnalysisEnabled, setHasAnalysisEnabled] = useState<boolean>(true);
@@ -262,7 +262,7 @@ export default function SummaryGenerationWizard({
               {[
                 { id: 'standard', name: 'Resumo Padrão', cost: '1cr', desc: 'Direto ao ponto, essencial para revisões rápidas.' },
                 { id: 'deep', name: 'Resumo Avançado', cost: '5cr', desc: 'Foco em diretrizes nacionais e condutas práticas.' },
-                { id: 'elite', name: 'Resumo Elite', cost: '10cr', desc: 'Altamente detalhado para bancas paulistas e ENARE.' },
+                { id: 'elite', name: 'Resumo Elite', cost: '10cr', desc: 'Uma visão geral sobre o tema' },
                 { id: 'custom_analyzed', name: 'Resumo Adaptado (Inteligente)', cost: '10cr / capítulo', desc: 'Personalizado com ementa dinâmica. Custo final calculado com base na quantidade de capítulos gerados (10cr por capítulo).' },
                 { id: 'master', name: 'Resumo Master', cost: '50cr', desc: 'Tratado clínico completo com fluxogramas.' },
                 { id: 'monograph', name: 'Monografia Completa', cost: '100cr', desc: 'Estudo acadêmico exaustivo do tema.' },
@@ -535,20 +535,26 @@ export default function SummaryGenerationWizard({
 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-stone-800 uppercase tracking-wide">Quadros Laranjas / Dicas de Prova</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['minimum', 'moderate', 'maximum'] as const).map((lvl) => (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'minimum', label: 'Mínimo', cost: '-2cr' },
+                    { id: 'light', label: 'Essencial', cost: '0cr' },
+                    { id: 'moderate', label: 'Frequente', cost: '+2cr' },
+                    { id: 'maximum', label: 'Avançado', cost: '+5cr' }
+                  ].map((lvl) => (
                     <button
-                      key={lvl}
+                      key={lvl.id}
                       type="button"
-                      onClick={() => setAlertBoxLevel(lvl)}
+                      onClick={() => setAlertBoxLevel(lvl.id)}
                       className={cn(
-                        "py-2.5 px-3 rounded-xl border text-xs font-bold uppercase transition-all cursor-pointer",
-                        alertBoxLevel === lvl
+                        "py-2.5 px-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5",
+                        alertBoxLevel === lvl.id
                           ? "bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-600 ring-offset-1"
                           : "bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100"
                       )}
                     >
-                      {lvl === 'minimum' ? 'Mínimo (-2cr)' : lvl === 'moderate' ? 'Médio (+2cr)' : 'Máximo (+5cr)'}
+                      <span className="uppercase">{lvl.label}</span>
+                      <span className={cn("text-[10px] font-mono font-normal normal-case", alertBoxLevel === lvl.id ? "text-indigo-200" : "text-stone-400")}>({lvl.cost})</span>
                     </button>
                   ))}
                 </div>
@@ -582,13 +588,13 @@ export default function SummaryGenerationWizard({
               <div className="flex justify-between border-b border-stone-200/60 pb-2">
                 <span className="text-stone-500">Casos Clínicos:</span>
                 <span className="font-bold text-stone-900 uppercase">
-                  {illustrationLevel === 'minimum' ? 'Sem Casos' : illustrationLevel === 'moderate' ? 'Médio' : 'Máximo'}
+                  {illustrationLevel === 'minimum' ? 'Sem Casos (-3cr)' : illustrationLevel === 'moderate' ? 'Médio (0cr)' : 'Detalhado (+10cr)'}
                 </span>
               </div>
               <div className="flex justify-between border-b border-stone-200/60 pb-2">
                 <span className="text-stone-500">Dicas Práticas:</span>
                 <span className="font-bold text-stone-900 uppercase">
-                  {alertBoxLevel === 'minimum' ? 'Mínimo' : alertBoxLevel === 'moderate' ? 'Médio' : 'Máximo'}
+                  {alertBoxLevel === 'minimum' ? 'Mínimo (-2cr)' : alertBoxLevel === 'light' ? 'Essencial (0cr)' : alertBoxLevel === 'moderate' ? 'Frequente (+2cr)' : 'Avançado (+5cr)'}
                 </span>
               </div>
               <div className="flex justify-between border-b border-stone-200/60 pb-2">

@@ -19,13 +19,17 @@ import {
   AlertTriangle,
   X,
   ShieldCheck,
-  Zap
+  Zap,
+  FlaskConical,
+  QrCode,
+  CreditCard,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LegalTerms from './LegalTerms';
 
 interface LandingPageProps {
-  onLogin: () => void;
+  onLogin: (targetPlan?: string) => void;
   onGuestLogin?: () => void;
   loginError?: string | null;
   onClearError?: () => void;
@@ -34,17 +38,23 @@ interface LandingPageProps {
 export default function LandingPage({ onLogin, onGuestLogin, loginError, onClearError }: LandingPageProps) {
   // Slider state for Ebbinghaus Forgetting Curve Simulator
   const [elapsedDays, setElapsedDays] = useState<number>(3);
+  const [showEbbinghausSimulator, setShowEbbinghausSimulator] = useState<boolean>(false);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [showLegal, setShowLegal] = useState<'terms' | 'privacy' | null>(null);
 
   // New States for highly interactive Step-by-Step Tour & Real Area Previews
   const [activeStep, setActiveStep] = useState<number>(1);
-  const [activeAreaTab, setActiveAreaTab] = useState<'cronograma' | 'resumos' | 'questoes' | 'diferenciais'>('cronograma');
+  const [activeAreaTab, setActiveAreaTab] = useState<'cronograma' | 'resumos' | 'questoes' | 'flashcards' | 'diferenciais' | 'creditos'>('cronograma');
   const [resumoDepth, setResumoDepth] = useState<'minimo' | 'moderado' | 'maximo'>('minimo');
   const [realQuestionOption, setRealQuestionOption] = useState<string | null>(null);
   const [isRealMentorLoading, setIsRealMentorLoading] = useState<boolean>(false);
   const [realMentorQuestion, setRealMentorQuestion] = useState<string | null>(null);
   const [realMentorResponse, setRealMentorResponse] = useState<string | null>(null);
+
+  // States for interactive Flashcards in Passo a Passo
+  const [demoFlashcardIndex, setDemoFlashcardIndex] = useState<number>(0);
+  const [demoFlashcardShowAnswer, setDemoFlashcardShowAnswer] = useState<boolean>(false);
+  const [demoFlashcardFeedback, setDemoFlashcardFeedback] = useState<string | null>(null);
 
   // States for interactive MedInternato Demo
   const [activeDemoTab, setActiveDemoTab] = useState<'summary' | 'questions' | 'flashcards'>('summary');
@@ -123,7 +133,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
           
           <div className="flex items-center gap-3">
             <button 
-              onClick={onLogin}
+              onClick={() => onLogin()}
               className="bg-[#141414] hover:bg-neutral-800 text-white px-5 py-2.5 font-mono text-xs font-bold uppercase tracking-wider border border-transparent shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] transition-all cursor-pointer"
             >
               Acessar Sistema
@@ -178,7 +188,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
 
           <div className="flex flex-col sm:flex-row gap-4 pt-2">
             <button 
-              onClick={onLogin}
+              onClick={() => onLogin()}
               className="px-8 py-5 bg-[#141414] hover:bg-neutral-800 text-[#E4E3E0] font-mono text-xs font-bold uppercase tracking-widest shadow-[5px_5px_0px_0px_rgba(30,30,30,0.2)] hover:translate-x-[1px] hover:translate-y-[1px] transition-all cursor-pointer flex items-center justify-center gap-2.5"
             >
               Começar a Estudar Grátis
@@ -246,7 +256,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
               </div>
 
               <button 
-                onClick={onLogin}
+                onClick={() => onLogin()}
                 className="w-full py-3 bg-[#141414] hover:bg-neutral-850 text-white font-mono text-[10px] uppercase font-bold tracking-widest text-center cursor-pointer transition-all"
               >
                 Simular Sessão Prática
@@ -261,93 +271,104 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
         <div className="max-w-7xl mx-auto space-y-12">
           
           {/* Header block */}
-          <div className="text-center max-w-2xl mx-auto space-y-3">
-            <span className="font-mono text-[10px] uppercase tracking-widest font-bold text-indigo-700 bg-indigo-50 border border-indigo-250 px-3 py-1 rounded-none inline-block">
+          <div className="text-center max-w-2xl mx-auto space-y-4">
+            <span className="font-mono text-[10px] uppercase tracking-widest font-bold text-indigo-700 bg-indigo-50 border border-indigo-250 px-3 py-1 rounded-none inline-block shadow-[2px_2px_0px_0px_rgba(20,20,20,1)]">
               CIÊNCIA DE APRENDIZADO
             </span>
             <h3 className="font-serif italic text-3xl sm:text-4xl font-extrabold text-neutral-950">
               O simulador interativo de Hermann Ebbinghaus
             </h3>
-            <p className="text-neutral-500 text-xs sm:text-sm font-sans">
-              Utilize o controle abaixo para observar matematicamente como a retenção da informação no cérebro se degrada com o passar dos dias sem revisões inteligentes.
+            <p className="text-neutral-500 text-xs sm:text-sm font-sans max-w-xl mx-auto leading-relaxed">
+              Descubra como os algoritmos de repetição espaçada revertem matematicamente a curva de esquecimento e protegem sua memória até o dia da prova.
             </p>
+
+            <div className="pt-2">
+              <button
+                onClick={() => setShowEbbinghausSimulator(!showEbbinghausSimulator)}
+                className="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-mono text-xs font-bold uppercase tracking-wider border-2 border-[#141414] shadow-[4px_4px_0px_0px_rgba(20,20,20,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] transition-all cursor-pointer inline-flex items-center gap-2"
+              >
+                <FlaskConical size={16} />
+                {showEbbinghausSimulator ? 'Ocultar Prova Científica e Simulador' : 'ver prova científica'}
+              </button>
+            </div>
           </div>
 
-          {/* Interactive Graph Box */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-            
-            {/* Slider / Explanation block (left) */}
-            <div className="lg:col-span-5 bg-[#E4E3E0]/35 border border-[#141414] p-6 flex flex-col justify-between shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
-              <div className="space-y-4">
-                <span className="font-mono text-[8.5px] uppercase tracking-wider text-neutral-400 block font-bold">CONTROLE DIÁRIO</span>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between font-mono text-xs">
-                    <span>Tempo decorrido:</span>
-                    <span className="font-bold text-neutral-900 bg-white border border-[#141414] px-2 py-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(20,20,20,1)]">
-                      {elapsedDays} {elapsedDays === 1 ? 'dia' : 'dias'}
-                    </span>
-                  </div>
+          {/* Interactive Graph Box (Hidden by default, shown when user clicks ver prova científica) */}
+          {showEbbinghausSimulator && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch animate-fade-in">
+              
+              {/* Slider / Explanation block (left) */}
+              <div className="lg:col-span-5 bg-[#E4E3E0]/35 border border-[#141414] p-6 flex flex-col justify-between shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
+                <div className="space-y-4">
+                  <span className="font-mono text-[8.5px] uppercase tracking-wider text-neutral-400 block font-bold">CONTROLE DIÁRIO</span>
                   
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="15" 
-                    step="1"
-                    value={elapsedDays}
-                    onChange={(e) => setElapsedDays(Number(e.target.value))}
-                    className="w-full accent-[#141414] cursor-pointer h-2 bg-neutral-200 border border-[#141414]/10 rounded-none"
-                  />
-                  <div className="flex justify-between text-[8px] font-mono text-neutral-400">
-                    <span>Imediato (1 dia)</span>
-                    <span>Consolidado (15 dias)</span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between font-mono text-xs">
+                      <span>Tempo decorrido:</span>
+                      <span className="font-bold text-neutral-900 bg-white border border-[#141414] px-2 py-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(20,20,20,1)]">
+                        {elapsedDays} {elapsedDays === 1 ? 'dia' : 'dias'}
+                      </span>
+                    </div>
+                    
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="15" 
+                      step="1"
+                      value={elapsedDays}
+                      onChange={(e) => setElapsedDays(Number(e.target.value))}
+                      className="w-full accent-[#141414] cursor-pointer h-2 bg-neutral-200 border border-[#141414]/10 rounded-none"
+                    />
+                    <div className="flex justify-between text-[8px] font-mono text-neutral-400">
+                      <span>Imediato (1 dia)</span>
+                      <span>Consolidado (15 dias)</span>
+                    </div>
+                  </div>
+
+                  {/* Simulated percentages comparative output */}
+                  <div className="space-y-2 pt-4">
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-none flex justify-between items-center text-xs text-rose-950 font-sans">
+                      <span className="flex items-center gap-1.5"><span className="text-rose-500 font-bold">●</span> Sem Revisões (Estudo Tradicional)</span>
+                      <span className="font-mono font-bold text-sm text-rose-700">{retentionNoReview}%</span>
+                    </div>
+
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-none flex justify-between items-center text-xs text-amber-975 font-sans">
+                      <span className="flex items-center gap-1.5"><span className="text-amber-500 font-bold">●</span> Com 1 Revisão MedRevise</span>
+                      <span className="font-mono font-bold text-sm text-amber-700">{retentionOneReview}%</span>
+                    </div>
+
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-none flex justify-between items-center text-xs text-emerald-950 font-sans">
+                      <span className="flex items-center gap-1.5"><span className="text-emerald-500 font-bold">●</span> Com 3 Revisões MedRevise (Pro)</span>
+                      <span className="font-mono font-bold text-sm text-emerald-700">{retentionThreeReviews}%</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Simulated percentages comparative output */}
-                <div className="space-y-2 pt-4">
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-none flex justify-between items-center text-xs text-rose-950 font-sans">
-                    <span className="flex items-center gap-1.5"><span className="text-rose-500 font-bold">●</span> Sem Revisões (Estudo Tradicional)</span>
-                    <span className="font-mono font-bold text-sm text-rose-700">{retentionNoReview}%</span>
-                  </div>
-
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-none flex justify-between items-center text-xs text-amber-975 font-sans">
-                    <span className="flex items-center gap-1.5"><span className="text-amber-500 font-bold">●</span> Com 1 Revisão MedRevise</span>
-                    <span className="font-mono font-bold text-sm text-amber-700">{retentionOneReview}%</span>
-                  </div>
-
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-none flex justify-between items-center text-xs text-emerald-950 font-sans">
-                    <span className="flex items-center gap-1.5"><span className="text-emerald-500 font-bold">●</span> Com 3 Revisões MedRevise (Pro)</span>
-                    <span className="font-mono font-bold text-sm text-emerald-700">{retentionThreeReviews}%</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-dashed border-neutral-300 mt-6 md:mt-0 space-y-2.5">
-                <p className="text-[10px] text-neutral-500 font-sans leading-relaxed">
-                  <strong>Análise Científica:</strong> De acordo com Ebbinghaus, perdemos cerca de <strong>50%</strong> do que aprendemos nas primeiras 24 horas. Repetições espaçadas programadas pelo MedRevise blindam as conexões neuronais, reiniciando o nível de fixação para 100% de recall.
-                </p>
-                <p className="text-[8.5px] text-neutral-400 font-mono leading-relaxed border-t border-slate-200/50 pt-2 flex items-start gap-1 justify-start">
-                  <span className="text-[#10b981] font-bold">[*]</span>
-                  <span>Fundamentação: Ebbinghaus, H. (1885). <em>Über das Gedächtnis: Untersuchungen zur experimentellen Psychologie</em>. Duncker & Humblot.</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Visual Chart / SVG Curve Representation (right) */}
-            <div className="lg:col-span-7 bg-white border border-[#141414] p-6 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)] flex flex-col justify-between min-h-[340px]">
-              <div className="flex items-center justify-between pb-3 border-b border-[#141414]/15">
-                <div className="flex items-center gap-1.5">
-                  <TrendingUp size={14} className="text-neutral-500" />
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-neutral-400 font-bold">Dramático declínio de fixação</span>
-                </div>
-                <div className="flex gap-3 text-[8.5px] font-mono">
-                  <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-rose-500"></span> Sem SRS</span>
-                  <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500"></span> Com SRS MedRevise</span>
+                <div className="pt-6 border-t border-dashed border-neutral-300 mt-6 md:mt-0 space-y-2.5">
+                  <p className="text-[10px] text-neutral-500 font-sans leading-relaxed">
+                    <strong>Análise Científica:</strong> De acordo com Ebbinghaus, perdemos cerca de <strong>50%</strong> do que aprendemos nas primeiras 24 horas. Repetições espaçadas programadas pelo MedRevise blindam as conexões neuronais, reiniciando o nível de fixação para 100% de recall.
+                  </p>
+                  <p className="text-[8.5px] text-neutral-400 font-mono leading-relaxed border-t border-slate-200/50 pt-2 flex items-start gap-1 justify-start">
+                    <span className="text-[#10b981] font-bold">[*]</span>
+                    <span>Fundamentação: Ebbinghaus, H. (1885). <em>Über das Gedächtnis: Untersuchungen zur experimentellen Psychologie</em>. Duncker & Humblot.</span>
+                  </p>
                 </div>
               </div>
 
-              {/* Responsive SVG Graph representation */}
+              {/* Visual Chart / SVG Curve Representation (right) */}
+              <div className="lg:col-span-7 bg-white border border-[#141414] p-6 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)] flex flex-col justify-between min-h-[340px]">
+                <div className="flex items-center justify-between pb-3 border-b border-[#141414]/15">
+                  <div className="flex items-center gap-1.5">
+                    <TrendingUp size={14} className="text-neutral-500" />
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-neutral-400 font-bold">Dramático declínio de fixação</span>
+                  </div>
+                  <div className="flex gap-3 text-[8.5px] font-mono">
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-rose-500"></span> Sem SRS</span>
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500"></span> Com SRS MedRevise</span>
+                  </div>
+                </div>
+
+                {/* Responsive SVG Graph representation */}
               <div className="relative flex-1 py-4 flex items-center justify-center">
                 <svg viewBox="0 0 500 200" className="w-full h-44 overflow-visible">
                   {/* Grid Lines */}
@@ -401,6 +422,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
               </div>
             </div>
           </div>
+          )}
         </div>
       </section>
 
@@ -485,7 +507,9 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                   { id: 'cronograma', title: '📅 Planejamento Inteligente', desc: 'Planejamento dinâmico baseado em dias, horas e pesos das provas.' },
                   { id: 'resumos', title: '📚 Resumos de Elite', desc: 'Resumos teóricos ultra-sintéticos com controle inteligente de revisão.' },
                   { id: 'questoes', title: '📝 Questões Comentadas', desc: 'Treino ativo integrado com feedback imediato e calibrador de revisão.' },
-                  { id: 'diferenciais', title: '⚡ Diferenciais Exclusivos', desc: 'Sincronização acadêmica, IA Mentor de beira de leito e muito mais.' }
+                  { id: 'flashcards', title: '🎴 Flashcards de Memorização', desc: 'Sistemas de cartões interativos SRS para retenção de doses, tríades e conceitos.' },
+                  { id: 'diferenciais', title: '⚡ Diferenciais Exclusivos', desc: 'Sincronização acadêmica, IA Mentor de beira de leito e muito mais.' },
+                  { id: 'creditos', title: '💳 Créditos & Renovação Diária', desc: 'Como funciona sua cota de IA e como os créditos renovam 100% no dia seguinte.' }
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -737,6 +761,109 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                         </div>
                       )}
 
+                      {/* FLASHCARDS - MEDREVISE */}
+                      {activeAreaTab === 'flashcards' && (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[9px] uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2.5 py-1 font-bold border border-indigo-200">
+                              RECORTE REAL: SISTEMA SRS DE FLASHCARDS TEÓRICOS
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-amber-600">● MEMORIZAÇÃO ATIVA</span>
+                          </div>
+
+                          <p className="text-xs text-neutral-600 leading-relaxed">
+                            No <strong>MedRevise</strong>, os flashcards são programados com repetição espaçada automática (SRS). Teste o cartão de memorização teórica abaixo:
+                          </p>
+
+                          <div className="border-2 border-[#141414] p-5 bg-neutral-50 rounded-none space-y-4 shadow-sm text-center">
+                            <div className="flex items-center justify-between font-mono text-[10px] border-b border-neutral-200 pb-2">
+                              <span className="font-bold text-indigo-900 uppercase">FLASHCARD #0{demoFlashcardIndex + 1} DE 03 • NEUROLOGIA</span>
+                              <span className="text-neutral-500 bg-white border border-neutral-200 px-2 py-0.5">SRS MedRevise</span>
+                            </div>
+
+                            <div className="min-h-[100px] flex flex-col justify-center items-center py-3 px-2">
+                              <span className="font-mono text-[9px] text-amber-700 uppercase font-bold tracking-widest mb-1">
+                                {demoFlashcardShowAnswer ? "VERSO (RESPOSTA)" : "FRENTE (PERGUNTA)"}
+                              </span>
+                              <p className="font-serif italic text-sm sm:text-base font-bold text-neutral-900 leading-relaxed">
+                                {demoFlashcardShowAnswer ? (
+                                  [
+                                    'Tríade da HPN: 1. Demência progressiva, 2. Apraxia da marcha (marcha magnética), 3. Incontinência urinária ("Gait, Gain, Grain").',
+                                    'Sinal de Kernig: Incapacidade ou dor ao estender o joelho com o quadril fletido a 90°. Indica irritação meningocólica.',
+                                    'Tríade da HIC (Reflexo de Cushing): 1. Hipertensão arterial, 2. Bradicardia, 3. Bradipneia/Irregularidade respiratória.'
+                                  ][demoFlashcardIndex]
+                                ) : (
+                                  [
+                                    'Qual é a tríade clássica da Hidrocefalia de Pressão Normal (HPN / Síndrome de Hakim-Adams)?',
+                                    'O que caracteriza o Sinal de Kernig na semiótica neurológica e qual a sua indicação?',
+                                    'Qual é a Tríade de Cushing na Hipertensão Intracraniana (HIC) e o que indica?'
+                                  ][demoFlashcardIndex]
+                                )}
+                              </p>
+                            </div>
+
+                            {!demoFlashcardShowAnswer ? (
+                              <button
+                                onClick={() => setDemoFlashcardShowAnswer(true)}
+                                className="w-full py-2.5 bg-[#141414] hover:bg-neutral-800 text-white font-mono text-xs font-bold uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] transition-all cursor-pointer"
+                              >
+                                Revelar Resposta (Verso)
+                              </button>
+                            ) : (
+                              <div className="space-y-3 pt-2 border-t border-dashed border-neutral-300">
+                                <span className="font-mono text-[9px] uppercase font-bold text-neutral-500 block">Como foi sua retenção neste cartão?</span>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setDemoFlashcardFeedback('🔴 Agendado para amanhã (Errei / Difícil)');
+                                      setTimeout(() => {
+                                        setDemoFlashcardShowAnswer(false);
+                                        setDemoFlashcardIndex((prev) => (prev + 1) % 3);
+                                        setDemoFlashcardFeedback(null);
+                                      }, 1200);
+                                    }}
+                                    className="py-2 px-1 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-900 font-mono text-[10px] font-bold rounded-none cursor-pointer"
+                                  >
+                                    Errei (-1d)
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setDemoFlashcardFeedback('🟡 Agendado para +5 dias (Médio)');
+                                      setTimeout(() => {
+                                        setDemoFlashcardShowAnswer(false);
+                                        setDemoFlashcardIndex((prev) => (prev + 1) % 3);
+                                        setDemoFlashcardFeedback(null);
+                                      }, 1200);
+                                    }}
+                                    className="py-2 px-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-mono text-[10px] font-bold rounded-none cursor-pointer"
+                                  >
+                                    Bom (+5d)
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setDemoFlashcardFeedback('🟢 Agendado para +15 dias (Fácil)');
+                                      setTimeout(() => {
+                                        setDemoFlashcardShowAnswer(false);
+                                        setDemoFlashcardIndex((prev) => (prev + 1) % 3);
+                                        setDemoFlashcardFeedback(null);
+                                      }, 1200);
+                                    }}
+                                    className="py-2 px-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono text-[10px] font-bold rounded-none cursor-pointer"
+                                  >
+                                    Fácil (+15d)
+                                  </button>
+                                </div>
+                                {demoFlashcardFeedback && (
+                                  <div className="p-2 bg-indigo-50 border border-indigo-200 text-indigo-900 font-mono text-[10px] font-bold animate-fade-in">
+                                    {demoFlashcardFeedback}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* DIFERENCIAIS - MEDREVISE */}
                       {activeAreaTab === 'diferenciais' && (
                         <div className="space-y-4">
@@ -760,6 +887,92 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                               <p className="text-[11px] text-stone-600 leading-relaxed font-sans">
                                 Ao realizar sessões de simulação e responder casos clínicos de beira de leito no MedInternato, o MedRevise integra as estatísticas imediatamente para que você nunca estude o mesmo tema de forma redundante ou desalinhada.
                               </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* CRÉDITOS E RENOVAÇÃO DIÁRIA - MEDREVISE */}
+                      {activeAreaTab === 'creditos' && (
+                        <div className="space-y-5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[9px] uppercase tracking-wider text-amber-900 bg-amber-50 px-2.5 py-1 font-bold border border-amber-300">
+                              LÓGICA DE CRÉDITOS & RENOVAÇÃO DIÁRIA
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 border border-emerald-200">
+                              ● RESTAURAÇÃO NO DIA SEGUINTE
+                            </span>
+                          </div>
+
+                          <div className="bg-[#141414] text-white p-5 space-y-4 border-2 border-[#141414] shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-700 pb-3 gap-2">
+                              <div className="flex items-center gap-2">
+                                <Zap size={18} className="text-amber-400 shrink-0" />
+                                <h4 className="font-serif italic text-base sm:text-lg font-bold">Como funcionam os Créditos de IA?</h4>
+                              </div>
+                              <span className="bg-emerald-500/20 text-emerald-300 font-mono text-[10px] px-2.5 py-1 border border-emerald-500/40 font-bold self-start sm:self-auto">
+                                🔄 RENOVAÇÃO 100% AUTOMÁTICA
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-neutral-300 leading-relaxed font-sans">
+                              Sua conta possui uma <strong className="text-white">franquia diária de créditos renovável</strong> para usar Inteligência Artificial em resumos, questões e mentoria.
+                            </p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                              <div className="bg-neutral-900 border border-neutral-700 p-3 space-y-1">
+                                <div className="flex items-center gap-1.5 text-amber-400 font-mono text-[10px] font-bold uppercase">
+                                  <RefreshCw size={12} className="shrink-0" />
+                                  1. Renovam no outro dia
+                                </div>
+                                <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                                  Usou seus créditos hoje? Fique tranquilo: no dia seguinte, seu saldo é <strong>100% restaurado</strong> ao valor máximo do seu plano sem custos extras.
+                                </p>
+                              </div>
+
+                              <div className="bg-neutral-900 border border-neutral-700 p-3 space-y-1">
+                                <div className="flex items-center gap-1.5 text-emerald-400 font-mono text-[10px] font-bold uppercase">
+                                  <ShieldCheck size={12} className="shrink-0" />
+                                  2. Zero desconto em erro
+                                </div>
+                                <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                                  Instabilidades de conexão ou falhas de servidor <strong>nunca cobram nem descontam créditos</strong> do seu saldo.
+                                </p>
+                              </div>
+
+                              <div className="bg-neutral-900 border border-neutral-700 p-3 space-y-1">
+                                <div className="flex items-center gap-1.5 text-indigo-400 font-mono text-[10px] font-bold uppercase">
+                                  <Sparkles size={12} className="shrink-0" />
+                                  3. Custo Transparente
+                                </div>
+                                <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                                  Cada ação consome uma quantidade pequena e quantificada de créditos, sem taxas escondidas ou surpresas na fatura.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border border-neutral-300 bg-neutral-50 p-4 space-y-2.5 font-mono">
+                            <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-wider block">
+                              📊 TABELA DE CONSUMO DE CRÉDITOS POR AÇÃO:
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                              <div className="bg-white border border-neutral-250 p-2.5 flex justify-between items-center">
+                                <span className="text-neutral-800">📚 Resumo de Conduta Sincronizado</span>
+                                <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 border border-amber-200 text-[10px]">A partir de 1 crédito</span>
+                              </div>
+                              <div className="bg-white border border-neutral-250 p-2.5 flex justify-between items-center">
+                                <span className="text-neutral-800">📝 Bloco de Questões Comentadas</span>
+                                <span className="font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 border border-indigo-200 text-[10px]">3 créditos</span>
+                              </div>
+                              <div className="bg-white border border-neutral-250 p-2.5 flex justify-between items-center">
+                                <span className="text-neutral-800">👨‍⚕️ Preceptor Médico IA 24/7</span>
+                                <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 border border-emerald-200 text-[10px]">2 créditos</span>
+                              </div>
+                              <div className="bg-white border border-neutral-250 p-2.5 flex justify-between items-center">
+                                <span className="text-neutral-800">🎴 Flashcards & Repetição Espaçada</span>
+                                <span className="font-bold text-emerald-900 bg-emerald-50 px-2 py-0.5 border border-emerald-200 text-[10px]">1 crédito a cada 10 flashcards</span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -921,6 +1134,109 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                         </div>
                       )}
 
+                      {/* FLASHCARDS - MEDINTERNATO */}
+                      {activeAreaTab === 'flashcards' && (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[9px] uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 font-bold border border-emerald-250">
+                              RECORTE REAL: FLASHCARDS DE CONDUTA E BEIRA DE LEITO
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-emerald-600">● PRÁTICA EMERGENCIAL</span>
+                          </div>
+
+                          <p className="text-xs text-neutral-600 leading-relaxed">
+                            No <strong>MedInternato</strong>, os flashcards são desenhados para memorização de <strong>doses de emergência, condutas imediatas e critérios cirúrgicos</strong> do plantão:
+                          </p>
+
+                          <div className="border-2 border-[#141414] p-5 bg-stone-50 rounded-none space-y-4 shadow-sm text-center">
+                            <div className="flex items-center justify-between font-mono text-[10px] border-b border-stone-200 pb-2">
+                              <span className="font-bold text-emerald-900 uppercase">FLASHCARD CLINICO #0{demoFlashcardIndex + 1} DE 03 • EMERGÊNCIA</span>
+                              <span className="text-neutral-500 bg-white border border-stone-200 px-2 py-0.5">Condutas Práticas</span>
+                            </div>
+
+                            <div className="min-h-[100px] flex flex-col justify-center items-center py-3 px-2">
+                              <span className="font-mono text-[9px] text-emerald-700 uppercase font-bold tracking-widest mb-1">
+                                {demoFlashcardShowAnswer ? "VERSO (CONDUTA E DOSAGEM)" : "FRENTE (DESAFIO CLÍNICO)"}
+                              </span>
+                              <p className="font-serif italic text-sm sm:text-base font-bold text-neutral-900 leading-relaxed">
+                                {demoFlashcardShowAnswer ? (
+                                  [
+                                    'Dose de Ataque: Sulfato de Magnésio 4g IV em 15-20 min. Manutenção: 1g/h IV contínuo. Antídoto imediato: Gluconato de Cálcio 10% 1g IV.',
+                                    'Atropina 1mg IV a cada 3-5 minutos (máximo de 3mg) + Marcapasso Transcutâneo se refratário ou instabilidade mantida.',
+                                    'Esmolol ou Labetalol IV visando PA sistólica < 120 mmHg e Frequência Cardíaca < 60 bpm nos primeiros 20 minutos!'
+                                  ][demoFlashcardIndex]
+                                ) : (
+                                  [
+                                    'Qual a dose de Ataque, Manutenção e Antídoto do Sulfato de Magnésio no Manejo de Eclâmpsia?',
+                                    'Qual a droga de primeira escolha e dose no tratamento da Bradicardia Sintomática Instável no ACLS?',
+                                    'Qual a meta imediata de Frequência Cardíaca e PA Sistólica na Dissecção Aguda de Aorta Tipo A e B?'
+                                  ][demoFlashcardIndex]
+                                )}
+                              </p>
+                            </div>
+
+                            {!demoFlashcardShowAnswer ? (
+                              <button
+                                onClick={() => setDemoFlashcardShowAnswer(true)}
+                                className="w-full py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white font-mono text-xs font-bold uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] transition-all cursor-pointer"
+                              >
+                                Revelar Conduta Médica
+                              </button>
+                            ) : (
+                              <div className="space-y-3 pt-2 border-t border-dashed border-stone-300">
+                                <span className="font-mono text-[9px] uppercase font-bold text-stone-500 block">Classifique seu nível de domínio do plantão:</span>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setDemoFlashcardFeedback('🔴 Necessita revisão emergencial');
+                                      setTimeout(() => {
+                                        setDemoFlashcardShowAnswer(false);
+                                        setDemoFlashcardIndex((prev) => (prev + 1) % 3);
+                                        setDemoFlashcardFeedback(null);
+                                      }, 1200);
+                                    }}
+                                    className="py-2 px-1 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-900 font-mono text-[10px] font-bold rounded-none cursor-pointer"
+                                  >
+                                    Revisar Urgente
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setDemoFlashcardFeedback('🟡 Retenção moderada');
+                                      setTimeout(() => {
+                                        setDemoFlashcardShowAnswer(false);
+                                        setDemoFlashcardIndex((prev) => (prev + 1) % 3);
+                                        setDemoFlashcardFeedback(null);
+                                      }, 1200);
+                                    }}
+                                    className="py-2 px-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-mono text-[10px] font-bold rounded-none cursor-pointer"
+                                  >
+                                    Parcial
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setDemoFlashcardFeedback('🟢 Conduta Dominada');
+                                      setTimeout(() => {
+                                        setDemoFlashcardShowAnswer(false);
+                                        setDemoFlashcardIndex((prev) => (prev + 1) % 3);
+                                        setDemoFlashcardFeedback(null);
+                                      }, 1200);
+                                    }}
+                                    className="py-2 px-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono text-[10px] font-bold rounded-none cursor-pointer"
+                                  >
+                                    Dominado
+                                  </button>
+                                </div>
+                                {demoFlashcardFeedback && (
+                                  <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-900 font-mono text-[10px] font-bold animate-fade-in">
+                                    {demoFlashcardFeedback}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* DIFERENCIAIS - MEDINTERNATO */}
                       {activeAreaTab === 'diferenciais' && (
                         <div className="space-y-4">
@@ -940,10 +1256,96 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                             </div>
 
                             <div className="p-4 bg-indigo-50/40 border border-indigo-200 rounded-none space-y-2">
-                              <h4 className="text-xs font-black text-indigo-950 uppercase tracking-wider font-mono">Análise de IA de Arquivos de Cronograma PDF</h4>
+                              <h4 className="text-xs font-black text-indigo-950 uppercase tracking-wider font-mono">Priorização por Relevância Regional de Bancas</h4>
                               <p className="text-[11px] text-stone-600 leading-relaxed font-sans">
-                                Se você já possui um cronograma estático em PDF fornecido pela sua faculdade ou cursinho tradicional (Medgrupo, Medcof, etc.), nossa Inteligência Artificial decodifica o arquivo e gera instantaneamente o plano adaptativo no sistema, economizando horas de planejamento manual.
+                                Calibragem automática dos temas com base nos editais das principais bancas de residência médica do Brasil (ENARE, USP, SURCE, SUS-SP, AMP), direcionando mais horas para o que realmente cai no seu estado.
                               </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* CRÉDITOS E RENOVAÇÃO DIÁRIA - MEDINTERNATO */}
+                      {activeAreaTab === 'creditos' && (
+                        <div className="space-y-5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[9px] uppercase tracking-wider text-amber-900 bg-amber-50 px-2.5 py-1 font-bold border border-amber-300">
+                              LÓGICA DE CRÉDITOS & RENOVAÇÃO DIÁRIA
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 border border-emerald-200">
+                              ● RESTAURAÇÃO NO DIA SEGUINTE
+                            </span>
+                          </div>
+
+                          <div className="bg-[#141414] text-white p-5 space-y-4 border-2 border-[#141414] shadow-[4px_4px_0px_0px_rgba(20,20,20,1)]">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-700 pb-3 gap-2">
+                              <div className="flex items-center gap-2">
+                                <Zap size={18} className="text-amber-400 shrink-0" />
+                                <h4 className="font-serif italic text-base sm:text-lg font-bold">Como funcionam os Créditos de IA?</h4>
+                              </div>
+                              <span className="bg-emerald-500/20 text-emerald-300 font-mono text-[10px] px-2.5 py-1 border border-emerald-500/40 font-bold self-start sm:self-auto">
+                                🔄 RENOVAÇÃO 100% AUTOMÁTICA
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-neutral-300 leading-relaxed font-sans">
+                              Sua conta possui uma <strong className="text-white">franquia diária de créditos renovável</strong> para usar Inteligência Artificial em resumos, questões e mentoria.
+                            </p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                              <div className="bg-neutral-900 border border-neutral-700 p-3 space-y-1">
+                                <div className="flex items-center gap-1.5 text-amber-400 font-mono text-[10px] font-bold uppercase">
+                                  <RefreshCw size={12} className="shrink-0" />
+                                  1. Renovam no outro dia
+                                </div>
+                                <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                                  Usou seus créditos hoje? Fique tranquilo: no dia seguinte, seu saldo é <strong>100% restaurado</strong> ao valor máximo do seu plano sem custos extras.
+                                </p>
+                              </div>
+
+                              <div className="bg-neutral-900 border border-neutral-700 p-3 space-y-1">
+                                <div className="flex items-center gap-1.5 text-emerald-400 font-mono text-[10px] font-bold uppercase">
+                                  <ShieldCheck size={12} className="shrink-0" />
+                                  2. Zero desconto em erro
+                                </div>
+                                <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                                  Instabilidades de conexão ou falhas de servidor <strong>nunca cobram nem descontam créditos</strong> do seu saldo.
+                                </p>
+                              </div>
+
+                              <div className="bg-neutral-900 border border-neutral-700 p-3 space-y-1">
+                                <div className="flex items-center gap-1.5 text-indigo-400 font-mono text-[10px] font-bold uppercase">
+                                  <Sparkles size={12} className="shrink-0" />
+                                  3. Custo Transparente
+                                </div>
+                                <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                                  Cada ação consome uma quantidade pequena e quantificada de créditos, sem taxas escondidas ou surpresas na fatura.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border border-neutral-300 bg-neutral-50 p-4 space-y-2.5 font-mono">
+                            <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-wider block">
+                              📊 TABELA DE CONSUMO DE CRÉDITOS POR AÇÃO:
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                              <div className="bg-white border border-neutral-250 p-2.5 flex justify-between items-center">
+                                <span className="text-neutral-800">📚 Resumo de Conduta Sincronizado</span>
+                                <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 border border-amber-200 text-[10px]">A partir de 1 crédito</span>
+                              </div>
+                              <div className="bg-white border border-neutral-250 p-2.5 flex justify-between items-center">
+                                <span className="text-neutral-800">📝 Bloco de Questões Comentadas</span>
+                                <span className="font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 border border-indigo-200 text-[10px]">3 créditos</span>
+                              </div>
+                              <div className="bg-white border border-neutral-250 p-2.5 flex justify-between items-center">
+                                <span className="text-neutral-800">👨‍⚕️ Preceptor Médico IA 24/7</span>
+                                <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 border border-emerald-200 text-[10px]">2 créditos</span>
+                              </div>
+                              <div className="bg-white border border-neutral-250 p-2.5 flex justify-between items-center">
+                                <span className="text-neutral-800">🎴 Flashcards & Repetição Espaçada</span>
+                                <span className="font-bold text-emerald-900 bg-emerald-50 px-2 py-0.5 border border-emerald-200 text-[10px]">1 crédito a cada 10 flashcards</span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -960,7 +1362,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                   Gostou da demonstração? Crie sua conta grátis para desbloquear o sistema completo.
                 </div>
                 <button
-                  onClick={onLogin}
+                  onClick={() => onLogin()}
                   className="w-full sm:w-auto px-6 py-3 bg-[#141414] hover:bg-neutral-800 text-[#E4E3E0] font-mono text-xs font-bold uppercase tracking-widest shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   Começar a Estudar Agora
@@ -1086,13 +1488,18 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                 </div>
               </div>
 
-              <div className="bg-neutral-50 border border-[#141414] p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="bg-emerald-50/70 border-2 border-emerald-800 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[3px_3px_0px_0px_rgba(20,20,20,1)]">
                 <div className="space-y-0.5 text-center sm:text-left">
-                  <span className="font-mono text-[9px] uppercase font-bold text-emerald-800">Experimente o ecossistema na prática</span>
-                  <p className="text-xs text-neutral-600">Teste as ferramentas de resumos, questões e flashcards no simulador interativo abaixo.</p>
+                  <span className="font-mono text-[9.5px] uppercase font-extrabold text-emerald-950 flex items-center gap-1.5 justify-center sm:justify-start">
+                    <Zap size={14} className="text-amber-600 fill-amber-500" />
+                    LÓGICA DE CRÉDITOS & RENOVAÇÃO AUTOMÁTICA DIÁRIA
+                  </span>
+                  <p className="text-xs text-emerald-900 font-sans">
+                    Seus créditos de IA são renovados no dia seguinte (restauração diária a cada 24h). Estude sem interrupções!
+                  </p>
                 </div>
                 <button
-                  onClick={onLogin}
+                  onClick={() => onLogin()}
                   className="px-5 py-2 bg-[#141414] hover:bg-neutral-800 text-white font-mono text-xs font-bold uppercase tracking-wider shrink-0 shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] transition-all cursor-pointer"
                 >
                   Começar Grátis
@@ -1101,644 +1508,6 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
             </div>
 
           </div>
-
-          {/* Interactive Demonstration Section */}
-          <div className="space-y-8 pt-8 border-t-2 border-dashed border-stone-200">
-            <div className="text-center max-w-xl mx-auto space-y-2">
-              <span className="font-mono text-[9px] uppercase tracking-widest font-bold text-emerald-800 bg-emerald-50 border border-emerald-250 px-2.5 py-0.5 inline-block">
-                DEMONSTRAÇÃO EM TEMPO REAL
-              </span>
-              <h4 className="font-serif italic text-2xl sm:text-3xl font-extrabold text-neutral-950">
-                Veja o MedInternato em Ação
-              </h4>
-              <p className="text-neutral-500 text-xs font-sans">
-                Explore o ecossistema inteligente abaixo. Nós criamos, organizamos e otimizamos o seu aprendizado clínico com ferramentas cirúrgicas de alta performance.
-              </p>
-            </div>
-
-          {/* Interactive Navigation Tabs */}
-          <div className="flex flex-wrap justify-center gap-3">
-            <button
-              onClick={() => setActiveDemoTab('summary')}
-              className={`px-5 py-3 font-mono text-xs font-bold uppercase tracking-wider border-2 border-[#141414] shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] transition-all flex items-center gap-2 cursor-pointer ${
-                activeDemoTab === 'summary'
-                  ? 'bg-emerald-50 text-emerald-950 border-emerald-950 translate-x-[1px] translate-y-[1px] shadow-[2px_2px_0px_0px_rgba(20,20,20,1)]'
-                  : 'bg-white hover:bg-neutral-50 text-neutral-600 border-[#141414]'
-              }`}
-            >
-              <FileText size={14} />
-              1. Geração de Resumos
-            </button>
-            <button
-              onClick={() => setActiveDemoTab('questions')}
-              className={`px-5 py-3 font-mono text-xs font-bold uppercase tracking-wider border-2 border-[#141414] shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] transition-all flex items-center gap-2 cursor-pointer ${
-                activeDemoTab === 'questions'
-                  ? 'bg-indigo-50 text-indigo-950 border-indigo-950 translate-x-[1px] translate-y-[1px] shadow-[2px_2px_0px_0px_rgba(20,20,20,1)]'
-                  : 'bg-white hover:bg-neutral-50 text-neutral-600 border-[#141414]'
-              }`}
-            >
-              <ListChecks size={14} />
-              2. Questões Clínicas
-            </button>
-            <button
-              onClick={() => setActiveDemoTab('flashcards')}
-              className={`px-5 py-3 font-mono text-xs font-bold uppercase tracking-wider border-2 border-[#141414] shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] transition-all flex items-center gap-2 cursor-pointer ${
-                activeDemoTab === 'flashcards'
-                  ? 'bg-amber-50 text-amber-950 border-amber-950 translate-x-[1px] translate-y-[1px] shadow-[2px_2px_0px_0px_rgba(20,20,20,1)]'
-                  : 'bg-white hover:bg-neutral-50 text-neutral-600 border-[#141414]'
-              }`}
-            >
-              <Layers size={14} />
-              3. Flashcards de Memorização
-            </button>
-          </div>
-
-          {/* Tab Content Canvas */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-            {/* Left side: Functional description */}
-            <div className="lg:col-span-5 bg-[#E4E3E0]/30 border-2 border-[#141414] p-6 sm:p-8 shadow-[4px_4px_0px_0px_rgba(20,20,20,1)] flex flex-col justify-between">
-              {activeDemoTab === 'summary' && (
-                <div className="space-y-4">
-                  <span className="font-mono text-[8.5px] uppercase tracking-wider text-emerald-800 font-bold block">RECURSO #1 • RESUMOS CLÍNICOS IA</span>
-                  <h4 className="font-serif italic text-2xl font-bold text-neutral-950">Geração de Condutas Médicas Reais em Segundos</h4>
-                  <p className="text-xs text-neutral-650 leading-relaxed font-sans">
-                    Insira qualquer tema da medicina interna, pediatria, cirurgia, ginecologia ou obstetrícia. Nossa Inteligência Artificial consulta as bases científicas e as principais diretrizes nacionais para estruturar um resumo de conduta prático, focado na rotina dos plantões e do internato.
-                  </p>
-                  <ul className="text-xs text-neutral-600 space-y-2 pt-2 list-none">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-                      <span>Diagnósticos diferenciais e critérios objetivos.</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-                      <span>Diretrizes atualizadas passo a passo.</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-                      <span>Sincronia automática com flashcards e calendários.</span>
-                    </li>
-                  </ul>
-                </div>
-              )}
-
-              {activeDemoTab === 'questions' && (
-                <div className="space-y-4">
-                  <span className="font-mono text-[8.5px] uppercase tracking-wider text-indigo-800 font-bold block">RECURSO #2 • QUESTÕES DA ROTINA E PROVAS</span>
-                  <h4 className="font-serif italic text-2xl font-bold text-neutral-950">Treino Ativo com Comentários Explicativos</h4>
-                  <p className="text-xs text-neutral-650 leading-relaxed font-sans">
-                    O MedInternato possui um banco integrado de questões de múltipla escolha focadas no raciocínio clínico diagnóstico e terapêutico. Ao errar ou acertar, você recebe um feedback cirúrgico da nossa IA explicando os distratores e a alternativa correta.
-                  </p>
-                  <ul className="text-xs text-neutral-600 space-y-2 pt-2 list-none">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-indigo-600 shrink-0" />
-                      <span>Casos clínicos realistas e questões de grandes instituições.</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-indigo-600 shrink-0" />
-                      <span>Explicações minuciosas de cada alternativa.</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-indigo-600 shrink-0" />
-                      <span>Seu rendimento retroalimenta o seu cronograma do MedRevise.</span>
-                    </li>
-                  </ul>
-                </div>
-              )}
-
-              {activeDemoTab === 'flashcards' && (
-                <div className="space-y-4">
-                  <span className="font-mono text-[8.5px] uppercase tracking-wider text-amber-800 font-bold block">RECURSO #3 • MEMORIZAÇÃO ATIVA SRS</span>
-                  <h4 className="font-serif italic text-2xl font-bold text-neutral-950">Bloqueie o Esquecimento de Fatos Decoreba</h4>
-                  <p className="text-xs text-neutral-650 leading-relaxed font-sans">
-                    Utilize o poder das Repetições Espaçadas de Hermann Ebbinghaus diretamente nos seus estudos de caso. Nossos flashcards inteligentes testam seus limites cognitivos na memorização de doses, tríades e classificações cruciais.
-                  </p>
-                  <ul className="text-xs text-neutral-600 space-y-2 pt-2 list-none">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-amber-600 shrink-0" />
-                      <span>Lógica de espaçamento adaptativa ao seu nível de dificuldade.</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-amber-600 shrink-0" />
-                      <span>Estudo de alta densidade focado no recall imediato.</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-amber-600 shrink-0" />
-                      <span>Evita revisões desnecessárias, poupando seu tempo precioso.</span>
-                    </li>
-                  </ul>
-                </div>
-              )}
-
-              <div className="pt-6 border-t border-dashed border-neutral-300 mt-6 flex flex-col gap-3">
-                <span className="font-mono text-[9px] text-neutral-455 uppercase font-bold">PRONTO PARA COLOCAR EM PRÁTICA?</span>
-                <button
-                  onClick={onLogin}
-                  className="w-full text-center py-3.5 bg-[#141414] hover:bg-neutral-850 text-white font-mono text-xs font-bold uppercase tracking-widest cursor-pointer shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] transition-all flex items-center justify-center gap-2 border border-transparent"
-                >
-                  Criar Minha Conta Grátis
-                  <ArrowRight size={13} />
-                </button>
-              </div>
-            </div>
-
-            {/* Right side: Interactive Mockup Canvas */}
-            <div className="lg:col-span-7 bg-[#E4E3E0]/20 border-2 border-[#141414] p-4 sm:p-6 shadow-[6px_6px_0px_0px_rgba(20,20,20,1)] flex flex-col justify-center min-h-[420px]">
-              {/* Mockup wrapper */}
-              <div className="w-full h-full bg-white border border-[#141414] shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] overflow-hidden flex flex-col">
-                
-                {/* Mockup Toolbar */}
-                <div className="bg-[#141414] text-white px-4 py-2.5 flex items-center justify-between font-mono text-[9.5px] tracking-wider uppercase font-bold select-none border-b border-[#141414]">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
-                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 inline-block"></span>
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
-                  </div>
-                  <span>
-                    {activeDemoTab === 'summary' && 'Visualização de Resumo • MedInternato IA'}
-                    {activeDemoTab === 'questions' && 'Simulador de Questões Médicas'}
-                    {activeDemoTab === 'flashcards' && 'Estudo Ativo por Flashcards SRS'}
-                  </span>
-                  <span className="text-neutral-400 text-[8.5px]">v1.4</span>
-                </div>
-
-                {/* Mockup Content area */}
-                <div className="p-4 sm:p-6 overflow-y-auto max-h-[420px] space-y-4">
-                  {activeDemoTab === 'summary' && (
-                    <div className="space-y-4 text-neutral-800">
-                      {/* Summary Header */}
-                      <div className="border-b-2 border-[#141414] pb-3">
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-[9px] text-emerald-800 font-bold bg-emerald-50 border border-emerald-250 px-2 py-0.5 uppercase">CIRURGIA • APENDICITE AGUDA</span>
-                          <span className="font-mono text-[8.5px] text-neutral-400 uppercase flex items-center gap-1 font-bold">
-                            <Clock size={11} /> 3 min de leitura
-                          </span>
-                        </div>
-                        <h5 className="font-serif italic text-2xl font-extrabold text-neutral-900 mt-1.5">Apendicite Aguda</h5>
-                        <p className="text-[11px] text-neutral-500 font-sans mt-0.5">A principal causa de abdome agudo inflamatório de indicação cirúrgica no mundo.</p>
-                      </div>
-
-                      {/* Real-App Styled Alert Callout Boxes */}
-                      <div className="p-3.5 bg-rose-50 border-l-4 border-rose-600 space-y-1 shadow-[2px_2px_0px_0px_rgba(225,29,72,0.1)]">
-                        <span className="font-mono text-[8.5px] font-black uppercase text-rose-700 tracking-wider flex items-center gap-1">
-                          ⚠️ ALERTA DE PLANTÃO • URGÊNCIA CLÍNICA
-                        </span>
-                        <p className="text-[11px] text-rose-950 font-sans leading-relaxed">
-                          A apresentação da apendicite em <strong>gestantes</strong> é atípica. Devido ao crescimento uterino, há uma <strong>migração cefálica do apêndice cecal</strong>, mimetizando quadros de colecistite ou pancreatite aguda, com dor em hipocôndrio direito. Mantenha alto índice de suspeição!
-                        </p>
-                      </div>
-
-                      <div className="p-3.5 bg-blue-50 border-l-4 border-blue-600 space-y-1 shadow-[2px_2px_0px_0px_rgba(37,99,235,0.1)]">
-                        <span className="font-mono text-[8.5px] font-black uppercase text-blue-700 tracking-wider flex items-center gap-1">
-                          🎓 QUESTÃO DE PROVA • RECORRÊNCIA ENARE
-                        </span>
-                        <p className="text-[11px] text-blue-950 font-sans leading-relaxed">
-                          O ENARE e grandes bancas adoram cobrar os <strong>sinais de apendicite retrocecal ou pélvica</strong>. Lembre-se do <strong>Sinal do Psoas</strong> (dor à hiperextensão do quadril direito) e do <strong>Sinal do Obturador</strong> (dor à rotação interna da coxa flexionada).
-                        </p>
-                      </div>
-
-                      {/* Summary Section 1 */}
-                      <div className="space-y-1.5">
-                        <h6 className="font-mono text-[10px] font-bold text-neutral-900 uppercase flex items-center gap-1.5 border-l-2 border-[#141414] pl-2">
-                          <span className="text-neutral-400 font-bold">#01</span> Quadro Clínico Clássico
-                        </h6>
-                        <p className="text-xs text-neutral-650 font-sans leading-relaxed">
-                          A dor abdominal tipicamente inicia de forma difusa na região <strong className="text-neutral-900">epigástrica ou periumbilical</strong>, migrando para a <strong className="text-neutral-900">fossa ilíaca direita (ponto de McBurney)</strong> após 12 a 24 horas, acompanhada de anorexia, náuseas, vômitos e febre baixa.
-                        </p>
-                      </div>
-
-                      {/* Summary Callout Box: Sinais Clínicos */}
-                      <div className="p-3 bg-neutral-50 border border-[#141414] shadow-[1.5px_1.5px_0px_0px_rgba(20,20,20,1)] grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                        <div>
-                          <strong className="font-mono text-[9.5px] uppercase text-neutral-800 block font-bold">Sinal de Blumberg:</strong>
-                          <span className="text-neutral-600 font-sans">Dor à descompressão brusca no ponto de McBurney (indica irritação peritoneal).</span>
-                        </div>
-                        <div>
-                          <strong className="font-mono text-[9.5px] uppercase text-neutral-800 block font-bold">Sinal de Rovsing:</strong>
-                          <span className="text-neutral-600 font-sans">Dor na fossa ilíaca direita gerada pela palpação da fossa ilíaca esquerda.</span>
-                        </div>
-                      </div>
-
-                      {/* Summary Section 2 */}
-                      <div className="space-y-1.5">
-                        <h6 className="font-mono text-[10px] font-bold text-neutral-900 uppercase flex items-center gap-1.5 border-l-2 border-[#141414] pl-2">
-                          <span className="text-neutral-400 font-bold">#02</span> Escore de Alvarado
-                        </h6>
-                        <div className="text-xs text-neutral-600 font-sans space-y-1 leading-relaxed">
-                          <p>Utilizado para estratificação de risco de apendicite aguda:</p>
-                          <div className="bg-neutral-50 p-2.5 border border-[#141414]/10 rounded-none space-y-1">
-                            <div className="flex justify-between font-mono text-[9.5px] text-neutral-455 border-b pb-0.5 mb-1 font-bold">
-                              <span>CRITÉRIO</span>
-                              <span>PONTOS</span>
-                            </div>
-                            <div className="flex justify-between"><span>Migração da dor para QID</span> <span>1</span></div>
-                            <div className="flex justify-between"><span>Anorexia</span> <span>1</span></div>
-                            <div className="flex justify-between"><span>Náuseas / Vômitos</span> <span>1</span></div>
-                            <div className="flex justify-between font-bold text-neutral-900"><span>Dor à palpação profunda em QID</span> <span>2</span></div>
-                            <div className="flex justify-between"><span>Descompressão dolorosa em QID (Blumberg)</span> <span>1</span></div>
-                            <div className="flex justify-between font-bold text-neutral-900"><span>Leucocitose (≥ 10.000)</span> <span>2</span></div>
-                          </div>
-                          <p className="mt-1">
-                            <strong className="text-neutral-900">Escore ≥ 7:</strong> Indica alta probabilidade. Em homens jovens, autoriza a <strong className="text-emerald-700 font-semibold">indicação cirúrgica imediata</strong> sem exames de imagem adicionais.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Summary Section 3 */}
-                      <div className="space-y-1.5">
-                        <h6 className="font-mono text-[10px] font-bold text-neutral-900 uppercase flex items-center gap-1.5 border-l-2 border-[#141414] pl-2">
-                          <span className="text-neutral-400 font-bold">#03</span> Conduta Recomendada
-                        </h6>
-                        <p className="text-xs text-neutral-650 font-sans leading-relaxed">
-                          Manter o paciente em <strong className="text-neutral-900">jejum absoluto</strong>, iniciar <strong className="text-neutral-900">hidratação venosa</strong> vigorosa e antibioticoterapia profilática direcionada para flora entérica (ex: Cefoxitina, ou Ciprofloxacino + Metronidazol). A conduta definitiva é a <strong className="text-emerald-700 font-bold">Apendicectomia</strong> (preferencialmente laparoscópica).
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeDemoTab === 'questions' && (
-                    <div className="space-y-4 text-neutral-800">
-                      {/* Question Header */}
-                      <div className="border-b border-[#141414]/15 pb-2">
-                        <div className="flex justify-between items-center">
-                          <span className="font-mono text-[9px] text-indigo-850 font-bold bg-indigo-50 border border-indigo-200 px-2 py-0.5 uppercase">
-                            PROVA REAL • UFG 2025 • RESIDÊNCIA MÉDICA
-                          </span>
-                          <span className="font-mono text-[8.5px] text-neutral-400 font-bold">ID: #40589</span>
-                        </div>
-                        <h5 className="font-sans text-xs font-bold text-neutral-950 mt-1.5 leading-relaxed">
-                          Um paciente masculino, de 24 anos, previamente hígido, apresenta quadro de dor abdominal com início difuso em região epigástrica há 14 horas, que migrou posteriormente para a fossa ilíaca direita (FID). Associa anorexia, náuseas e temperatura axilar de 37.9ºC. Ao exame clínico, apresenta sinal de Blumberg e sinal de Rovsing positivos. Diante do escore clínico de Alvarado de 8 pontos, qual a conduta imediata mais adequada?
-                        </h5>
-                      </div>
-
-                      {/* Question Options */}
-                      <div className="space-y-2">
-                        {[
-                          { id: 'A', text: 'Prescrever sintomáticos e realizar acompanhamento clínico domiciliar por 48 horas.' },
-                          { id: 'B', text: 'Encaminhar o paciente imediatamente para Apendicectomia cirúrgica.' },
-                          { id: 'C', text: 'Solicitar Tomografia Computadorizada de abdome e pelve com contraste intravenoso para confirmação diagnóstica.' },
-                          { id: 'D', text: 'Prescrever antibioticoterapia profilática e reavaliar o escore clínico em 24 horas.' }
-                        ].map((opt) => {
-                          const isSelected = selectedOption === opt.id;
-                          const isCorrect = opt.id === 'B';
-                          
-                          let optStyle = 'border-neutral-200 bg-white hover:bg-neutral-50';
-                          if (selectedOption !== null) {
-                            if (isSelected) {
-                              optStyle = isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-950 shadow-none animate-pulse' : 'border-rose-500 bg-rose-50 text-rose-950 shadow-none';
-                            } else if (isCorrect) {
-                              optStyle = 'border-emerald-500 bg-emerald-50/50';
-                            }
-                          }
-
-                          return (
-                            <button
-                              key={opt.id}
-                              disabled={selectedOption !== null}
-                              onClick={() => setSelectedOption(opt.id)}
-                              className={`w-full text-left p-3 border-2 font-sans text-xs flex items-start gap-3 transition-all cursor-pointer ${optStyle}`}
-                            >
-                              <span className={`w-5 h-5 shrink-0 rounded-none border border-black font-mono text-[10px] font-bold flex items-center justify-center ${
-                                isSelected 
-                                  ? (isCorrect ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600')
-                                  : 'bg-neutral-150 text-neutral-700'
-                              }`}>
-                                {opt.id}
-                              </span>
-                              <span className="leading-relaxed">{opt.text}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Question Feedback Box */}
-                      {selectedOption !== null && (
-                        <div className={`p-4 border-2 font-sans text-xs space-y-3 ${
-                          selectedOption === 'B' ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-rose-300 bg-rose-50 text-rose-900'
-                        }`}>
-                          <div className="flex items-center gap-1.5 font-mono font-bold text-[10px] uppercase">
-                            <span>RESULTADO COGNITIVO:</span>
-                            {selectedOption === 'B' ? (
-                              <span className="text-emerald-700">★ RESPOSTA CORRETA (ALT. B)</span>
-                            ) : (
-                              <span className="text-rose-700">✗ VOCÊ MARCOU {selectedOption} (INCORRETA)</span>
-                            )}
-                          </div>
-                          <p className="leading-relaxed text-[11px]">
-                            {selectedOption === 'B' 
-                              ? 'Correto! Em homens jovens com escore de Alvarado ≥ 7 (neste caso, 8), a probabilidade de apendicite aguda é altíssima. O diagnóstico é eminentemente clínico e a conduta preconizada é o encaminhamento direto para apendicectomia.'
-                              : 'Revisão diagnóstica: A resposta correta é a B. Para homens jovens com quadro clínico típico de Alvarado alto, exames de imagem adicionais (Opção C) atrasam o tratamento e não mudam a conduta, aumentando as chances de perfuração cecal.'
-                            }
-                          </p>
-
-                          {/* Interactive Mentor IA Widget integrated right under the feedback */}
-                          <div className="pt-3 border-t border-dashed border-[#141414]/15 mt-3 space-y-2 text-left">
-                            <span className="font-mono text-[8.5px] uppercase text-indigo-850 block font-extrabold">
-                              🧠 MENTOR IA INTEGRADO: ESCLAREÇA SUAS DÚVIDAS DO CASO
-                            </span>
-                            
-                            {/* Preset dúvida prompts */}
-                            {!mentorQuestion && !isMentorLoading && (
-                              <div className="flex flex-wrap gap-2">
-                                <button
-                                  onClick={() => handleSimulatedMentorPrompt('tc')}
-                                  className="px-2.5 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-800 text-[10px] font-mono font-bold tracking-tight rounded-none cursor-pointer flex items-center gap-1"
-                                >
-                                  💬 Perguntar ao Mentor: "Por que a Tomografia não é indicada?"
-                                </button>
-                                <button
-                                  onClick={() => handleSimulatedMentorPrompt('ab')}
-                                  className="px-2.5 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-800 text-[10px] font-mono font-bold tracking-tight rounded-none cursor-pointer flex items-center gap-1"
-                                >
-                                  💬 Perguntar ao Mentor: "Qual o antibiótico profilático padrão?"
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Simulated Mentor Loading */}
-                            {isMentorLoading && (
-                              <div className="flex items-center gap-2 py-1 font-mono text-[10px] text-indigo-600 font-bold">
-                                <span className="animate-bounce">●</span>
-                                <span className="animate-bounce [animation-delay:0.2s]">●</span>
-                                <span className="animate-bounce [animation-delay:0.4s]">●</span>
-                                <span>Mentor IA está analisando diretrizes médicas...</span>
-                              </div>
-                            )}
-
-                            {/* Simulated Mentor Response */}
-                            {mentorQuestion && (
-                              <div className="bg-white border border-[#141414]/10 p-3 rounded-none space-y-1.5">
-                                <div className="text-[10px] font-mono text-neutral-400 font-bold flex justify-between">
-                                  <span>VOCÊ PERGUNTOU:</span>
-                                  <button onClick={() => { setMentorQuestion(null); setMentorResponse(null); }} className="text-rose-600 underline hover:text-rose-800">Fechar</button>
-                                </div>
-                                <p className="font-mono text-[10px] text-neutral-700 italic">"{mentorQuestion}"</p>
-                                
-                                {mentorResponse && (
-                                  <div className="pt-2 border-t border-dashed border-neutral-100 space-y-1">
-                                    <span className="font-mono text-[8.5px] text-indigo-750 font-bold block">RESPOSTA DO MENTOR IA:</span>
-                                    <p className="text-[11px] text-neutral-600 leading-relaxed font-sans">{mentorResponse}</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="pt-1">
-                            <button
-                              onClick={() => { setSelectedOption(null); setMentorQuestion(null); setMentorResponse(null); }}
-                              className="text-[9.5px] font-mono uppercase tracking-wider font-bold underline text-neutral-500 hover:text-black cursor-pointer block mt-1"
-                            >
-                              Resetar Questão
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {activeDemoTab === 'flashcards' && (
-                    <div className="space-y-4 text-neutral-800 py-4 text-center">
-                      {/* Current simulated card index deck */}
-                      <div className="max-w-md mx-auto bg-white border-2 border-[#141414] p-6 shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] rounded-none space-y-6 min-h-[180px] flex flex-col justify-between">
-                        
-                        <div className="space-y-2">
-                          <span className="font-mono text-[8px] text-amber-800 font-bold bg-amber-50 border border-amber-200 px-2 py-0.5 uppercase tracking-widest">
-                            FLASHCARD DE RECALL • {flashcardStep + 1} DE 3
-                          </span>
-                          
-                          <div className="font-serif italic text-base sm:text-lg font-bold text-neutral-900 px-2 py-4">
-                            {
-                              [
-                                '"Qual é o principal patógeno associado à apendicite aguda por obstrução do apêndice?"',
-                                '"Qual o sinal semiológico caracterizado por dor na fossa ilíaca direita à palpação profunda da fossa ilíaca esquerda?"',
-                                '"Qual a tríade clássica do diagnóstico de gravidez ectópica rota?"'
-                              ][flashcardStep]
-                            }
-                          </div>
-                        </div>
-
-                        {/* Card flip side */}
-                        {!showAnswer ? (
-                          <button
-                            onClick={() => setShowAnswer(true)}
-                            className="w-full text-center py-2.5 bg-neutral-950 hover:bg-neutral-800 text-white font-mono text-[10px] uppercase font-bold tracking-widest cursor-pointer shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] hover:translate-x-[0.5px] hover:translate-y-[0.5px] hover:shadow-[1.5px_1.5px_0px_0px_rgba(20,20,20,1)] transition-all"
-                          >
-                            Mostrar Resposta (Revelar Verso)
-                          </button>
-                        ) : (
-                          <div className="space-y-4 pt-2 border-t border-dashed border-[#141414]/15">
-                            <div className="font-sans text-xs font-bold text-emerald-850 bg-emerald-50 border border-emerald-150 p-3 leading-relaxed">
-                              {
-                                [
-                                  'Bacteroides fragilis (anaeróbio predominante) e Escherichia coli (gram-negativo).',
-                                  'Sinal de Rovsing (indica peritonite ou apendicite aguda devido ao deslocamento do gás retrógrado no cólon em direção ao ceco).',
-                                  'Dor abdominal súbita intensa, atraso menstrual (amenorreia) e sangramento vaginal escasso.'
-                                ][flashcardStep]
-                              }
-                            </div>
-
-                            {/* SRS Rating Buttons */}
-                            <div className="space-y-1.5 text-left">
-                              <span className="font-mono text-[8px] text-neutral-450 uppercase tracking-widest block font-bold text-center">COMO FOI SUA TAXA DE RECALL?</span>
-                              <div className="grid grid-cols-3 gap-2">
-                                <button
-                                  onClick={() => {
-                                    setFlashcardStep((prev) => (prev + 1) % 3);
-                                    setShowAnswer(false);
-                                  }}
-                                  className="py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-mono text-[8.5px] font-bold uppercase cursor-pointer"
-                                >
-                                  Errei (1 dia)
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setFlashcardStep((prev) => (prev + 1) % 3);
-                                    setShowAnswer(false);
-                                  }}
-                                  className="py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 font-mono text-[8.5px] font-bold uppercase cursor-pointer"
-                                >
-                                  Bom (4 dias)
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setFlashcardStep((prev) => (prev + 1) % 3);
-                                    setShowAnswer(false);
-                                  }}
-                                  className="py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-mono text-[8.5px] font-bold uppercase cursor-pointer"
-                                >
-                                  Fácil (7 dias)
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Mockup Footer */}
-                <div className="bg-neutral-50 px-4 py-2 border-t border-[#141414] flex items-center justify-between font-mono text-[8px] text-neutral-400 font-bold select-none">
-                  <span>● STATUS: PRONTO PARA USO CLÍNICO</span>
-                  <span className="text-emerald-700 animate-pulse">● CONECTADO COM REPETIÇÃO ESPAÇADA</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-      {/* 🚀 COMPELING PROPAGANDA SECTION FOR RESUMOS AND QUESTÕES */}
-      <section className="py-20 sm:py-28 bg-[#F5F4F0] border-t-2 border-b-2 border-[#141414] px-4 sm:px-8 overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30 -translate-y-12 translate-x-12"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30 translate-y-12 -translate-x-12"></div>
-        
-        <div className="max-w-7xl mx-auto space-y-16 relative z-10">
-          
-          <div className="text-center max-w-3xl mx-auto space-y-4">
-            <span className="font-mono text-[10px] uppercase tracking-widest font-black text-emerald-850 bg-emerald-50 border border-emerald-250 px-3 py-1 inline-block">
-              POR QUE SOMOS DIFERENTES?
-            </span>
-            <h2 className="font-serif italic text-3xl sm:text-5xl font-black text-[#141414] tracking-tight leading-tight">
-              Estudo Médico de Elite: O que torna o Med<span className="text-emerald-700">Internato</span> incomparável?
-            </h2>
-            <p className="text-neutral-600 text-xs sm:text-base font-sans max-w-2xl mx-auto leading-relaxed">
-              Desenvolvemos uma engenharia de aprendizado clínico projetada especificamente para quem não tem tempo a perder. Veja como nossas ferramentas resolvem suas maiores dores na faculdade e nas provas de residência.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-stretch">
-            
-            {/* 📚 DIFFERENTIALS: RESUMOS */}
-            <div className="bg-white border-2 border-[#141414] p-6 sm:p-10 shadow-[6px_6px_0px_0px_rgba(20,20,20,1)] hover:shadow-[4px_4px_0px_0px_rgba(20,20,20,1)] transition-all flex flex-col justify-between space-y-8">
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-50 border-2 border-emerald-600 rounded-none flex items-center justify-center font-bold text-emerald-800 shrink-0">
-                    <FileText className="w-5 h-5 text-emerald-700" />
-                  </div>
-                  <div>
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-emerald-800 font-bold block">PRESCRITIVO & CLÍNICO</span>
-                    <h3 className="font-serif italic text-2xl font-extrabold text-[#141414]">1. Resumos de Conduta de Beira de Leito</h3>
-                  </div>
-                </div>
-
-                <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed font-sans">
-                  Esqueça resumos teóricos enfadonhos de 50 páginas. Nossos resumos estruturados por IA entregam <strong className="text-neutral-900">condutas médicas resolutivas imediatas</strong> baseadas estritamente nas diretrizes brasileiras mais recentes (Ministério da Saúde, SBC, SBP, FEBRASGO).
-                </p>
-
-                <div className="space-y-3.5 pt-2">
-                  <div className="flex gap-3 items-start">
-                    <div className="w-1.5 h-1.5 bg-emerald-600 rounded-full mt-1.5 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1A1A1A] font-mono uppercase">🚨 Alertas de Plantão & Urgência</h4>
-                      <p className="text-xs text-neutral-500 font-sans mt-0.5 leading-relaxed">Destaques visuais vermelhos sinalizando condutas críticas para salvar lives e não cometer erros na emergência ou na enfermaria.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 items-start">
-                    <div className="w-1.5 h-1.5 bg-emerald-600 rounded-full mt-1.5 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1A1A1A] font-mono uppercase">🎯 Regionalização Automatizada por IA</h4>
-                      <p className="text-xs text-neutral-550 font-sans mt-0.5 leading-relaxed">Nossa tecnologia analisa sua região alvo (ex: Centro-Oeste, Paulistas) e destaca no resumo as particularidades epidemiológicas e de preferência de exames que as bancas locais adoram cobrar.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 items-start">
-                    <div className="w-1.5 h-1.5 bg-emerald-600 rounded-full mt-1.5 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1A1A1A] font-mono uppercase">💊 Prescrição Prática e Doses</h4>
-                      <p className="text-xs text-neutral-550 font-sans mt-0.5 leading-relaxed">Modelos de prescrição rápida e cálculo exato de doses beira de leito para facilitar suas rotações de internato.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-dashed border-stone-200 pt-6">
-                <div className="bg-emerald-50/50 border border-emerald-600/10 p-3.5 rounded-none flex items-center justify-between gap-4">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] text-emerald-800 font-bold font-mono uppercase">Diferencial Exclusivo</span>
-                    <p className="text-[11px] text-stone-600 italic">"Gere resumos personalizados para qualquer que seja sua dúvida clínica de enfermaria."</p>
-                  </div>
-                  <span className="inline-flex items-center px-2 py-1 bg-emerald-100 text-emerald-800 font-mono text-[9px] uppercase border border-emerald-200 rounded-none font-bold">100% IA Ativa</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 📝 DIFFERENTIALS: QUESTÕES */}
-            <div className="bg-white border-2 border-[#141414] p-6 sm:p-10 shadow-[6px_6px_0px_0px_rgba(20,20,20,1)] hover:shadow-[4px_4px_0px_0px_rgba(20,20,20,1)] transition-all flex flex-col justify-between space-y-8">
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-indigo-50 border-2 border-indigo-600 rounded-none flex items-center justify-center font-bold text-indigo-850 shrink-0">
-                    <ListChecks className="w-5 h-5 text-indigo-700" />
-                  </div>
-                  <div>
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-indigo-800 font-bold block">ALTA RECORRÊNCIA</span>
-                    <h3 className="font-serif italic text-2xl font-extrabold text-[#141414]">2. Questões Comentadas Alternativa por Alternativa</h3>
-                  </div>
-                </div>
-
-                <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed font-sans">
-                  Não se limite a gabaritos secos de uma linha. Nosso simulador traz as <strong className="text-neutral-900">questões reais das provas mais recentes</strong> de residência brasileira comentadas de forma minuciosa por IA, ensinando a malícia das bancas.
-                </p>
-
-                <div className="space-y-3.5 pt-2">
-                  <div className="flex gap-3 items-start">
-                    <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full mt-1.5 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1A1A1A] font-mono uppercase">🕵️ A Desconstrução das Pegadinhas</h4>
-                      <p className="text-xs text-neutral-550 font-sans mt-0.5 leading-relaxed">Nossa tecnologia revela qual pegadinha de redação ou distrator inteligente a banca incorporou no enunciado que costuma induzir os candidatos ao erro.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 items-start">
-                    <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full mt-1.5 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1A1A1A] font-mono uppercase">📊 Estatísticas de Incidência Regional</h4>
-                      <p className="text-xs text-neutral-550 font-sans mt-0.5 leading-relaxed">Veja em tempo real o termômetro de calor do tema estudado e quantas vezes ele caiu nas bancas do Brasil e da sua região.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 items-start">
-                    <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full mt-1.5 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1A1A1A] font-mono uppercase">🔄 Sincronia de Recall com o MedRevise</h4>
-                      <p className="text-xs text-neutral-550 font-sans mt-0.5 leading-relaxed">Sempre que você resolve questões no MedInternato, seus erros e acertos alimentam de forma automática o MedRevise, agendando revisões e flashcards para blindar sua memorização.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-dashed border-stone-200 pt-6">
-                <div className="bg-indigo-50/50 border border-indigo-600/10 p-3.5 rounded-none flex items-center justify-between gap-4">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] text-indigo-800 font-bold font-mono uppercase">Garantia Cognitiva</span>
-                    <p className="text-[11px] text-stone-600 italic">"Estude de forma ativa com a segurança de que o que você errar será revisado no tempo correto."</p>
-                  </div>
-                  <span className="inline-flex items-center px-2 py-1 bg-indigo-100 text-indigo-800 font-mono text-[9px] uppercase border border-indigo-200 rounded-none font-bold">Sincronia SRS</span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Symmetrical Bento Callout for Regions */}
-          <div className="border-2 border-[#141414] bg-white p-6 sm:p-8 shadow-[6px_6px_0px_0px_rgba(20,20,20,1)] flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="space-y-2 text-center md:text-left">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-[#D44E3D] font-bold block">⚡ EXCLUSIVIDADE MEDINTERNATO</span>
-              <h3 className="font-serif italic text-xl sm:text-2xl font-bold text-neutral-900">Seu Planejamento Inteligente calibrado por Região</h3>
-              <p className="text-xs text-neutral-500 font-sans max-w-2xl">
-                Seja para o <strong>Centro-Oeste</strong> (UFG, UnB, SES-DF, SES-GO), as grandes bancas <strong>Paulistas</strong> (USP, UNICAMP, SUS-SP) ou provas <strong>Nacionais</strong> (ENARE, AMRIGS), nosso algoritmo recalibra o peso e a prioridade das matérias do seu cronograma para maximizar sua nota.
-              </p>
-            </div>
-            <button
-              onClick={onLogin}
-              className="px-6 py-3 bg-[#141414] hover:bg-neutral-850 text-[#E4E3E0] font-mono text-xs font-bold uppercase tracking-wider shrink-0 shadow-[4px_4px_0px_0px_rgba(20,20,20,0.15)] hover:translate-x-[1px] hover:translate-y-[1px] transition-all cursor-pointer rounded-none border-transparent"
-            >
-              Começar Estudos Inteligentes
-            </button>
-          </div>
-
         </div>
       </section>
 
@@ -1746,7 +1515,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
       <section className="py-16 sm:py-24 bg-neutral-100 border-t-2 border-[#141414] px-4 sm:px-8">
         <div className="max-w-7xl mx-auto space-y-14">
           
-          <div className="text-center max-w-xl mx-auto space-y-3">
+          <div className="text-center max-w-2xl mx-auto space-y-3">
             <span className="font-mono text-[9px] uppercase tracking-widest text-indigo-600 font-bold">Faturamento Transparente & Sem Pegadinhas</span>
             <h2 className="font-serif italic text-3xl sm:text-4xl font-extrabold text-[#141414]">
               Planos desenhados para cada fase da sua jornada
@@ -1754,6 +1523,21 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
             <p className="text-neutral-600 text-xs sm:text-sm font-sans max-w-lg mx-auto">
               Sem taxas escondidas ou cláusulas de fidelização. Escolha a modalidade ideal e troque de plano quando quiser.
             </p>
+
+            {/* Pix & No Credit Card Notice */}
+            <div className="pt-2">
+              <div className="inline-flex flex-wrap items-center justify-center gap-3 sm:gap-4 bg-emerald-50 border-2 border-[#141414] px-4 py-2.5 shadow-[3px_3px_0px_0px_rgba(20,20,20,1)] text-xs font-mono font-bold text-emerald-950">
+                <span className="flex items-center gap-1.5 text-emerald-900">
+                  <CreditCard size={15} className="text-emerald-700" />
+                  Não precisa de cartão de crédito
+                </span>
+                <span className="hidden sm:inline text-emerald-400 font-normal">|</span>
+                <span className="flex items-center gap-1.5 text-emerald-900">
+                  <QrCode size={15} className="text-emerald-700" />
+                  Pagamento via Pix liberado na hora
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Detailed Plan Explanatory Cards Grid */}
@@ -1831,7 +1615,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                 </div>
 
                 <button
-                  onClick={onLogin}
+                  onClick={() => onLogin()}
                   className="w-full py-2.5 bg-[#141414] hover:bg-neutral-800 text-white font-mono text-xs font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] transition-all cursor-pointer text-center"
                 >
                   Entrar Grátis
@@ -1895,7 +1679,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                 </div>
 
                 <button
-                  onClick={onLogin}
+                  onClick={() => onLogin('med_revise_pro')}
                   className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-mono text-xs font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] border border-black transition-all cursor-pointer text-center"
                 >
                   Assinar Pro (R$ 19,90)
@@ -1959,7 +1743,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                 </div>
 
                 <button
-                  onClick={onLogin}
+                  onClick={() => onLogin('med_internato_premium')}
                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] border border-black transition-all cursor-pointer text-center"
                 >
                   Assinar Premium (R$ 39,90)
@@ -2027,7 +1811,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                 </div>
 
                 <button
-                  onClick={onLogin}
+                  onClick={() => onLogin('combo_ouro')}
                   className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-neutral-950 font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0px_0px_rgba(245,158,11,0.5)] border border-amber-400 transition-all cursor-pointer text-center"
                 >
                   Assinar Combo (R$ 49,90) 👑
@@ -2150,7 +1934,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                       <td className="p-4 font-mono text-[10px] uppercase font-black text-neutral-800">Pronto para começar?</td>
                       <td className="p-4 text-center bg-neutral-100/40">
                         <button
-                          onClick={onLogin}
+                          onClick={() => onLogin()}
                           className="w-full py-2 bg-white hover:bg-neutral-100 text-neutral-800 font-mono text-[9px] font-bold uppercase tracking-wider border border-[#141414] shadow-[1.5px_1.5px_0px_0px_rgba(20,20,20,1)] transition-all cursor-pointer text-center"
                         >
                           Entrar Grátis
@@ -2158,7 +1942,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                       </td>
                       <td className="p-4 text-center bg-blue-50/10">
                         <button
-                          onClick={onLogin}
+                          onClick={() => onLogin('med_revise_pro')}
                           className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-mono text-[9px] font-bold uppercase tracking-wider shadow-[1.5px_1.5px_0px_0px_rgba(20,20,20,1)] border border-black transition-all cursor-pointer text-center"
                         >
                           Assinar Pro (R$ 19,90)
@@ -2166,7 +1950,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                       </td>
                       <td className="p-4 text-center bg-emerald-50/10">
                         <button
-                          onClick={onLogin}
+                          onClick={() => onLogin('med_internato_premium')}
                           className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-[9px] font-bold uppercase tracking-wider shadow-[1.5px_1.5px_0px_0px_rgba(20,20,20,1)] border border-black transition-all cursor-pointer text-center"
                         >
                           Assinar Premium (R$ 39,90)
@@ -2174,7 +1958,7 @@ export default function LandingPage({ onLogin, onGuestLogin, loginError, onClear
                       </td>
                       <td className="p-4 text-center bg-[#141414]">
                         <button
-                          onClick={onLogin}
+                          onClick={() => onLogin('combo_ouro')}
                           className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-neutral-950 font-mono text-[9px] font-black uppercase tracking-wider shadow-[1.5px_1.5px_0px_0px_rgba(245,158,11,1)] border border-amber-400 transition-all cursor-pointer text-center"
                         >
                           Assinar Combo (R$ 49,90) 👑

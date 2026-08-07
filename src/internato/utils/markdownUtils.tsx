@@ -1782,7 +1782,7 @@ export function parseMarkdownAlerts(text: string): string {
   return processed;
 }
 
-const slugify = (text: string): string => {
+export const slugify = (text: string): string => {
   return text
     .toString()
     .toLowerCase()
@@ -1792,6 +1792,100 @@ const slugify = (text: string): string => {
     .replace(/\s+/g, '-')
     .replace(/[^\w\-]+/g, '')
     .replace(/\-\-+/g, '-');
+};
+
+export const syncSummaryTableOfContents = (content: string): string => {
+  if (!content || !content.trim()) return content;
+
+  const lines = content.split('\n');
+  const headings: { title: string; slug: string; level: number }[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('## ')) {
+      const headingText = trimmed.replace(/^##\s+/, '').trim();
+      const lower = headingText.toLowerCase();
+      if (
+        !lower.includes('sumário') &&
+        !lower.includes('sumario') &&
+        !lower.includes('índice') &&
+        !lower.includes('indice')
+      ) {
+        if (headingText) {
+          const cleanTitle = headingText.replace(/[*_~`]/g, '').trim();
+          headings.push({
+            title: cleanTitle,
+            slug: slugify(cleanTitle),
+            level: 2
+          });
+        }
+      }
+    } else if (
+      trimmed.startsWith('### 🧬 Aprofundamento') ||
+      trimmed.startsWith('### Aprofundamento') ||
+      trimmed.startsWith('### 💬 Preceptor') ||
+      trimmed.startsWith('### 💬 Dúvida') ||
+      trimmed.startsWith('### 💬 Esclarecimento')
+    ) {
+      const headingText = trimmed.replace(/^###\s+/, '').trim();
+      if (headingText) {
+        const cleanTitle = headingText.replace(/[*_~`]/g, '').trim();
+        headings.push({
+          title: cleanTitle,
+          slug: slugify(cleanTitle),
+          level: 3
+        });
+      }
+    }
+  }
+
+  if (headings.length === 0) return content;
+
+  // Build the unified SUMÁRIO DE NAVEGAÇÃO markdown block
+  let sumarioBlock = `## SUMÁRIO DE NAVEGAÇÃO\n\n`;
+  headings.forEach((h) => {
+    const prefix = h.level === 3 ? `  - ` : `- `;
+    sumarioBlock += `${prefix}[${h.title}](#${h.slug})\n`;
+  });
+  sumarioBlock += `\n---\n`;
+
+  // Find existing SUMÁRIO DE NAVEGAÇÃO header
+  const sumarioHeaderRegex = /(?:^|\n)#+\s*(SUMÁRIO\s*DE\s*NAVEGAÇÃO|SUMÁRIO|SUMARIO|ÍNDICE|INDICE)/i;
+  const match = content.match(sumarioHeaderRegex);
+
+  if (match && match.index !== undefined) {
+    const startIndex = match.index === 0 ? 0 : match.index + 1;
+    const searchFrom = startIndex + match[0].length;
+    
+    // Look for the next ## heading that is not a sumário heading
+    const rest = content.substring(searchFrom);
+    const chapterHeadingMatch = rest.match(/\n##\s+(?!(SUMÁRIO|SUMARIO|ÍNDICE|INDICE))/i);
+
+    if (chapterHeadingMatch && chapterHeadingMatch.index !== undefined) {
+      const endIndex = searchFrom + chapterHeadingMatch.index;
+      const topPart = content.substring(0, startIndex).trimEnd();
+      const bottomPart = content.substring(endIndex).trimStart();
+      return `${topPart}\n\n${sumarioBlock}\n\n${bottomPart}`;
+    }
+  }
+
+  // If no existing sumário block was found or no subsequent chapter heading matched, insert after main title
+  const firstHrIndex = content.indexOf('\n---\n');
+  if (firstHrIndex !== -1) {
+    const top = content.substring(0, firstHrIndex + 5);
+    const rest = content.substring(firstHrIndex + 5);
+    return `${top}\n\n${sumarioBlock}\n\n${rest.trim()}`;
+  } else {
+    const firstH1Index = content.indexOf('\n# ');
+    if (firstH1Index !== -1) {
+      const nextLine = content.indexOf('\n', firstH1Index + 1);
+      const top = content.substring(0, nextLine);
+      const rest = content.substring(nextLine);
+      return `${top}\n\n---\n\n${sumarioBlock}\n\n${rest.trim()}`;
+    } else {
+      return `${sumarioBlock}\n\n${content}`;
+    }
+  }
 };
 
 const getParagraphText = (node: any): string => {

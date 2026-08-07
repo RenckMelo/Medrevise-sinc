@@ -93,6 +93,21 @@ export default function App() {
     }
   }, [user, loading]);
 
+  // Redirect to Profile page and select plan if clicked from Landing Page
+  useEffect(() => {
+    if (user && !loading) {
+      const targetPlan = localStorage.getItem('redirect_target_plan');
+      if (targetPlan) {
+        localStorage.removeItem('redirect_target_plan');
+        if (!profile?.isPremium) {
+          localStorage.setItem('profile_auto_select_plan', targetPlan);
+          setActiveTab('profile');
+          window.dispatchEvent(new CustomEvent('auto-select-plan', { detail: targetPlan }));
+        }
+      }
+    }
+  }, [user, loading, profile]);
+
   // Listener to start tour manually at any point
   useEffect(() => {
     const handleStartTour = () => {
@@ -219,7 +234,10 @@ export default function App() {
 
   console.log("App Render - Loading:", loading, "User:", user?.uid);
 
-  const handleLogin = async () => {
+  const handleLogin = async (targetPlan?: string) => {
+    if (targetPlan) {
+      localStorage.setItem('redirect_target_plan', targetPlan);
+    }
     setLoginError(null);
     try {
       await signInWithPopup(auth, googleProvider);

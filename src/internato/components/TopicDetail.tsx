@@ -17,7 +17,7 @@ import { generateTopicContent, generateQuestions, generateFlashcards, Generation
 import { db, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc } from '../firebase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { markdownComponents, parseMarkdownAlerts, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml } from '../utils/markdownUtils';
+import { markdownComponents, parseMarkdownAlerts, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml, syncSummaryTableOfContents } from '../utils/markdownUtils';
 import { safeLocalStorageGet, safeLocalStorageSet, safeLocalStorageRemove } from '../utils/storageUtils';
 import { calculateNextReview } from '../../utils/srs';
 import SummaryGenerationWizard from './SummaryGenerationWizard';
@@ -3014,8 +3014,24 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
   }, [isGenerating]);
 
   useEffect(() => {
-    setCurrentContent(sanitizeMarkdown(getActiveContentByDepth(depth)));
+    const raw = getActiveContentByDepth(depth);
+    if (raw && raw.trim()) {
+      const sanitized = sanitizeMarkdown(raw);
+      const synced = syncSummaryTableOfContents(sanitized);
+      setCurrentContent(synced);
+    } else {
+      setCurrentContent('');
+    }
   }, [depth, topic]);
+
+  useEffect(() => {
+    if (currentContent && currentContent.trim().length > 50) {
+      const synced = syncSummaryTableOfContents(currentContent);
+      if (synced !== currentContent) {
+        setCurrentContent(synced);
+      }
+    }
+  }, [currentContent]);
 
   const checkCreditsSufficient = (requiredCredits: number): boolean => {
     if (globalQuota && globalQuota.available < requiredCredits) {
@@ -3207,7 +3223,12 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     }
   };
 
-  const handleGenerateAI = async () => {
+  const handleGenerateAI = async (overrideConfig?: any) => {
+    const targetDepth = (overrideConfig?.depth || depth) as GenerationDepth;
+    const targetIllLvl = overrideConfig?.illustrationLevel || illustrationLevel;
+    const targetAlertLvl = overrideConfig?.alertBoxLevel || alertBoxLevel;
+    const targetRef = overrideConfig?.referencePref || referencePref;
+
     const costMap = {
       standard: 1,
       deep: 5,
@@ -3215,8 +3236,8 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
       master: 50,
       monograph: 100
     };
-    const base = costMap[depth] || 1;
-    const requiredCredits = Math.max(1, base + calculateExtraCredits(illustrationLevel, alertBoxLevel));
+    const base = costMap[targetDepth as keyof typeof costMap] || 1;
+    const requiredCredits = Math.max(1, base + calculateExtraCredits(targetIllLvl, targetAlertLvl));
     if (!checkCreditsSufficient(requiredCredits)) {
       return;
     }
@@ -3225,20 +3246,20 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     setGenerationStatus('Iniciando...');
     const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
     
-    if (depth === 'monograph') {
+    if (targetDepth === 'monograph') {
       setMonographProgress({ current: 0, total: 11, message: 'Preparando motor de elite...' });
-    } else if (depth === 'master') {
+    } else if (targetDepth === 'master') {
       setMonographProgress({ current: 0, total: 4, message: 'Preparando preceptor médico...' });
     }
 
     try {
-      const content = await generateTopicContent(topic.title, subjectName, referencePref, userId, depth, (prog) => {
+      const content = await generateTopicContent(topic.title, subjectName, targetRef, userId, targetDepth, (prog) => {
         setMonographProgress(prog);
         setGenerationStatus(prog.message);
         if (prog.partialContent) {
           setCurrentContent(sanitizeMarkdown(prog.partialContent));
         }
-      }, illustrationLevel, alertBoxLevel);
+      }, targetIllLvl, targetAlertLvl);
       
       if (content) {
         const sanitized = sanitizeMarkdown(content);
@@ -3248,23 +3269,17 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
         const updateFields: any = {
           lastUpdated: new Date().toISOString()
         };
-        if (depth === 'standard') {
-          updateFields.content_standard = sanitized;
+        const fieldName = `content_${targetDepth}`;
+        updateFields[fieldName] = sanitized;
+        if (targetDepth === 'standard') {
           updateFields.content = sanitized; // Legacy support
-        } else if (depth === 'deep') {
-          updateFields.content_deep = sanitized;
-        } else if (depth === 'elite') {
-          updateFields.content_elite = sanitized;
-        } else if (depth === 'master') {
-          updateFields.content_master = sanitized;
-        } else if (depth === 'monograph') {
-          updateFields.content_monograph = sanitized;
         }
 
         // Update in Firestore
         await updateDoc(getTopicDocRef(), updateFields);
         const updated = { ...topic, ...updateFields };
         setLocalTopic(updated);
+        setDepth(targetDepth);
         if (onTopicUpdate) {
           onTopicUpdate(updated);
         }
@@ -5195,35 +5210,7 @@ th { background: #F8F7F4; font-weight: bold; }
                   Caderno
                 </Button>
 
-                <Button 
-                  variant="ghost"
-                  onClick={() => setIsPenModeActive(!isPenModeActive)}
-                  disabled={isPlaceholder}
-                  className={cn(
-                    "h-8 px-3 rounded-xl text-[10.5px] font-bold uppercase tracking-wider transition-all disabled:opacity-40 border",
-                    isPenModeActive 
-                      ? "bg-[#D44E3D] text-white border-[#D44E3D] shadow-sm font-extrabold" 
-                      : "bg-white border-[#E2E0D9] hover:bg-[#F3F1EC] text-[#2C2B29]"
-                  )}
-                >
-                  <PenTool className="w-3.5 h-3.5 mr-1.5" />
-                  {isPenModeActive ? 'Caneta Ativa' : 'Caneta Inteligente'}
-                </Button>
 
-                <Button 
-                  variant="ghost"
-                  onClick={() => setShowDrawings(!showDrawings)}
-                  disabled={isPlaceholder}
-                  className={cn(
-                    "h-8 px-3 rounded-xl text-[10.5px] font-bold uppercase tracking-wider transition-all disabled:opacity-40 border",
-                    showDrawings 
-                      ? "bg-amber-100/60 text-amber-900 border-amber-300/80 font-extrabold" 
-                      : "bg-white border-[#E2E0D9] hover:bg-[#F3F1EC] text-[#2C2B29]"
-                  )}
-                >
-                  {showDrawings ? <Eye className="w-3.5 h-3.5 mr-1.5 text-amber-700" /> : <EyeOff className="w-3.5 h-3.5 mr-1.5 text-stone-400" />}
-                  {showDrawings ? 'Marcações Visíveis' : 'Marcações Ocultas'}
-                </Button>
               </div>
             </div>
           </div>
@@ -7244,28 +7231,7 @@ th { background: #F8F7F4; font-weight: bold; }
                     <Notebook className="w-4 h-4 mr-2" />
                     {showNotebook ? 'Ocultar Caderno' : 'Ver Caderno'}
                   </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => setIsPenModeActive(!isPenModeActive)}
-                    className={cn(
-                      "text-[10px] uppercase tracking-widest font-bold h-10 px-4 rounded-xl transition-all",
-                      isPenModeActive ? "bg-[#D44E3D] text-white border-[#D44E3D] hover:bg-[#D44E3D]/95 hover:text-white" : "bg-white hover:bg-[#FBFBFA]"
-                    )}
-                  >
-                    <PenTool className="w-4 h-4 mr-2" />
-                    {isPenModeActive ? 'Caneta Ativa' : 'Caneta Inteligente'}
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => setShowDrawings(!showDrawings)}
-                    className={cn(
-                      "text-[10px] uppercase tracking-widest font-bold h-10 px-4 rounded-xl transition-all",
-                      showDrawings ? "bg-[#FEF08A]/10 text-stone-700 border-[#FEF08A]/30 hover:bg-[#FEF08A]/20" : "bg-white hover:bg-[#FBFBFA]"
-                    )}
-                  >
-                    {showDrawings ? <Eye className="w-4 h-4 mr-2 text-stone-600" /> : <EyeOff className="w-4 h-4 mr-2 text-stone-400" />}
-                    {showDrawings ? 'Ocultar Marcações' : 'Ver Marcações'}
-                  </Button>
+
                   <Button 
                     onClick={() => setIsExpandedViewOpen(false)}
                     className="bg-[#1A1A1A] hover:bg-black text-white text-[10px] uppercase tracking-widest font-bold h-10 px-5 rounded-xl"
@@ -8183,13 +8149,17 @@ th { background: #F8F7F4; font-weight: bold; }
                 onGenerate={(config) => {
                   setShowSummaryWizard(false);
                   setDepth(config.depth as GenerationDepth);
-                  setIllustrationLevel(config.illustrationLevel);
+                  setIllustrationLevel(config.illustrationLevel as any);
                   setAlertBoxLevel(config.alertBoxLevel);
                   if (config.referencePref) setReferencePref(config.referencePref);
                   if (config.chapters) setEditedChapters(config.chapters);
                   if (config.analysisResult) setAnalysisResult(config.analysisResult);
                   setTimeout(() => {
-                    handleGenerateCustomAnalyzedSummary(config.analysisResult, config);
+                    if (config.depth === 'custom_analyzed') {
+                      handleGenerateCustomAnalyzedSummary(config.analysisResult, config);
+                    } else {
+                      handleGenerateAI(config);
+                    }
                   }, 100);
                 }}
               />

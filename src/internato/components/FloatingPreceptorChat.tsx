@@ -55,7 +55,7 @@ export default function FloatingPreceptorChat({ availableCredits, topics, subjec
   const [messages, setMessages] = useState<Message[]>([
     {
       sender: 'preceptor',
-      text: 'Olá, futuro(a) colega! Sou seu Preceptor Médico de Plantão 24/7. Como posso ajudar com seus casos clínicos, condutas ou dúvidas de residência hoje? (Cada dúvida consome 2 créditos).',
+      text: 'Olá, futuro(a) colega! Sou seu Preceptor Médico de Plantão 24/7. Posso analisar condutas, tirar dúvidas ou gerar representações esquemáticas de exames (ECG com supra/infra, gasometrias, laudos de TC/Raio-X, hemogramas, LCR, espirometria, etc.). Como posso ajudar hoje? (Cada dúvida consome 2 créditos).',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -313,9 +313,17 @@ export default function FloatingPreceptorChat({ availableCredits, topics, subjec
 
       const prompt = `Você é um Preceptor Médico Sênior e Professor de Residência Médica especialista em provas de residência (ENARE, USP, UNICAMP, SUS-SP, UFG, UnB). Responda à dúvida do estudante de medicina de forma clínica, objetiva, baseada em diretrizes oficiais vigentes, destacando condutas imediatas, exames de escolha e pegadinhas de prova.
 
-Regras importantes de formatação:
+REGRAS DE FORMATAÇÃO E REPRESENTAÇÃO VISUAL DE EXAMES MÉDICOS:
+- Quando o estudante solicitar ou a dúvida envolver exames complementares (Eletrocardiograma, Gasometria Arterial, Hemograma, Liquor/LCR, Raio-X, Tomografia, Ecocardiograma, Espirometria, Sumário de Urina, etc.), forneça OBRIGATORIAMENTE um bloco de código estruturado contendo os parâmetros do exame. O sistema ativará automaticamente um INTERPRETADOR E SIMULADOR VISUAL DE ALTA FIDELIDADE:
+1. ELETROCARDIOGRAMAS (ECG): Gere bloco de código contendo "ECG" e dados (FC, Ritmo, Eixo, PR, QRS, QTc, Supra/Infradesnivelamento). Ativa simulador vetorial com traçado e papel milimetrado.
+2. RADIOLOGIA / IMAGEM (Raio-X, TC, RM, Ultrassom): Gere bloco de código com título do exame, achados por estrutura (Parênquima, Mediastino, Pleura) e Impressão Diagnóstica. Ativa Visualizador PACS/DICOM interativo com diagrama anatômico e janela óssea/térmica.
+3. GASOMETRIA ARTERIAL: Gere bloco de código com pH, pCO2, HCO3, PaO2, FiO2, Base Excess e Anion Gap. Ativa Balança de Davenport e Classificação Metabólica/Respiratória.
+4. HEMOGRAMA COMPLETO: Gere bloco de código com Hemoglobina (Hb), Hematócrito (Ht), VCM, HCM, Leucócitos, Bastões, Segmentados e Plaquetas. Ativa Painel Hematológico Tri-Série com classificação de anemias e leucograma.
+5. LÍQUIDO CEFALORRAQUIDIANO (LCR / LIQUOR): Gere bloco de código com Aspecto, Pressão de Abertura, Células (PMN%), Proteína e Glicose. Ativa Tubo Macroscópico e Perfil Epidemiológico de Meningites.
+6. ESPIROMETRIA: Gere bloco de código com VEF1, CVF e VEF1/CVF (Tiffeneau). Ativa Curva Fluxo-Volume vetorial e classificação de Distúrbios Obstrutivos/Restritivos.
+7. SUMÁRIO DE URINA (EAS): Gere bloco de código com Leucócitos/campo, Hemácias/campo, Nitrito e Proteínas. Ativa Painel Físico-Químico-Sedimentoscópico com rastreamento de ITU.
 - Ao citar íons, fórmulas, gases arteriais ou matemática (ex: Na⁺, HCO₃⁻, K⁺, PaO₂, pCO₂, pH), utilize notação legível bem formatada com KaTeX (ex: $\\text{Na}^+$, $\\text{HCO}_3^-$, $\\text{K}^+$, $\\ge 30\\text{ mm}$) ou símbolos médicos claros.
-- Utilize marcadores e negritos para manter a resposta ultra-legível e organizada.
+- Mantenha a resposta extremamente organizada, utilizando marcadores e negritos.
 
 Dúvida do aluno: "${userMsgText}"`;
 
@@ -496,7 +504,7 @@ Dúvida do aluno: "${userMsgText}"`;
           {/* Input Footer */}
           <div className="p-3 bg-white border-t border-stone-200 flex items-center gap-2">
             <Input
-              placeholder="Digite sua dúvida clínica (ex: Na⁺, HCO₃⁻, K⁺, conduta na FA)..."
+              placeholder="Dúvida ou solicitação de exame (ex: ECG com supra de ST, Gasometria)..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}

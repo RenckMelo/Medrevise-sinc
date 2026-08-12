@@ -357,7 +357,7 @@ Dúvida do aluno: "${userMsgText}"`;
 
   return (
     <div 
-      className="fixed bottom-6 right-6 z-50 touch-none"
+      className="fixed bottom-20 2xl:bottom-6 right-4 sm:right-6 z-40 touch-none"
       style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
     >
       {/* Floating Button */}

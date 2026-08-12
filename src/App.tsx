@@ -17,7 +17,8 @@ import {
   Sparkles,
   Link2,
   HelpCircle,
-  Lightbulb
+  Lightbulb,
+  ArrowLeftRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -301,7 +302,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-[#E4E3E0] flex text-[#141414] relative overflow-hidden">
+      <div className="h-full bg-[#E4E3E0] flex text-[#141414] relative overflow-hidden">
       {/* Mobile Overlay */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -310,14 +311,14 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-[#141414]/40 backdrop-blur-sm z-40 lg:hidden"
+            className="fixed inset-0 bg-[#141414]/40 backdrop-blur-sm z-40 2xl:hidden"
           />
         )}
       </AnimatePresence>
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 border-r border-[#141414] flex flex-col bg-white transition-transform duration-300 lg:relative lg:translate-x-0",
+        "fixed inset-y-0 left-0 z-50 w-64 border-r border-[#141414] flex flex-col bg-white transition-transform duration-300 2xl:relative 2xl:translate-x-0",
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="p-6 border-b border-[#141414] flex items-center justify-between">
@@ -325,7 +326,7 @@ export default function App() {
             <h2 className="font-serif italic text-2xl">MedRevise</h2>
             <p className="text-[10px] font-mono opacity-50 uppercase mt-1">v1.0.0-stable</p>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2">
+          <button onClick={() => setIsSidebarOpen(false)} className="2xl:hidden p-2">
             <CloseIcon size={20} />
           </button>
         </div>
@@ -462,8 +463,8 @@ export default function App() {
             </div>
           </div>
           
-          <div className="flex items-center gap-4 sm:gap-6">
-            <div className="flex items-center gap-2 sm:gap-4 mr-2" title="Total Acumulado de Estudos + Simulados">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            <div className="hidden sm:flex items-center gap-2 sm:gap-4 mr-1" title="Total Acumulado de Estudos + Simulados">
               <StatItem 
                 icon={<BarChart3 size={14} />} 
                 label="QUESTÕES" 
@@ -480,14 +481,24 @@ export default function App() {
                 setAppMode('internato');
                 localStorage.setItem('app_mode', 'internato');
               }}
-              className="flex items-center gap-2 px-3 py-1.5 border border-[#141414] bg-[#141414] text-[#E4E3E0] hover:bg-transparent hover:text-[#141414] transition-all text-[11px] font-mono font-bold tracking-wider cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 border border-[#141414] bg-[#141414] text-[#E4E3E0] hover:bg-transparent hover:text-[#141414] transition-all text-[10px] sm:text-[11px] font-mono font-bold tracking-wider cursor-pointer shrink-0 rounded-md"
             >
-              IR PARA O INTERNATO
+              <ArrowLeftRight size={12} />
+              <span className="hidden xs:inline">INTERNATO</span>
+              <span className="xs:hidden">INT</span>
+            </button>
+            <button 
+              onClick={handleLogout}
+              className="p-1.5 border border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-all text-[10px] font-mono font-bold cursor-pointer shrink-0 rounded-md flex items-center gap-1"
+              title="Sair do Sistema"
+            >
+              <LogOut size={14} />
+              <span className="hidden sm:inline">SAIR</span>
             </button>
           </div>
         </header>
 
-        <div className="p-4 lg:p-8">
+        <div className="p-4 lg:p-8 pb-28 2xl:pb-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -555,6 +566,72 @@ export default function App() {
         userEmail={user?.email}
         userId={user?.uid}
       />
+
+      {/* Mobile & Tablet Bottom Navigation Bar (< 2xl) */}
+      <div className="2xl:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-[#141414] z-50 px-1 sm:px-4 py-1.5 sm:py-2 flex items-center justify-around shadow-xl pb-safe">
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={cn(
+            "flex flex-col items-center justify-center py-1 px-1.5 sm:px-3 rounded-lg transition-all font-mono",
+            activeTab === 'dashboard' ? "text-[#141414] font-bold" : "text-stone-500 hover:text-[#141414]"
+          )}
+        >
+          <LayoutDashboard className="w-5 h-5" />
+          <span className="text-[9px] sm:text-[11px] font-bold mt-0.5 tracking-tight uppercase">Painel</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('subjects')}
+          className={cn(
+            "flex flex-col items-center justify-center py-1 px-1.5 sm:px-3 rounded-lg transition-all font-mono",
+            activeTab === 'subjects' ? "text-[#141414] font-bold" : "text-stone-500 hover:text-[#141414]"
+          )}
+        >
+          <BookOpen className="w-5 h-5" />
+          <span className="text-[9px] sm:text-[11px] font-bold mt-0.5 tracking-tight uppercase">Matérias</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('exams')}
+          className={cn(
+            "flex flex-col items-center justify-center py-1 px-1.5 sm:px-3 rounded-lg transition-all font-mono",
+            activeTab === 'exams' ? "text-[#141414] font-bold" : "text-stone-500 hover:text-[#141414]"
+          )}
+        >
+          <Award className="w-5 h-5" />
+          <span className="text-[9px] sm:text-[11px] font-bold mt-0.5 tracking-tight uppercase">Simulados</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('calendar')}
+          className={cn(
+            "flex flex-col items-center justify-center py-1 px-1.5 sm:px-3 rounded-lg transition-all font-mono",
+            activeTab === 'calendar' ? "text-[#141414] font-bold" : "text-stone-500 hover:text-[#141414]"
+          )}
+        >
+          <CalendarIcon className="w-5 h-5" />
+          <span className="text-[9px] sm:text-[11px] font-bold mt-0.5 tracking-tight uppercase">Agenda</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('stats')}
+          className={cn(
+            "flex flex-col items-center justify-center py-1 px-1.5 sm:px-3 rounded-lg transition-all font-mono",
+            activeTab === 'stats' ? "text-[#141414] font-bold" : "text-stone-500 hover:text-[#141414]"
+          )}
+        >
+          <BarChart3 className="w-5 h-5" />
+          <span className="text-[9px] sm:text-[11px] font-bold mt-0.5 tracking-tight uppercase">Métricas</span>
+        </button>
+
+        <button
+          onClick={() => setIsSidebarOpen(true)}
+          className="flex flex-col items-center justify-center py-1 px-1.5 sm:px-3 rounded-lg transition-all font-mono text-stone-500 hover:text-[#141414]"
+        >
+          <Menu className="w-5 h-5" />
+          <span className="text-[9px] sm:text-[11px] font-bold mt-0.5 tracking-tight uppercase">Menu</span>
+        </button>
+      </div>
     </div>
     </ErrorBoundary>
   );

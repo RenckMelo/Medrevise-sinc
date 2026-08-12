@@ -42,7 +42,8 @@ import { recordUsage, importPdfSchedule, analyzeSummaryNeeds } from '../services
 import { extractTextFromPdf } from '../utils/pdfExtractor';
 import { safeLocalStorageSet } from '../utils/storageUtils';
 import { MEDICAL_EXAMS_DB, GLOBAL_RESIDENCY_TOPICS, CANONICAL_SUBTOPICS_MAP } from '../data/medicalExams';
-import { generatePlan, StudyPlanTopic, StudyPlanWeek, calculateCoverage } from '../utils/scheduleGenerator';
+import { generatePlan, generateCollegeCustomPlan, StudyPlanTopic, StudyPlanWeek, calculateCoverage } from '../utils/scheduleGenerator';
+import SchedulePlannerWizard from './SchedulePlannerWizard';
 
 interface CronogramaProps {
   user: any;
@@ -646,6 +647,7 @@ export default function Cronograma({
   };
   
   // Config Form States
+  const [showPlannerWizard, setShowPlannerWizard] = useState<boolean>(false);
   const [selectedRegionFilter, setSelectedRegionFilter] = useState<string>('todos');
   const [selectedExamId, setSelectedExamId] = useState<string>('ses-df');
   const [modality, setModality] = useState<'6meses' | '1ano' | '2anos' | 'dynamic'>('6meses');
@@ -1339,8 +1341,16 @@ export default function Cronograma({
         try {
           const calendarEventsRef = collection(db, 'users', user.uid, 'calendarEvents');
           const existingSnap = await getDocs(calendarEventsRef);
-          const deletePromises = existingSnap.docs.map(docSnap => deleteDoc(docSnap.ref));
-          await Promise.all(deletePromises);
+          const docsToDelete = existingSnap.docs.filter(d => {
+            const data = d.data();
+            return data.isCronograma && (data.scheduleId === schedule.id || !data.scheduleId);
+          });
+          for (let i = 0; i < docsToDelete.length; i += 400) {
+            const chunk = docsToDelete.slice(i, i + 400);
+            const batch = writeBatch(db);
+            chunk.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
         } catch (cleanErr) {
           console.warn('Notice cleaning previous calendar events:', cleanErr);
         }
@@ -1471,27 +1481,24 @@ export default function Cronograma({
         });
       }
 
-      // Save to Firebase in calendarEvents collection with deduplication
+      // Save to Firebase in calendarEvents collection with precise position deduplication
       const calendarEventsRef = collection(db, 'users', user.uid, 'calendarEvents');
       const existingSnap = await getDocs(calendarEventsRef);
       const existingEventsMap = new Map<string, string>(); // key -> docId
 
       existingSnap.docs.forEach(d => {
         const data = d.data();
-        // Unique key based on title/topic and date substring (YYYY-MM-DD)
-        const dateKey = data.start ? String(data.start).substring(0, 10) : '';
+        if (data.isCronograma && data.scheduleId === schedule.id) {
+          if (data.cronogramaWeekIdx !== undefined && data.cronogramaDayAbbr !== undefined && data.cronogramaTopicIdx !== undefined) {
+            existingEventsMap.set(`pos_${data.scheduleId}_w${data.cronogramaWeekIdx}_d${data.cronogramaDayAbbr}_t${data.cronogramaTopicIdx}`, d.id);
+          } else if (data.isMockExam) {
+            existingEventsMap.set(`pos_${data.scheduleId}_w${data.cronogramaWeekIdx}_mock_${data.isMonthlyMockExam ? 'monthly' : 'weekly'}`, d.id);
+          }
+        }
         const titleKey = (data.cronogramaTopicTitle || data.title || '').toLowerCase().trim();
-        const subjectKey = (data.subjectId || '').toLowerCase().trim();
-        
+        const dateKey = data.start ? String(data.start).substring(0, 10) : '';
         if (titleKey && dateKey) {
-          existingEventsMap.set(`${titleKey}___${dateKey}`, d.id);
-        }
-        if (data.isCronograma && data.scheduleId && data.cronogramaTopicTitle) {
-          existingEventsMap.set(`cron_${data.scheduleId}_${titleKey}`, d.id);
-        }
-        // Deduplicate revision events for same subject & date
-        if (titleKey.includes('revisã') || titleKey.includes('revisao')) {
-          existingEventsMap.set(`rev_${subjectKey}_${dateKey}`, d.id);
+          existingEventsMap.set(`exact_${titleKey}___${dateKey}`, d.id);
         }
       });
 
@@ -1502,14 +1509,14 @@ export default function Cronograma({
         const item = eventsToCreate[i];
         const dateKey = item.start ? String(item.start).substring(0, 10) : '';
         const titleKey = (item.cronogramaTopicTitle || item.title || '').toLowerCase().trim();
-        const subjectKey = (item.subjectId || '').toLowerCase().trim();
 
-        const exactKey = `${titleKey}___${dateKey}`;
-        const cronKey = `cron_${item.scheduleId}_${titleKey}`;
-        const isRev = titleKey.includes('revisã') || titleKey.includes('revisao');
-        const revKey = isRev ? `rev_${subjectKey}_${dateKey}` : '';
+        const posKey = item.isMockExam
+          ? `pos_${item.scheduleId}_w${item.cronogramaWeekIdx}_mock_${item.isMonthlyMockExam ? 'monthly' : 'weekly'}`
+          : `pos_${item.scheduleId}_w${item.cronogramaWeekIdx}_d${item.cronogramaDayAbbr}_t${item.cronogramaTopicIdx}`;
+        
+        const exactKey = `exact_${titleKey}___${dateKey}`;
 
-        const existingDocId = existingEventsMap.get(exactKey) || existingEventsMap.get(cronKey) || (isRev ? existingEventsMap.get(revKey) : undefined);
+        const existingDocId = existingEventsMap.get(posKey) || existingEventsMap.get(exactKey);
 
         if (existingDocId) {
           // Update existing event instead of creating a duplicate
@@ -1518,9 +1525,8 @@ export default function Cronograma({
         } else {
           // Add new event
           const newDocRef = await addDoc(calendarEventsRef, item);
+          existingEventsMap.set(posKey, newDocRef.id);
           existingEventsMap.set(exactKey, newDocRef.id);
-          existingEventsMap.set(cronKey, newDocRef.id);
-          if (isRev) existingEventsMap.set(revKey, newDocRef.id);
           addedCount++;
         }
 
@@ -1953,6 +1959,132 @@ export default function Cronograma({
     } catch (e) {
       console.error("Erro ao gerar cronograma:", e);
       showToast("Houve um erro técnico ao gerar o cronograma. Tente novamente.", "error");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleWizardGenerateSchedule = async (config: {
+    planType: 'college_only' | 'residency_only' | 'hybrid';
+    collegeCustomTopics: string[];
+    selectedExamId: string;
+    modality: '6meses' | '1ano' | '2anos' | 'dynamic' | 'college_custom';
+    studyDays: string[];
+    hoursPerDay: number;
+    startDate: string;
+    examDate?: string;
+    weeksDuration: number;
+    revisionStrategy: 'spaced' | 'weekly' | 'exam';
+    currentSemesterSubjects: string[];
+    onlyCurrentSemester: boolean;
+    generatedWeeks: any[];
+    totals: {
+      topicsCount: number;
+      revisionsCount: number;
+      sessionsCount: number;
+    };
+  }) => {
+    try {
+      setGenerating(true);
+      let mappedWeeks: StudyPlanWeek[] = [];
+      let examName = 'Planejamento da Faculdade';
+
+      if (config.planType === 'college_only') {
+        const res = generateCollegeCustomPlan(
+          config.collegeCustomTopics,
+          config.studyDays,
+          config.hoursPerDay,
+          config.startDate,
+          config.weeksDuration,
+          config.revisionStrategy,
+          config.examDate
+        );
+        mappedWeeks = res.weeks;
+        examName = 'Conteúdo da Faculdade';
+      } else {
+        const examData = MEDICAL_EXAMS_DB.find(e => e.id === config.selectedExamId) || MEDICAL_EXAMS_DB[0];
+        examName = examData.name;
+        mappedWeeks = generatePlan(
+          config.selectedExamId,
+          config.modality,
+          config.studyDays,
+          config.hoursPerDay,
+          config.currentSemesterSubjects,
+          config.examDate,
+          config.startDate,
+          config.onlyCurrentSemester
+        );
+      }
+
+      mappedWeeks = mappedWeeks.map(w => {
+        const updatedDays = { ...w.days };
+        Object.keys(updatedDays).forEach(day => {
+          updatedDays[day] = updatedDays[day].map(t => {
+            const titleStr = t?.title || '';
+            const canonicalTitle = t?.type === 'revisao' && titleStr.startsWith('Revisão Ativa + Flashcards: ')
+              ? titleStr.replace('Revisão Ativa + Flashcards: ', '')
+              : titleStr;
+            const found = findMatchingTopic(canonicalTitle, topics);
+            const hasRecordedStudy = found ? !!(
+              found.completed === true ||
+              (typeof found.repetitions === 'number' && found.repetitions > 0) ||
+              (found.lastReviewDate && typeof found.lastReviewDate === 'string' && found.lastReviewDate.trim().length > 0)
+            ) : false;
+
+            const done = t?.type === 'revisao'
+              ? (found ? (typeof found.repetitions === 'number' && found.repetitions >= 2) : false)
+              : hasRecordedStudy;
+
+            return {
+              ...t,
+              isCompleted: done
+            };
+          });
+        });
+        return {
+          ...w,
+          days: updatedDays
+        };
+      });
+
+      let totalTopicsCount = 0;
+      let completedCount = 0;
+      mappedWeeks.forEach(w => {
+        Object.values(w.days).forEach(arr => {
+          arr.forEach(t => {
+            totalTopicsCount++;
+            if (t.isCompleted) completedCount++;
+          });
+        });
+      });
+      const initialProgress = totalTopicsCount > 0 ? Math.round((completedCount / totalTopicsCount) * 100) : 0;
+      const initialCoverage = calculateCoverage(mappedWeeks, config.selectedExamId || 'ebserh');
+
+      const newSchedule: Omit<StudySchedule, 'id'> & { startDate?: string; collegeSelectedTopics?: string[] } = {
+        exam: examName,
+        modality: config.modality,
+        studyDays: config.studyDays,
+        hoursPerDay: config.hoursPerDay,
+        weeks: mappedWeeks,
+        createdAt: new Date().toISOString(),
+        startDate: config.startDate,
+        progress: initialProgress,
+        coveragePercentage: initialCoverage,
+        currentSemesterSubjects: config.currentSemesterSubjects,
+        collegeSelectedTopics: config.collegeCustomTopics,
+        examDate: config.examDate || null
+      };
+
+      const created: StudySchedule = { id: 'preview_temp', ...newSchedule } as StudySchedule;
+      setPreviewSchedule(created);
+      setPreviewWeeksCount(created.weeks.length);
+      setShowPlannerWizard(false);
+      setActiveTab('plan');
+      showToast("Planejamento personalizado gerado com sucesso! Confirme a ativação.", "success");
+
+    } catch (e) {
+      console.error("Erro ao gerar cronograma via assistente:", e);
+      showToast("Erro ao gerar planejamento. Tente novamente.", "error");
     } finally {
       setGenerating(false);
     }
@@ -4863,14 +4995,14 @@ export default function Cronograma({
                                             profile?.role === 'admin' || 
                                             profile?.email === 'lucas1renck2melo@gmail.com';
                     if (isCompletePlan) {
-                      setActiveTab('config');
+                      setShowPlannerWizard(true);
                     } else {
                       showToast("Esta funcionalidade de manter até dois cronogramas ativos simultaneamente é exclusiva do Plano Completo (Combo Ouro).", "error");
                     }
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D44E3D]/10 hover:bg-[#D44E3D]/20 text-[#D44E3D] text-[11px] font-bold rounded-lg border border-[#D44E3D]/20 transition-all cursor-pointer shadow-3xs"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-stone-900 to-[#141414] hover:from-black hover:to-stone-900 text-amber-300 text-[11px] font-bold rounded-lg border border-amber-500/30 shadow-xs transition-all cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5 fill-[#D44E3D]/10" />
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                   <span>➕ Novo Cronograma</span>
                   {!(profile?.planType === 'combo_ouro' || profile?.isLifetimePremium || profile?.role === 'admin' || profile?.email === 'lucas1renck2melo@gmail.com') && (
                     <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.2 rounded-sm uppercase tracking-wider scale-90 font-mono">PRO</span>
@@ -8216,6 +8348,27 @@ export default function Cronograma({
 
               <CardContent className="p-6 space-y-6">
                 
+                {/* PROMINENT ASSISTANT WIZARD BANNER */}
+                <div className="bg-gradient-to-r from-stone-900 via-[#1C1C1C] to-stone-900 border border-amber-500/30 p-4.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-white shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30 shrink-0">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-300 font-mono uppercase tracking-wider">Assistente Passo a Passo de Planejamento</h4>
+                      <p className="text-[11px] text-stone-300">
+                        Crie seu cronograma guiado com suporte a ementas da faculdade, cálculo de matérias e contagem total de temas e revisões.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => setShowPlannerWizard(true)}
+                    className="bg-amber-500 hover:bg-amber-600 text-stone-950 font-extrabold text-xs px-4 py-2.5 rounded-xl shrink-0 shadow-xs cursor-pointer"
+                  >
+                    <span>🧙‍♂️ Iniciar Assistente Guiado</span>
+                  </Button>
+                </div>
+                
                 {/* PDF IMPORT OPTION BEFORE GENERATING */}
                 {profile?.email === 'lucas1renck2melo@gmail.com' && (
                   <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
@@ -9244,6 +9397,18 @@ export default function Cronograma({
           </div>
         </div>
       )}
+
+      {/* SCHEDULE PLANNER WIZARD MODAL */}
+      <AnimatePresence>
+        {showPlannerWizard && (
+          <SchedulePlannerWizard
+            onGenerateSchedule={handleWizardGenerateSchedule}
+            onCancel={() => setShowPlannerWizard(false)}
+            availableCredits={availableCredits}
+            isGenerating={generating}
+          />
+        )}
+      </AnimatePresence>
 
       {/* CUSTOM ANIMATED TOAST */}
       <AnimatePresence>

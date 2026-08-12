@@ -286,16 +286,21 @@ export function generatePlan(
   const totalSlots = totalWeeks * studyDays.length;
   const slotsCount = Math.max(1, totalSlots);
 
-  // Determine ideal workload topics per day based on study hours available (dense coverage: 1 topic every 1.5 - 2 hours is highly intensive!)
+  // Determine ideal workload topics per day based on study hours available (humane coverage: ~1.5 - 2h per new topic)
   const hoursBasedTopicsPerDay = 
     hoursPerDay <= 2 ? 1 : 
     hoursPerDay <= 4 ? 2 : 
-    hoursPerDay <= 6 ? 3 : 
-    hoursPerDay <= 8 ? 4 : 5;
+    hoursPerDay <= 6 ? 2 : 
+    hoursPerDay <= 8 ? 3 : 4;
 
-  // Make sure we schedule enough topics per day to at least cover the entire curriculum over totalWeeks
+  const maxTopicsCap = 
+    hoursPerDay <= 2 ? 1 : 
+    hoursPerDay <= 4 ? 2 : 
+    hoursPerDay <= 6 ? 2 : 3;
+
+  // Make sure we schedule enough topics per day to cover curriculum without exceeding humane daily limits
   const minRequiredTopicsPerDay = Math.ceil(masterTopicQueue.length / slotsCount);
-  const finalTopicsPerDay = Math.max(minRequiredTopicsPerDay, hoursBasedTopicsPerDay);
+  const finalTopicsPerDay = Math.min(maxTopicsCap, Math.max(1, Math.min(minRequiredTopicsPerDay, hoursBasedTopicsPerDay)));
 
   let topicPointer = 0;
   const getNextTopicFromQueue = (): FlatTopic => {
@@ -511,3 +516,455 @@ export function calculateCoverage(weeks: StudyPlanWeek[], examIdOrName: string):
 
   return totalSum > 0 ? Math.min(100, Math.round((coveredSum / totalSum) * 100)) : 100;
 }
+
+export interface TopicDetailItem {
+  cleanTitle: string;
+  subjectName: string;
+  initialStudy: { weekNumber: number; dayName: string; dayIndex: number } | null;
+  revisions: Array<{ name: string; weekNumber: number; dayName: string; dayIndex: number }>;
+  lastActivityDayIndex: number;
+  daysUntilExam: number;
+  estimatedRetention: number; // 0 to 100
+  retentionStatus: 'excelente' | 'bom' | 'atencao';
+  retentionNote: string;
+  totalSessions: number;
+  timeFormatted: string;
+}
+
+export function generateCollegeCustomPlan(
+  rawTopicsList: string[],
+  studyDays: string[],
+  hoursPerDay: number,
+  startDate?: string,
+  weeksDuration: number = 12,
+  revisionStrategy: 'spaced' | 'weekly' | 'exam' = 'spaced',
+  examDate?: string
+): {
+  weeks: StudyPlanWeek[];
+  totalTopicsCount: number;
+  totalRevisionsCount: number;
+  totalSessionsCount: number;
+  retentionStats: {
+    averageRetention: number;
+    highRetentionCount: number;
+    mediumRetentionCount: number;
+    lowRetentionCount: number;
+  };
+  smartSuggestion: string | null;
+  topicDetails: TopicDetailItem[];
+} {
+  const cleanTopics = rawTopicsList
+    .map(t => t.trim())
+    .filter(t => t.length > 0);
+
+  if (cleanTopics.length === 0) {
+    return {
+      weeks: [],
+      totalTopicsCount: 0,
+      totalRevisionsCount: 0,
+      totalSessionsCount: 0,
+      retentionStats: {
+        averageRetention: 0,
+        highRetentionCount: 0,
+        mediumRetentionCount: 0,
+        lowRetentionCount: 0
+      },
+      smartSuggestion: null,
+      topicDetails: []
+    };
+  }
+
+  const MAP_DAY_INDEX_TO_ABBR = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  let orderedStudyDays = [...studyDays];
+  if (orderedStudyDays.length === 0) {
+    orderedStudyDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
+  }
+
+  if (startDate) {
+    const d = new Date(startDate + 'T00:00:00');
+    if (!isNaN(d.getTime())) {
+      const startAbbr = MAP_DAY_INDEX_TO_ABBR[d.getDay()];
+      const startIdx = MAP_DAY_INDEX_TO_ABBR.indexOf(startAbbr);
+      const rotated = [
+        ...MAP_DAY_INDEX_TO_ABBR.slice(startIdx),
+        ...MAP_DAY_INDEX_TO_ABBR.slice(0, startIdx)
+      ];
+      const filtered = rotated.filter(day => studyDays.includes(day));
+      if (filtered.length > 0) {
+        orderedStudyDays = filtered;
+      }
+    }
+  }
+
+  // Calculate total study days available
+  const totalStudyDays = Math.max(1, weeksDuration * orderedStudyDays.length);
+
+  // GUARANTEE 100% COVERAGE: Determine daily new topic quota needed to cover ALL cleanTopics
+  const minRequiredNewTopicsPerDay = Math.ceil(cleanTopics.length / totalStudyDays);
+  
+  const baseNewTopicsPerDay =
+    hoursPerDay <= 2 ? 1 :
+    hoursPerDay <= 4 ? 2 :
+    hoursPerDay <= 6 ? 2 : 3;
+
+  // Ensure we schedule at least minRequiredNewTopicsPerDay so 100% of topics are covered
+  const maxNewTopicsPerDay = Math.max(minRequiredNewTopicsPerDay, baseNewTopicsPerDay);
+
+  // Total daily sessions capacity (new topics + revisions)
+  const maxTotalSessionsPerDay = Math.max(maxNewTopicsPerDay + 1,
+    hoursPerDay <= 2 ? 2 :
+    hoursPerDay <= 3 ? 3 :
+    hoursPerDay <= 5 ? 4 : 5
+  );
+
+  const unstudiedTopics = [...cleanTopics];
+
+  interface PendingRevision {
+    topicTitle: string;
+    revisionName: string;
+    dueDayIndex: number;
+  }
+  const dueRevisions: PendingRevision[] = [];
+
+  let totalRevisionsScheduled = 0;
+  let totalStudySessionsScheduled = 0;
+
+  const weeks: StudyPlanWeek[] = [];
+  let currentStudyDayIndex = 0;
+
+  // Track per-topic history for Ebbinghaus Forgetting Curve calculation
+  const topicHistoryMap = new Map<string, {
+    rawTitle: string;
+    cleanTitle: string;
+    subjectName: string;
+    initialStudy: { weekNumber: number; dayName: string; dayIndex: number } | null;
+    revisions: Array<{ name: string; weekNumber: number; dayName: string; dayIndex: number }>;
+  }>();
+
+  cleanTopics.forEach(rawTitle => {
+    let clean = rawTitle.replace(/^\[[^\]]+\]\s*/, '').trim();
+    let subject = 'Geral';
+    const matchSubj = /^\[([^\]]+)\]/.exec(rawTitle);
+    if (matchSubj) {
+      subject = matchSubj[1];
+    }
+    // Key by exact rawTitle so every distinct topic gets its own entry
+    const key = rawTitle.trim().toLowerCase();
+    if (!topicHistoryMap.has(key)) {
+      topicHistoryMap.set(key, {
+        rawTitle,
+        cleanTitle: clean || rawTitle,
+        subjectName: subject,
+        initialStudy: null,
+        revisions: []
+      });
+    }
+  });
+
+  for (let w = 1; w <= weeksDuration; w++) {
+    const daysMap: { [dayName: string]: StudyPlanTopic[] } = {};
+    let weekTitle = '';
+
+    orderedStudyDays.forEach(dayName => {
+      currentStudyDayIndex++;
+      const dayTopics: StudyPlanTopic[] = [];
+
+      // 1. Revisions due today or prior
+      const maxRevisionsToday = hoursPerDay <= 3 ? 1 : 2;
+      let revisionsAddedToday = 0;
+
+      for (let r = 0; r < dueRevisions.length && revisionsAddedToday < maxRevisionsToday; ) {
+        if (dueRevisions[r].dueDayIndex <= currentStudyDayIndex) {
+          const rev = dueRevisions.splice(r, 1)[0];
+          dayTopics.push({
+            title: `🔄 [${rev.revisionName}] ${rev.topicTitle}`,
+            subjectName: 'Conteúdo da Faculdade',
+            historicalIncidence: 100,
+            isPriority: true,
+            isCompleted: false,
+            review24h: false,
+            review7d: false,
+            review30d: false,
+            type: 'revisao',
+            importanceDegree: 'alto'
+          });
+          revisionsAddedToday++;
+          totalRevisionsScheduled++;
+
+          // Record in topic history using rawTitle key
+          const key = rev.topicTitle.trim().toLowerCase();
+          const record = topicHistoryMap.get(key);
+          if (record) {
+            record.revisions.push({
+              name: rev.revisionName,
+              weekNumber: w,
+              dayName,
+              dayIndex: currentStudyDayIndex
+            });
+          }
+        } else {
+          r++;
+        }
+      }
+
+      // 2. Schedule New Topics for today
+      const slotsRemaining = Math.max(0, maxTotalSessionsPerDay - dayTopics.length);
+      const newTopicsToScheduleToday = Math.min(slotsRemaining, maxNewTopicsPerDay);
+
+      for (let k = 0; k < newTopicsToScheduleToday && unstudiedTopics.length > 0; k++) {
+        const rawTopicTitle = unstudiedTopics.shift()!;
+        if (!weekTitle) {
+          weekTitle = rawTopicTitle;
+        }
+
+        dayTopics.push({
+          title: rawTopicTitle,
+          subjectName: 'Conteúdo da Faculdade',
+          historicalIncidence: 100,
+          isPriority: true,
+          isCompleted: false,
+          review24h: false,
+          review7d: false,
+          review30d: false,
+          type: 'estudo',
+          importanceDegree: 'extremo'
+        });
+        totalStudySessionsScheduled++;
+
+        const key = rawTopicTitle.trim().toLowerCase();
+        const record = topicHistoryMap.get(key);
+        if (record && !record.initialStudy) {
+          record.initialStudy = {
+            weekNumber: w,
+            dayName,
+            dayIndex: currentStudyDayIndex
+          };
+        }
+
+        // Schedule Revisions based on Ebbinghaus Spacing
+        const daysRemainingInPlan = totalStudyDays - currentStudyDayIndex;
+
+        // R1: 2 study days later (if within plan horizon)
+        if (currentStudyDayIndex + 2 <= totalStudyDays) {
+          dueRevisions.push({
+            topicTitle: rawTopicTitle,
+            revisionName: 'REVISÃO R1',
+            dueDayIndex: currentStudyDayIndex + 2
+          });
+        }
+
+        // R2: 6 study days later (only if studied > 8 study days before the end)
+        if (daysRemainingInPlan >= 8 && currentStudyDayIndex + 6 <= totalStudyDays) {
+          dueRevisions.push({
+            topicTitle: rawTopicTitle,
+            revisionName: 'REVISÃO R2',
+            dueDayIndex: currentStudyDayIndex + 6
+          });
+        }
+
+        // R3: 15 study days later (only if studied > 18 study days before the end and strategy isn't weekly)
+        if (revisionStrategy !== 'weekly' && daysRemainingInPlan >= 18 && currentStudyDayIndex + 15 <= totalStudyDays) {
+          dueRevisions.push({
+            topicTitle: rawTopicTitle,
+            revisionName: 'REVISÃO R3',
+            dueDayIndex: currentStudyDayIndex + 15
+          });
+        }
+      }
+
+      // 3. Fill remaining slots with pending revisions if no new topics left
+      while (dayTopics.length < maxTotalSessionsPerDay && dueRevisions.length > 0 && unstudiedTopics.length === 0) {
+        const rev = dueRevisions.shift()!;
+        dayTopics.push({
+          title: `🔄 [${rev.revisionName}] ${rev.topicTitle}`,
+          subjectName: 'Conteúdo da Faculdade',
+          historicalIncidence: 100,
+          isPriority: true,
+          isCompleted: false,
+          review24h: false,
+          review7d: false,
+          review30d: false,
+          type: 'revisao',
+          importanceDegree: 'medio'
+        });
+        totalRevisionsScheduled++;
+
+        const key = rev.topicTitle.trim().toLowerCase();
+        const record = topicHistoryMap.get(key);
+        if (record) {
+          record.revisions.push({
+            name: rev.revisionName,
+            weekNumber: w,
+            dayName,
+            dayIndex: currentStudyDayIndex
+          });
+        }
+      }
+
+      daysMap[dayName] = dayTopics;
+    });
+
+    weeks.push({
+      weekNumber: w,
+      priorityTitle: weekTitle || `Módulo Acadêmico Semana ${w}`,
+      days: daysMap
+    });
+  }
+
+  // Overflow guarantee: Ensure 100% of unstudied topics are scheduled into the plan
+  if (unstudiedTopics.length > 0) {
+    let lastWeek = weeks[weeks.length - 1];
+    if (!lastWeek) {
+      lastWeek = { weekNumber: 1, priorityTitle: 'Semana 1', days: {} };
+      weeks.push(lastWeek);
+    }
+
+    let dayIdx = 0;
+    while (unstudiedTopics.length > 0) {
+      const dayName = orderedStudyDays[dayIdx % orderedStudyDays.length];
+      const rawTopicTitle = unstudiedTopics.shift()!;
+
+      if (!lastWeek.days[dayName]) {
+        lastWeek.days[dayName] = [];
+      }
+
+      lastWeek.days[dayName].push({
+        title: rawTopicTitle,
+        subjectName: 'Conteúdo da Faculdade',
+        historicalIncidence: 100,
+        isPriority: true,
+        isCompleted: false,
+        review24h: false,
+        review7d: false,
+        review30d: false,
+        type: 'estudo',
+        importanceDegree: 'extremo'
+      });
+      totalStudySessionsScheduled++;
+
+      const key = rawTopicTitle.trim().toLowerCase();
+      const record = topicHistoryMap.get(key);
+      if (record && !record.initialStudy) {
+        record.initialStudy = {
+          weekNumber: weeks.length,
+          dayName,
+          dayIndex: totalStudyDays
+        };
+      }
+      dayIdx++;
+    }
+  }
+
+  // Calculate Ebbinghaus Forgetting Curve & Retention Metrics per topic
+  let totalRetentionSum = 0;
+  let highRetentionCount = 0;
+  let mediumRetentionCount = 0;
+  let lowRetentionCount = 0;
+
+  const topicDetails: TopicDetailItem[] = Array.from(topicHistoryMap.values()).map(record => {
+    const initialDayIdx = record.initialStudy ? record.initialStudy.dayIndex : 1;
+    let lastActivityDayIdx = initialDayIdx;
+
+    if (record.revisions.length > 0) {
+      lastActivityDayIdx = Math.max(...record.revisions.map(r => r.dayIndex));
+    }
+
+    // Days elapsed from last review/study to end of schedule / exam date
+    const daysUntilExam = Math.max(0, totalStudyDays - lastActivityDayIdx);
+
+    // Ebbinghaus memory stability strength S (in study days)
+    const revCount = record.revisions.length;
+    let stabilityDays = 12; // Initial study only
+    if (revCount === 1) stabilityDays = 32;
+    else if (revCount === 2) stabilityDays = 85;
+    else if (revCount >= 3) stabilityDays = 200;
+
+    // Retention formula R = e^(-t / S)
+    let retention = Math.round(Math.exp(-daysUntilExam / stabilityDays) * 100);
+    
+    // If studied within the last 5 study days before exam, retention is naturally very high (92% - 98%)
+    if (daysUntilExam <= 5) {
+      retention = Math.max(92, retention);
+    }
+
+    retention = Math.min(98, Math.max(62, retention));
+
+    totalRetentionSum += retention;
+
+    let retentionStatus: 'excelente' | 'bom' | 'atencao' = 'excelente';
+    let retentionNote = '';
+
+    if (retention >= 85) {
+      highRetentionCount++;
+      retentionStatus = 'excelente';
+      if (daysUntilExam <= 8) {
+        retentionNote = `Estudado na reta final (Semana ${record.initialStudy?.weekNumber || 1}) → Retenção de ${retention}% na véspera sem necessidade de revisões extras.`;
+      } else {
+        retentionNote = `Com ${revCount} revisão(ões) espaçada(s) → Retenção mantida em ${retention}% para a prova.`;
+      }
+    } else if (retention >= 72) {
+      mediumRetentionCount++;
+      retentionStatus = 'bom';
+      retentionNote = `Retenção de ${retention}%. Conteúdo consolidado, recomenda-se passar rápido em flashcards antes do exame.`;
+    } else {
+      lowRetentionCount++;
+      retentionStatus = 'atencao';
+      retentionNote = `Retenção de ${retention}%. Estudado no início do plano com poucas revisões. Faça uma passagem de questões em vésperas.`;
+    }
+
+    const totalSessions = (record.initialStudy ? 1 : 0) + record.revisions.length;
+    const initialMins = record.initialStudy ? 60 : 0;
+    const revMins = record.revisions.length * 30;
+    const totalMins = initialMins + revMins;
+    const hours = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    const timeFormatted = hours > 0 ? `${hours}h${mins > 0 ? ` ${mins}m` : ''}` : `${mins}m`;
+
+    return {
+      cleanTitle: record.cleanTitle,
+      subjectName: record.subjectName,
+      initialStudy: record.initialStudy,
+      revisions: record.revisions,
+      lastActivityDayIndex: lastActivityDayIdx,
+      daysUntilExam,
+      estimatedRetention: retention,
+      retentionStatus,
+      retentionNote,
+      totalSessions,
+      timeFormatted
+    };
+  });
+
+  const averageRetention = cleanTopics.length > 0 ? Math.round(totalRetentionSum / cleanTopics.length) : 100;
+
+  // Generate Logical Smart Suggestion
+  let smartSuggestion: string | null = null;
+
+  if (minRequiredNewTopicsPerDay > 2.5) {
+    const recommendedWeeks = Math.ceil(cleanTopics.length / (orderedStudyDays.length * 1.8));
+    smartSuggestion = `💡 **Sugestão de Carga:** Você possui ${cleanTopics.length} tópicos para ${weeksDuration} semanas (${minRequiredNewTopicsPerDay} temas/dia). Para não sobrecarregar sua rotina e elevar a retenção de ${averageRetention}% para mais de 92%, recomendamos estender para ${recommendedWeeks} semanas ou estudar 1 dia a mais por semana.`;
+  } else if (examDate) {
+    const examFormatted = new Date(examDate + 'T00:00:00').toLocaleDateString('pt-BR');
+    smartSuggestion = `🎯 **Otimização por Curva do Esquecimento:** O plano sincronizou ${cleanTopics.length} tópicos (100% cobertos) até o dia da prova (${examFormatted}). Os assuntos das últimas semanas entram em reta final com retenção natural de 90%+ na véspera, enquanto os primeiros foram blindados por revisões espaçadas R1/R2. Retenção média: ${averageRetention}%.`;
+  } else if (averageRetention >= 85) {
+    smartSuggestion = `✨ **Plano Ideal e Sustentável:** 100% dos ${cleanTopics.length} tópicos serão estudados com retenção média estimada de ${averageRetention}% na data final! A rotina terá ~${minRequiredNewTopicsPerDay} temas/dia, garantindo aprendizado sólido.`;
+  } else {
+    smartSuggestion = `💡 **Dica de Desempenho:** 100% da ementa (${cleanTopics.length} temas) será estudada. Para subir a retenção média de ${averageRetention}% para mais de 90%, você pode adicionar +30 min/dia ou estender 2 semanas a mais no cronograma.`;
+  }
+
+  return {
+    weeks,
+    totalTopicsCount: cleanTopics.length,
+    totalRevisionsCount: totalRevisionsScheduled,
+    totalSessionsCount: totalStudySessionsScheduled + totalRevisionsScheduled,
+    retentionStats: {
+      averageRetention,
+      highRetentionCount,
+      mediumRetentionCount,
+      lowRetentionCount
+    },
+    smartSuggestion,
+    topicDetails
+  };
+}
+

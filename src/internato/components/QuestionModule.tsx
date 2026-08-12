@@ -3316,7 +3316,7 @@ export default function QuestionModule({
             </CardHeader>
 
             {/* Estatísticas de Incidência Regional & Termômetro de Calor */}
-            <div className="px-12 py-5 border-b border-[#E2E0D9] bg-[#FBFCFB] flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="px-4 sm:px-6 md:px-8 lg:px-12 py-4 sm:py-5 border-b border-[#E2E0D9] bg-[#FBFCFB] flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
               <div className="flex items-center gap-3">
                 <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Termômetro de Interest:</span>
                 <div className="flex items-center gap-1.5 bg-white border border-[#E2E0D9] px-3.5 py-1 rounded-full shadow-sm">
@@ -3352,7 +3352,7 @@ export default function QuestionModule({
 
             {/* Mosaico Grid de Navegação de Questões */}
             {questions.length > 1 && (
-              <div className="px-12 py-4 bg-[#FBFBFA] border-b border-[#E2E0D9] flex flex-wrap gap-1.5 items-center justify-start">
+              <div className="px-4 sm:px-6 md:px-8 lg:px-12 py-3 sm:py-4 bg-[#FBFBFA] border-b border-[#E2E0D9] flex flex-wrap gap-1.5 items-center justify-start">
                 <span className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82] mr-2">Mapa da Prova:</span>
                 {questions.map((q, idx) => {
                   const isCurrent = idx === currentIndex;
@@ -3385,7 +3385,7 @@ export default function QuestionModule({
               </div>
             )}
 
-            <CardContent className="p-12 pt-8 space-y-6">
+            <CardContent className="p-4 sm:p-6 md:p-8 lg:p-12 pt-6 sm:pt-8 space-y-6">
               <div className="prose prose-slate prose-headings:font-display prose-headings:font-bold max-w-none text-2xl font-display font-semibold leading-relaxed mb-6 select-text text-[#1a1a1a]">
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm, remarkMath]} 

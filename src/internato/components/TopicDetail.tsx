@@ -842,6 +842,10 @@ export default function TopicDetail({ topic: initialTopic, userProgress, onBack,
   const [pdfDownloadUrl, setPdfDownloadUrl] = useState<string | null>(null);
   const [pdfFilename, setPdfFilename] = useState<string>('');
 
+  // Allowed users for HTML summary download
+  const normalizedUserEmail = (userEmail || auth.currentUser?.email || '').trim().toLowerCase();
+  const isAllowedHtmlDownloadUser = normalizedUserEmail === 'lucas1renck2melo@gmail.com' || normalizedUserEmail === 'ysabelleosaraiva@gmail.com' || normalizedUserEmail === 'yasabelleosaraiva@gmail.com';
+
   // Offline Cache state
   const [isCachedOffline, setIsCachedOffline] = useState<boolean>(false);
   const [offlineToastMessage, setOfflineToastMessage] = useState<string | null>(null);
@@ -5181,6 +5185,33 @@ th { background: #F8F7F4; font-weight: bold; }
                     )}
                   </Button>
                 )}
+
+                {/* PDF Download Button (All users) */}
+                {!isPlaceholder && (
+                  <Button
+                    variant="ghost"
+                    onClick={downloadPDF}
+                    disabled={isGeneratingPDF}
+                    className="h-8 px-3 rounded-xl bg-white border border-[#E2E0D9] hover:bg-[#F3F1EC] text-[10.5px] font-bold uppercase tracking-wider text-[#2C2B29] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Baixar resumo formatado em PDF"
+                  >
+                    <Download className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <span>{isGeneratingPDF ? 'Gerando...' : 'Baixar PDF'}</span>
+                  </Button>
+                )}
+
+                {/* HTML Download Button (Restricted exclusively to allowed users) */}
+                {isAllowedHtmlDownloadUser && !isPlaceholder && (
+                  <Button
+                    variant="ghost"
+                    onClick={downloadHTML}
+                    className="h-8 px-3 rounded-xl bg-white border border-[#E2E0D9] hover:bg-[#F3F1EC] text-[10.5px] font-bold uppercase tracking-wider text-[#2C2B29] transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Exclusivo: Baixar resumo em HTML autônomo"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Baixar HTML</span>
+                  </Button>
+                )}
               </div>
 
               {/* Right Group: Interactive Reading Suite */}
@@ -7220,6 +7251,18 @@ th { background: #F8F7F4; font-weight: bold; }
                 </div>
 
                 <div className="flex items-center gap-3">
+                  {isAllowedHtmlDownloadUser && (
+                    <Button 
+                      variant="outline"
+                      onClick={downloadHTML}
+                      className="text-[10px] uppercase tracking-widest font-bold h-10 px-4 rounded-xl bg-white hover:bg-slate-50 text-blue-700 border-blue-200 flex items-center gap-1.5 cursor-pointer"
+                      title="Exclusivo: Baixar resumo em HTML"
+                    >
+                      <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>Baixar HTML</span>
+                    </Button>
+                  )}
+
                   <Button 
                     variant="outline"
                     onClick={() => setShowNotebook(!showNotebook)}

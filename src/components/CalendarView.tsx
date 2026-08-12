@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc, writeBatch, where, getDocs } from '../firebase';
 import { CalendarEvent, Topic, CollegeClass, StudySession, Subject } from '../types';
@@ -196,18 +196,80 @@ export default function CalendarView() {
     );
   };
 
-  const displayedEvents = events.filter(e => {
-    if (!showCronogramaEvents && isCronogramaEvent(e)) {
-      return false;
-    }
-    const activeScheduleId = localStorage.getItem('active_schedule_id');
-    if (isCronogramaEvent(e) && (e as any).scheduleId && activeScheduleId) {
-      if ((e as any).scheduleId !== activeScheduleId) {
+  const activeScheduleId = useMemo(() => {
+    return localStorage.getItem('active_schedule_id');
+  }, [events]);
+
+  const displayedEvents = useMemo(() => {
+    return events.filter(e => {
+      if (!showCronogramaEvents && isCronogramaEvent(e)) {
         return false;
       }
+      if (isCronogramaEvent(e) && (e as any).scheduleId && activeScheduleId) {
+        if ((e as any).scheduleId !== activeScheduleId) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [events, showCronogramaEvents, activeScheduleId]);
+
+  const { eventsByDate, reviewsByDate } = useMemo(() => {
+    const eventsMap = new Map<string, CalendarEvent[]>();
+    const reviewsMap = new Map<string, Topic[]>();
+
+    for (let i = 0; i < displayedEvents.length; i++) {
+      const e = displayedEvents[i];
+      if (!e.start) continue;
+
+      let dateKey = '';
+      if (e.start.length >= 10 && e.start[4] === '-' && e.start[7] === '-') {
+        dateKey = e.start.substring(0, 10);
+      } else {
+        try {
+          dateKey = format(parseISO(e.start), 'yyyy-MM-dd');
+        } catch {
+          dateKey = e.start.substring(0, 10);
+        }
+      }
+
+      if (!dateKey) continue;
+
+      let list = eventsMap.get(dateKey);
+      if (!list) {
+        list = [];
+        eventsMap.set(dateKey, list);
+      }
+      list.push(e);
     }
-    return true;
-  });
+
+    for (let i = 0; i < topics.length; i++) {
+      const t = topics[i];
+      if (t.noMoreReviews || t.repetitions === 0 || !t.nextReviewDate) continue;
+
+      let dateKey = '';
+      if (t.nextReviewDate.length >= 10 && t.nextReviewDate[4] === '-' && t.nextReviewDate[7] === '-') {
+        dateKey = t.nextReviewDate.substring(0, 10);
+      } else {
+        try {
+          dateKey = format(parseISO(t.nextReviewDate), 'yyyy-MM-dd');
+        } catch {
+          dateKey = t.nextReviewDate.substring(0, 10);
+        }
+      }
+
+      if (!dateKey) continue;
+
+      let list = reviewsMap.get(dateKey);
+      if (!list) {
+        list = [];
+        reviewsMap.set(dateKey, list);
+      }
+      list.push(t);
+    }
+
+    return { eventsByDate: eventsMap, reviewsByDate: reviewsMap };
+  }, [displayedEvents, topics]);
 
   const handleToggleEventCompleted = async (targetEvent: CalendarEvent) => {
     if (!user) return;
@@ -1529,11 +1591,8 @@ export default function CalendarView() {
             ))}
             {calendarDays.map((day, i) => {
               const dateKey = format(day, 'yyyy-MM-dd');
-              const dayEvents = displayedEvents.filter(e => isSameDay(parseISO(e.start), day));
-              const dayReviews = topics.filter(t => {
-                if (t.noMoreReviews || t.repetitions === 0) return false;
-                return t.nextReviewDate && isSameDay(parseISO(t.nextReviewDate), day);
-              });
+              const dayEvents = eventsByDate.get(dateKey) || [];
+              const dayReviews = reviewsByDate.get(dateKey) || [];
               
               return (
                 <CalendarDay 

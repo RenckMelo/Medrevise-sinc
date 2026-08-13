@@ -72,8 +72,13 @@ const SAMPLE_COLLEGE_TOPICS = [
 export function parseCollegeSyllabusText(rawText: string): string[] {
   if (!rawText || !rawText.trim()) return [];
 
-  // 1. Remove university/institutional footers or page numbers if present
-  let cleaned = rawText
+  // 1. Pre-process word wrap typos & common OCR / copy-paste fixes
+  let text = rawText
+    .replace(/hipovolê\s*mico/gi, 'hipovolêmico')
+    .replace(/Póstraumático/gi, 'Pós-traumático')
+    .replace(/ObsessivoCompulsivo/gi, 'Obsessivo-Compulsivo')
+    .replace(/pósdatismo/gi, 'pós-datismo')
+    .replace(/RPMO\s*[\/—–-]?\s*ROPREMA/gi, 'RPMO / ROPREMA')
     .replace(/Universidade\s+Evang[ée]lica\s+de\s+Goi[áa]s\s*[-–—]?\s*UniEVANG[ÉE]LICA/gi, ' ')
     .replace(/Avenida\s+Universit[áa]ria,\s*km\.\s*3,5/gi, ' ')
     .replace(/Cidade\s+Universit[áa]ria\s*[-–—]?\s*An[áa]polis\s*[-–—]?\s*GO/gi, ' ')
@@ -84,23 +89,18 @@ export function parseCollegeSyllabusText(rawText: string): string[] {
     .replace(/[“"].*?fez\s+o\s+Senhor.*?[”"]/gi, ' ')
     .replace(/Sl\s+\d+,\d+/gi, ' ');
 
-  cleaned = cleaned.replace(/[ \t]+/g, ' ');
+  text = text.replace(/[ \t]+/g, ' ');
 
-  // Normalize inline numbered items or bullets stuck together on one line
-  // e.g. "1. Tema A 2. Tema B" -> "1. Tema A \n 2. Tema B"
-  cleaned = cleaned.replace(/(?<=[^\n])\s+(?=\b\d{1,2}[\.\-\)]\s+[A-Z\u00C0-\u00DDa-z\u00E0-\u00FF])/g, '\n');
-  cleaned = cleaned.replace(/(?<=[^\n])\s+(?=[•\*\-]\s+[A-Z\u00C0-\u00DDa-z\u00E0-\u00FF])/g, '\n');
-
-  // List of major discipline title patterns to catch common medical specialties
-  const KNOWN_SPECIALTIES = [
-    { pattern: /GERIATRIA\s*[\/\\]\s*ONCO\s*[\/\\]\s*CUIDADOS\s+PALIATIVOS/gi, name: 'GERIATRIA / ONCOLOGIA' },
+  // 2. Isolate Known Major Specialties & Sub-Headers into clean line blocks
+  const SPECIALTIES = [
+    { pattern: /GERIATRIA\s*[\/\\]\s*ONCO\s*[\/\\]\s*CUIDADOS\s+PALIATIVOS/gi, name: 'GERIATRIA / ONCOLOGIA / CUIDADOS PALIATIVOS' },
     { pattern: /URGÊNCIAS\s+E\s+EMERGÊNCIAS|URGÊNCIA\s+E\s+EMERGÊNCIA/gi, name: 'URGÊNCIAS E EMERGÊNCIAS' },
     { pattern: /CLÍNICA\s+MÉDICA/gi, name: 'CLÍNICA MÉDICA' },
     { pattern: /SAÚDE\s+MENTAL|PSIQUIATRIA/gi, name: 'SAÚDE MENTAL' },
     { pattern: /MEDICINA\s+DE\s+FAMÍLIA\s+E\s+COMUNIDADE|\bMFC\b/gi, name: 'MEDICINA DE FAMÍLIA (MFC)' },
     { pattern: /\bCIRURGIA\b/gi, name: 'CIRURGIA' },
     { pattern: /\bPEDIATRIA\b/gi, name: 'PEDIATRIA' },
-    { pattern: /\bOBSTETRÍCIA\b/gi, name: 'OBSTETRÍCIA' },
+    { pattern: /GO\s+Obstetr[íi]cia|\bOBSTETRÍCIA\b/gi, name: 'OBSTETRÍCIA' },
     { pattern: /\bGINECOLOGIA\b/gi, name: 'GINECOLOGIA' },
     { pattern: /\bGO\b|GINECOLOGIA\s+E\s+OBSTETRÍCIA/gi, name: 'GINECOLOGIA E OBSTETRÍCIA' },
     { pattern: /CARDIOLOGIA/gi, name: 'CARDIOLOGIA' },
@@ -117,86 +117,57 @@ export function parseCollegeSyllabusText(rawText: string): string[] {
     { pattern: /ORTOPEDIA|TRAUMATOLOGIA/gi, name: 'ORTOPEDIA E TRAUMATOLOGIA' }
   ];
 
-  let formatted = cleaned;
-
-  // Insert sentinels for known specialties
-  KNOWN_SPECIALTIES.forEach(item => {
-    formatted = formatted.replace(item.pattern, () => `\n[[SUBJECT:${item.name}]]\n`);
+  SPECIALTIES.forEach(item => {
+    text = text.replace(item.pattern, () => `\n[[SUBJECT:${item.name}]]\n`);
   });
 
-  // Strip sub-headers that are not topics
-  formatted = formatted.replace(/Grandes\s+S[íi]ndromes\s+Cl[íi]nicas/gi, ' ');
-  formatted = formatted.replace(/Doen[çc]as\s+Cl[íi]nicas\s+que\s+o\s+Interno\s+Deve\s+Dominar/gi, ' ');
-  formatted = formatted.replace(/Conte[úu]do\s+Program[áa]tico|Ementa\s+do\s+M[óo]dulo/gi, ' ');
+  // Isolate sub-headers safely without deleting them or corrupting adjacent numbers
+  text = text.replace(/Grandes\s+S[íi]ndromes\s+Cl[íi]nicas/gi, '\n[[SUBHEADER:Grandes Síndromes Clínicas]]\n');
+  text = text.replace(/Doen[çc]as\s+Cl[íi]nicas\s+que\s+o\s+Interno\s+Deve\s+Dominar/gi, '\n[[SUBHEADER:Doenças Clínicas]]\n');
+  text = text.replace(/Conte[úu]do\s+Program[áa]tico|Ementa\s+do\s+M[óo]dulo/gi, '\n');
 
-  // Insert breaks before items starting with digits, dots, dashes, parentheses or bullets
-  formatted = formatted.replace(/(?<=[^\n])\s+(?=\.?\s*\b\d{1,2}[\.\-\)]\s*|\.\s+[A-Z\u00C0-\u00DD]|\b\d{1,2}\s+[A-Z\u00C0-\u00DD]|[•\*\-])/g, '\n');
+  // 3. Break lines before item starts (e.g. "1. ", "1- ", "2.Ferramentas", "3 Condições", ". Dismenorreia")
+  text = text.replace(/(?<=[^\n])\s+(?=\b\d{1,2}\s*[\.\-\)]\s*|\b\d{1,2}\s+[A-Z\u00C0-\u00DD]|\.\s+[A-Z\u00C0-\u00DD]|[•\*\-])/g, '\n');
 
-  const rawLines = formatted.split(/\r?\n+/);
+  const rawLines = text.split(/\r?\n+/);
 
   const topics: string[] = [];
   let currentSubject = 'Geral';
 
-  // Helper to test custom subject headers (e.g. "MÓDULO 1: NEUROLOGIA", "[PEDIATRIA]", "CARDIOLOGIA:")
-  const detectCustomSubjectHeader = (lineText: string): string | null => {
-    const trimmed = lineText.trim();
-    if (!trimmed) return null;
-
-    // Check for sentinel
-    const subjMatch = /^\[\[SUBJECT:(.+)\]\]$/.exec(trimmed);
-    if (subjMatch) return subjMatch[1];
-
-    // Headers with colon or brackets: e.g. "DISCIPLINA: CARDIOLOGIA", "[Pediatria]", "=== CIRURGIA ==="
-    if (/^(\[.+\]|=|#+|DISCIPLINA:|MÓDULO:|ÁREA:)/i.test(trimmed)) {
-      const cleanHeader = trimmed.replace(/^(\[|=|#+|DISCIPLINA:|MÓDULO:|ÁREA:)+/i, '')
-                                 .replace(/(\]|=|#+)+$/, '')
-                                 .trim();
-      if (cleanHeader.length >= 3) return cleanHeader;
-    }
-
-    // Line ending with colon e.g. "Doenças Infecciosas:"
-    if (/:$/.test(trimmed) && trimmed.length <= 50 && !/^\d+[\.\-\)]/.test(trimmed)) {
-      return trimmed.replace(/:$/, '').trim();
-    }
-
-    // ALL CAPS line without leading item numbers e.g. "SAÚDE DA MULHER"
-    if (/^[A-Z\u00C0-\u00DD\s\/\&\-]{4,45}$/.test(trimmed) && !/^\d+[\.\-\)]/.test(trimmed) && !/•|\*|\-/.test(trimmed)) {
-      return trimmed;
-    }
-
-    return null;
-  };
-
   for (let rawLine of rawLines) {
-    let line = rawLine.trim();
+    const line = rawLine.trim();
     if (!line) continue;
 
-    // Filter out residual address/website metadata
-    if (/An[áa]polis/i.test(line) || /CEP/i.test(line) || /Fone/i.test(line) || /www\./i.test(line) || /Sl\s+\d+/i.test(line)) {
+    // Skip subheaders or address junk
+    if (line.startsWith('[[SUBHEADER:')) continue;
+    if (/An[áa]polis/i.test(line) || /CEP/i.test(line) || /Fone/i.test(line) || /www\./i.test(line) || /Sl\s+\d+/i.test(line)) continue;
+
+    // Check subject header sentinel
+    const subjMatch = /^\[\[SUBJECT:(.+)\]\]$/.exec(line);
+    if (subjMatch) {
+      currentSubject = subjMatch[1];
       continue;
     }
 
-    const customSubj = detectCustomSubjectHeader(line);
-    if (customSubj) {
-      currentSubject = customSubj;
-      continue;
+    // Check custom section titles (e.g. "DISCIPLINA: NEUROLOGIA", "=== CIRURGIA ===")
+    if (/^(\[.+\]|=|#+|DISCIPLINA:|MÓDULO:|ÁREA:)/i.test(line)) {
+      const cleanHeader = line.replace(/^(\[|=|#+|DISCIPLINA:|MÓDULO:|ÁREA:)+/i, '').replace(/(\]|=|#+)+$/, '').trim();
+      if (cleanHeader.length >= 3) {
+        currentSubject = cleanHeader;
+        continue;
+      }
     }
 
-    // Extract item number or bullet
-    // e.g. "1. Dor torácica", "2) Dispneia", "• Sepse", "- Arritmias"
-    const matchItem = /^([\d{1,2}\.\-\)\•\*]+)\s*(.*)/.exec(line);
-
-    let topicText = line;
-    if (matchItem && matchItem[2]) {
-      topicText = matchItem[2].trim();
-    }
+    // Strip leading item number / dash / bullet / stray dot
+    // e.g. "1. Dor torácica" -> "Dor torácica", "1- Sintomas" -> "Sintomas", "2.Ferramentas" -> "Ferramentas", "3 Condições" -> "Condições", ". Dismenorreia" -> "Dismenorreia"
+    let cleanTopic = line.replace(/^(?:\d{1,2}\s*[\.\-\)]\s*|\d{1,2}\s+|\.\s*|[•\*\-]\s*)/, '').trim();
 
     // Clean up trailing page numbers or stray ending digits
-    topicText = topicText.replace(/\s+\d{1,3}$/, '').trim();
+    cleanTopic = cleanTopic.replace(/\s+\d{1,3}$/, '').trim();
 
-    // If line contains multiple topics separated by semicolons (e.g. "Dor torácica; Dispneia; Choque")
-    if (topicText.includes(';')) {
-      const parts = topicText.split(';');
+    // Handle semicolon separated sub-topics
+    if (cleanTopic.includes(';')) {
+      const parts = cleanTopic.split(';');
       for (const p of parts) {
         const cleanP = p.trim();
         if (cleanP.length >= 3) {
@@ -206,8 +177,8 @@ export function parseCollegeSyllabusText(rawText: string): string[] {
       continue;
     }
 
-    if (topicText.length >= 3) {
-      topics.push(`[${currentSubject}] ${topicText}`);
+    if (cleanTopic.length >= 3) {
+      topics.push(`[${currentSubject}] ${cleanTopic}`);
     }
   }
 

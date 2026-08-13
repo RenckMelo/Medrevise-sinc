@@ -6,13 +6,22 @@ import './internato/index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-// Programmatically unlock screen orientation if available in PWA / browser environment
-if (typeof window !== 'undefined' && window.screen && window.screen.orientation && typeof window.screen.orientation.unlock === 'function') {
-  try {
-    window.screen.orientation.unlock();
-  } catch {
-    // Ignore if not supported by browser policy
-  }
+// Programmatically unlock screen orientation and listen for device rotation in mobile PWAs
+if (typeof window !== 'undefined') {
+  const recheckViewportOrientation = () => {
+    if (window.screen && window.screen.orientation && typeof window.screen.orientation.unlock === 'function') {
+      try {
+        window.screen.orientation.unlock();
+      } catch {
+        // Ignore if not supported by browser policy
+      }
+    }
+    window.dispatchEvent(new Event('resize'));
+  };
+
+  recheckViewportOrientation();
+  window.addEventListener('orientationchange', recheckViewportOrientation);
+  window.addEventListener('resize', recheckViewportOrientation);
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -42,7 +42,7 @@ import { recordUsage, importPdfSchedule, analyzeSummaryNeeds } from '../services
 import { extractTextFromPdf } from '../utils/pdfExtractor';
 import { safeLocalStorageSet } from '../utils/storageUtils';
 import { MEDICAL_EXAMS_DB, GLOBAL_RESIDENCY_TOPICS, CANONICAL_SUBTOPICS_MAP } from '../data/medicalExams';
-import { generatePlan, generateCollegeCustomPlan, StudyPlanTopic, StudyPlanWeek, calculateCoverage } from '../utils/scheduleGenerator';
+import { generatePlan, generateCollegeCustomPlan, extendScheduleWithScientificRevisions, StudyPlanTopic, StudyPlanWeek, calculateCoverage } from '../utils/scheduleGenerator';
 import SchedulePlannerWizard from './SchedulePlannerWizard';
 
 interface CronogramaProps {
@@ -1722,6 +1722,37 @@ export default function Cronograma({
     } catch (err) {
       console.error("Error advancing topic:", err);
       showToast("Erro ao adiantar o tema de estudos.", "error");
+    }
+  };
+
+  const handleExtendFutureRevisions = async () => {
+    if (!schedule || !schedule.weeks || schedule.weeks.length === 0) return;
+    try {
+      const updatedWeeks = extendScheduleWithScientificRevisions(
+        schedule.weeks,
+        4,
+        schedule.studyDays || ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'],
+        schedule.hoursPerDay || 4
+      );
+
+      if (user?.uid && db && schedule.id) {
+        const scheduleRef = doc(db, 'users', user.uid, 'schedules', schedule.id);
+        await updateDoc(scheduleRef, {
+          weeks: updatedWeeks
+        });
+      }
+
+      const updatedSchedule = {
+        ...schedule,
+        weeks: updatedWeeks
+      };
+
+      setSchedule(updatedSchedule);
+      safeLocalStorageSet(`medinternato_schedule_${user?.uid || 'guest'}`, updatedSchedule);
+      showToast(`Cronograma estendido! Foram adicionadas +4 semanas contendo todas as revisões científicas Ebbinghaus (R2/R3). Total: ${updatedWeeks.length} semanas.`, "success");
+    } catch (err) {
+      console.error("Error extending revisions:", err);
+      showToast("Erro ao estender revisões futuras.", "error");
     }
   };
 
@@ -5685,14 +5716,25 @@ export default function Cronograma({
                   </div>
                 </div>
 
-                <Button
-                  size="xs"
-                  onClick={() => setShowRestructureModal(true)}
-                  className="bg-[#D44E3D]/5 hover:bg-[#D44E3D]/10 text-[#D44E3D] border border-[#D44E3D]/10 text-xs font-bold"
-                >
-                  <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                  Recuperar Atraso
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    size="xs"
+                    onClick={() => setShowRestructureModal(true)}
+                    className="bg-[#D44E3D]/5 hover:bg-[#D44E3D]/10 text-[#D44E3D] border border-[#D44E3D]/10 text-xs font-bold"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 mr-1" />
+                    Recuperar Atraso
+                  </Button>
+                  <Button
+                    size="xs"
+                    onClick={handleExtendFutureRevisions}
+                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold shadow-2xs"
+                    title="Adiciona +4 semanas ao final do cronograma trazendo todas as revisões R2 e R3 no espaçamento Ebbinghaus correto"
+                  >
+                    <Zap className="w-3.5 h-3.5 mr-1 text-indigo-600 fill-indigo-600/20" />
+                    Adiantar Revisões (+4 Semanas)
+                  </Button>
+                </div>
               </div>
 
               {/* CURRENT WEEK DETAILS */}

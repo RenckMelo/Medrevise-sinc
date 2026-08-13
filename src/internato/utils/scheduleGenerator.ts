@@ -354,9 +354,15 @@ export function generatePlan(
       // 2. REVISION SESSION: Get a previously scheduled topic for Active spaced repetition (Custom Ebbinghaus loop)
       let revisionTopicData: FlatTopic | null = null;
       if (scheduledTopicsLog.length > 0) {
-        // Calculate lookback with some variation based on available days
-        const lookbackIndex = Math.floor((w * 5 + dIdx * 23) % scheduledTopicsLog.length);
-        revisionTopicData = scheduledTopicsLog[lookbackIndex];
+        // Calculate lookback with variation, avoiding topics already studied today
+        let lookbackOffset = 0;
+        const dayCleanTitles = dayTopics.map(dt => dt.title.replace(/^⚡\s*\[[^\]]+\]\s*/, '').replace(/^🔄\s*\[[^\]]+\]\s*/, '').trim().toLowerCase());
+        let candidate = scheduledTopicsLog[Math.floor(w * 5 + dIdx * 23) % scheduledTopicsLog.length];
+        while (lookbackOffset < scheduledTopicsLog.length && dayCleanTitles.includes(candidate.title.trim().toLowerCase())) {
+          lookbackOffset++;
+          candidate = scheduledTopicsLog[(Math.floor(w * 5 + dIdx * 23) + lookbackOffset) % scheduledTopicsLog.length];
+        }
+        revisionTopicData = candidate;
       } else {
         revisionTopicData = masterTopicQueue[(w + dIdx) % masterTopicQueue.length];
       }
@@ -661,6 +667,14 @@ export function generateCollegeCustomPlan(
     }
   });
 
+  const getCleanTitleKey = (title: string) => {
+    return title
+      .replace(/^🔄\s*\[[^\]]+\]\s*/, '')
+      .replace(/^⚡\s*\[[^\]]+\]\s*/, '')
+      .trim()
+      .toLowerCase();
+  };
+
   for (let w = 1; w <= weeksDuration; w++) {
     const daysMap: { [dayName: string]: StudyPlanTopic[] } = {};
     let weekTitle = '';
@@ -669,12 +683,31 @@ export function generateCollegeCustomPlan(
       currentStudyDayIndex++;
       const dayTopics: StudyPlanTopic[] = [];
 
-      // 1. Revisions due today or prior
+      const isTopicAlreadyScheduledToday = (targetTopicTitle: string) => {
+        const targetKey = getCleanTitleKey(targetTopicTitle);
+        return dayTopics.some(t => getCleanTitleKey(t.title) === targetKey);
+      };
+
+      // 1. Revisions due today or prior (Strict Scientific Ebbinghaus Filter)
       const maxRevisionsToday = hoursPerDay <= 3 ? 1 : 2;
       let revisionsAddedToday = 0;
 
+      // Sort due revisions so overdue revisions (dueDayIndex smallest) and R1 before R2/R3 get priority
+      dueRevisions.sort((a, b) => {
+        if (a.dueDayIndex !== b.dueDayIndex) return a.dueDayIndex - b.dueDayIndex;
+        return a.revisionName.localeCompare(b.revisionName);
+      });
+
       for (let r = 0; r < dueRevisions.length && revisionsAddedToday < maxRevisionsToday; ) {
-        if (dueRevisions[r].dueDayIndex <= currentStudyDayIndex) {
+        const candidate = dueRevisions[r];
+        // STRICT SCIENTIFIC RULE: Only schedule revisions if they are DUE today or overdue
+        if (candidate.dueDayIndex <= currentStudyDayIndex) {
+          // Do not schedule duplicate revisions for the same topic on the same day
+          if (isTopicAlreadyScheduledToday(candidate.topicTitle)) {
+            r++;
+            continue;
+          }
+
           const rev = dueRevisions.splice(r, 1)[0];
           dayTopics.push({
             title: `🔄 [${rev.revisionName}] ${rev.topicTitle}`,
@@ -701,6 +734,29 @@ export function generateCollegeCustomPlan(
               dayName,
               dayIndex: currentStudyDayIndex
             });
+          }
+
+          // SCIENTIFIC EBBINGHAUS CASCADING:
+          // Queue next level revision ONLY AFTER current level revision is actually completed!
+          const daysRemainingInPlan = totalStudyDays - currentStudyDayIndex;
+          if (rev.revisionName === 'REVISÃO R1') {
+            // R2: Scheduled 6 study days AFTER R1 is performed (~7-10 calendar days)
+            if (daysRemainingInPlan >= 8 && currentStudyDayIndex + 6 <= totalStudyDays) {
+              dueRevisions.push({
+                topicTitle: rev.topicTitle,
+                revisionName: 'REVISÃO R2',
+                dueDayIndex: currentStudyDayIndex + 6
+              });
+            }
+          } else if (rev.revisionName === 'REVISÃO R2') {
+            // R3: Scheduled 15 study days AFTER R2 is performed (~30 calendar days)
+            if (revisionStrategy !== 'weekly' && daysRemainingInPlan >= 18 && currentStudyDayIndex + 15 <= totalStudyDays) {
+              dueRevisions.push({
+                topicTitle: rev.topicTitle,
+                revisionName: 'REVISÃO R3',
+                dueDayIndex: currentStudyDayIndex + 15
+              });
+            }
           }
         } else {
           r++;
@@ -741,10 +797,7 @@ export function generateCollegeCustomPlan(
           };
         }
 
-        // Schedule Revisions based on Ebbinghaus Spacing
-        const daysRemainingInPlan = totalStudyDays - currentStudyDayIndex;
-
-        // R1: 2 study days later (if within plan horizon)
+        // Schedule R1 (Revisão 24-48h): Exactly 2 study days after initial study
         if (currentStudyDayIndex + 2 <= totalStudyDays) {
           dueRevisions.push({
             topicTitle: rawTopicTitle,
@@ -752,52 +805,88 @@ export function generateCollegeCustomPlan(
             dueDayIndex: currentStudyDayIndex + 2
           });
         }
-
-        // R2: 6 study days later (only if studied > 8 study days before the end)
-        if (daysRemainingInPlan >= 8 && currentStudyDayIndex + 6 <= totalStudyDays) {
-          dueRevisions.push({
-            topicTitle: rawTopicTitle,
-            revisionName: 'REVISÃO R2',
-            dueDayIndex: currentStudyDayIndex + 6
-          });
-        }
-
-        // R3: 15 study days later (only if studied > 18 study days before the end and strategy isn't weekly)
-        if (revisionStrategy !== 'weekly' && daysRemainingInPlan >= 18 && currentStudyDayIndex + 15 <= totalStudyDays) {
-          dueRevisions.push({
-            topicTitle: rawTopicTitle,
-            revisionName: 'REVISÃO R3',
-            dueDayIndex: currentStudyDayIndex + 15
-          });
-        }
       }
 
-      // 3. Fill remaining slots with pending revisions if no new topics left
-      while (dayTopics.length < maxTotalSessionsPerDay && dueRevisions.length > 0 && unstudiedTopics.length === 0) {
-        const rev = dueRevisions.shift()!;
-        dayTopics.push({
-          title: `🔄 [${rev.revisionName}] ${rev.topicTitle}`,
-          subjectName: 'Conteúdo da Faculdade',
-          historicalIncidence: 100,
-          isPriority: true,
-          isCompleted: false,
-          review24h: false,
-          review7d: false,
-          review30d: false,
-          type: 'revisao',
-          importanceDegree: 'medio'
-        });
-        totalRevisionsScheduled++;
+      // 3. Fill remaining slots with due revisions OR Final Exam Question Drill (never premature revisions)
+      while (dayTopics.length < maxTotalSessionsPerDay) {
+        // Find a due revision (dueDayIndex <= currentStudyDayIndex) not yet in today's list
+        const matchIdx = dueRevisions.findIndex(rev => 
+          rev.dueDayIndex <= currentStudyDayIndex && !isTopicAlreadyScheduledToday(rev.topicTitle)
+        );
 
-        const key = rev.topicTitle.trim().toLowerCase();
-        const record = topicHistoryMap.get(key);
-        if (record) {
-          record.revisions.push({
-            name: rev.revisionName,
-            weekNumber: w,
-            dayName,
-            dayIndex: currentStudyDayIndex
+        if (matchIdx !== -1) {
+          const rev = dueRevisions.splice(matchIdx, 1)[0];
+          dayTopics.push({
+            title: `🔄 [${rev.revisionName}] ${rev.topicTitle}`,
+            subjectName: 'Conteúdo da Faculdade',
+            historicalIncidence: 100,
+            isPriority: true,
+            isCompleted: false,
+            review24h: false,
+            review7d: false,
+            review30d: false,
+            type: 'revisao',
+            importanceDegree: 'medio'
           });
+          totalRevisionsScheduled++;
+
+          const key = rev.topicTitle.trim().toLowerCase();
+          const record = topicHistoryMap.get(key);
+          if (record) {
+            record.revisions.push({
+              name: rev.revisionName,
+              weekNumber: w,
+              dayName,
+              dayIndex: currentStudyDayIndex
+            });
+          }
+
+          // Cascade R2 / R3 if applicable
+          const daysRemainingInPlan = totalStudyDays - currentStudyDayIndex;
+          if (rev.revisionName === 'REVISÃO R1' && daysRemainingInPlan >= 8 && currentStudyDayIndex + 6 <= totalStudyDays) {
+            dueRevisions.push({
+              topicTitle: rev.topicTitle,
+              revisionName: 'REVISÃO R2',
+              dueDayIndex: currentStudyDayIndex + 6
+            });
+          } else if (rev.revisionName === 'REVISÃO R2' && revisionStrategy !== 'weekly' && daysRemainingInPlan >= 18 && currentStudyDayIndex + 15 <= totalStudyDays) {
+            dueRevisions.push({
+              topicTitle: rev.topicTitle,
+              revisionName: 'REVISÃO R3',
+              dueDayIndex: currentStudyDayIndex + 15
+            });
+          }
+        } else if (unstudiedTopics.length === 0) {
+          // If no new topics remain AND no revisions are due today, add a targeted Final Exam Question Drill
+          // Pick a topic studied furthest in the past that isn't on today's list
+          const candidateRecords = Array.from(topicHistoryMap.values())
+            .filter(r => r.initialStudy !== null && !isTopicAlreadyScheduledToday(r.cleanTitle))
+            .sort((a, b) => {
+              const aLast = a.revisions.length > 0 ? Math.max(...a.revisions.map(rev => rev.dayIndex)) : a.initialStudy!.dayIndex;
+              const bLast = b.revisions.length > 0 ? Math.max(...b.revisions.map(rev => rev.dayIndex)) : b.initialStudy!.dayIndex;
+              return aLast - bLast;
+            });
+
+          if (candidateRecords.length > 0) {
+            const chosen = candidateRecords[0];
+            dayTopics.push({
+              title: `⚡ [SIMULADO DE RETA FINAL] ${chosen.cleanTitle}`,
+              subjectName: chosen.subjectName || 'Conteúdo da Faculdade',
+              historicalIncidence: 100,
+              isPriority: true,
+              isCompleted: false,
+              review24h: false,
+              review7d: false,
+              review30d: false,
+              type: 'revisao',
+              importanceDegree: 'alto'
+            });
+            totalRevisionsScheduled++;
+          } else {
+            break;
+          }
+        } else {
+          break;
         }
       }
 
@@ -966,5 +1055,203 @@ export function generateCollegeCustomPlan(
     smartSuggestion,
     topicDetails
   };
+}
+
+export function extendScheduleWithScientificRevisions(
+  existingWeeks: StudyPlanWeek[],
+  additionalWeeksCount: number = 4,
+  studyDays: string[] = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'],
+  hoursPerDay: number = 4
+): StudyPlanWeek[] {
+  if (!existingWeeks || existingWeeks.length === 0) return existingWeeks;
+
+  let orderedDays = studyDays && studyDays.length > 0 ? studyDays : ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
+
+  let dayCounter = 0;
+  const topicMap = new Map<string, {
+    cleanTitle: string;
+    subjectName: string;
+    initialStudyDayIndex: number | null;
+    r1DayIndex: number | null;
+    r2DayIndex: number | null;
+    r3DayIndex: number | null;
+  }>();
+
+  existingWeeks.forEach(week => {
+    Object.keys(week.days || {}).forEach(dayName => {
+      dayCounter++;
+      const currentDayIdx = dayCounter;
+      const dayTopics = week.days[dayName] || [];
+
+      dayTopics.forEach(t => {
+        const titleClean = t.title
+          .replace(/^🔄\s*\[[^\]]+\]\s*/, '')
+          .replace(/^⚡\s*\[[^\]]+\]\s*/, '')
+          .trim();
+        const key = titleClean.toLowerCase();
+
+        if (!topicMap.has(key)) {
+          topicMap.set(key, {
+            cleanTitle: titleClean,
+            subjectName: t.subjectName || 'Geral',
+            initialStudyDayIndex: null,
+            r1DayIndex: null,
+            r2DayIndex: null,
+            r3DayIndex: null
+          });
+        }
+
+        const rec = topicMap.get(key)!;
+        if (t.title.includes('REVISÃO R1')) {
+          rec.r1DayIndex = currentDayIdx;
+        } else if (t.title.includes('REVISÃO R2')) {
+          rec.r2DayIndex = currentDayIdx;
+        } else if (t.title.includes('REVISÃO R3')) {
+          rec.r3DayIndex = currentDayIdx;
+        } else if (t.type === 'estudo' || (!t.title.startsWith('🔄') && !t.title.startsWith('⚡'))) {
+          if (rec.initialStudyDayIndex === null) {
+            rec.initialStudyDayIndex = currentDayIdx;
+          }
+        }
+      });
+    });
+  });
+
+  const totalExistingStudyDays = dayCounter;
+  if (totalExistingStudyDays === 0) return existingWeeks;
+
+  interface PendingRev {
+    topicTitle: string;
+    subjectName: string;
+    revisionName: string;
+    dueDayIndex: number;
+  }
+  const pendingRevisions: PendingRev[] = [];
+
+  topicMap.forEach(rec => {
+    const initIdx = rec.initialStudyDayIndex || 1;
+    const r1Idx = rec.r1DayIndex || (initIdx + 2);
+    if (!rec.r1DayIndex && r1Idx > totalExistingStudyDays) {
+      pendingRevisions.push({
+        topicTitle: rec.cleanTitle,
+        subjectName: rec.subjectName,
+        revisionName: 'REVISÃO R1',
+        dueDayIndex: r1Idx
+      });
+    }
+
+    const r2Idx = rec.r2DayIndex || (r1Idx + 6);
+    if (!rec.r2DayIndex && r2Idx > totalExistingStudyDays) {
+      pendingRevisions.push({
+        topicTitle: rec.cleanTitle,
+        subjectName: rec.subjectName,
+        revisionName: 'REVISÃO R2',
+        dueDayIndex: r2Idx
+      });
+    }
+
+    const r3Idx = rec.r3DayIndex || (r2Idx + 15);
+    if (!rec.r3DayIndex && r3Idx > totalExistingStudyDays) {
+      pendingRevisions.push({
+        topicTitle: rec.cleanTitle,
+        subjectName: rec.subjectName,
+        revisionName: 'REVISÃO R3',
+        dueDayIndex: r3Idx
+      });
+    }
+  });
+
+  pendingRevisions.sort((a, b) => a.dueDayIndex - b.dueDayIndex);
+
+  const maxDailySessions = hoursPerDay <= 3 ? 2 : 3;
+  const newWeeks: StudyPlanWeek[] = [];
+  const startWeekNum = existingWeeks.length + 1;
+  let currentDayIdx = totalExistingStudyDays;
+
+  for (let w = 0; w < additionalWeeksCount; w++) {
+    const weekNum = startWeekNum + w;
+    const daysMap: { [dayName: string]: StudyPlanTopic[] } = {};
+
+    orderedDays.forEach(dayName => {
+      currentDayIdx++;
+      const dayTopics: StudyPlanTopic[] = [];
+
+      const isTopicAlreadyInDay = (title: string) => {
+        const k = title.toLowerCase();
+        return dayTopics.some(dt => dt.title.toLowerCase().includes(k));
+      };
+
+      for (let i = 0; i < pendingRevisions.length && dayTopics.length < maxDailySessions; ) {
+        const cand = pendingRevisions[i];
+        if (cand.dueDayIndex <= currentDayIdx) {
+          if (isTopicAlreadyInDay(cand.topicTitle)) {
+            i++;
+            continue;
+          }
+
+          const rev = pendingRevisions.splice(i, 1)[0];
+          dayTopics.push({
+            title: `🔄 [${rev.revisionName}] ${rev.topicTitle}`,
+            subjectName: rev.subjectName,
+            historicalIncidence: 100,
+            isPriority: true,
+            isCompleted: false,
+            review24h: false,
+            review7d: false,
+            review30d: false,
+            type: 'revisao',
+            importanceDegree: 'medio'
+          });
+        } else {
+          i++;
+        }
+      }
+
+      const allTopics = Array.from(topicMap.values());
+      let topicIdx = (currentDayIdx * 7) % Math.max(1, allTopics.length);
+
+      while (dayTopics.length < maxDailySessions && allTopics.length > 0) {
+        let attempts = 0;
+        let selected: typeof allTopics[0] | null = null;
+
+        while (attempts < allTopics.length) {
+          const cand = allTopics[(topicIdx + attempts) % allTopics.length];
+          if (!isTopicAlreadyInDay(cand.cleanTitle)) {
+            selected = cand;
+            break;
+          }
+          attempts++;
+        }
+
+        if (selected) {
+          dayTopics.push({
+            title: `⚡ [MANUTENÇÃO EBBINGHAUS] ${selected.cleanTitle}`,
+            subjectName: selected.subjectName,
+            historicalIncidence: 100,
+            isPriority: true,
+            isCompleted: false,
+            review24h: false,
+            review7d: false,
+            review30d: false,
+            type: 'revisao',
+            importanceDegree: 'medio'
+          });
+          topicIdx += 3;
+        } else {
+          break;
+        }
+      }
+
+      daysMap[dayName] = dayTopics;
+    });
+
+    newWeeks.push({
+      weekNumber: weekNum,
+      priorityTitle: `Revisões Espaçadas de Longo Prazo (Ebbinghaus) - Semana ${weekNum}`,
+      days: daysMap
+    });
+  }
+
+  return [...existingWeeks, ...newWeeks];
 }
 

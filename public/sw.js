@@ -1,4 +1,4 @@
-const CACHE_NAME = 'medrevise-cache-v1';
+const CACHE_NAME = 'medrevise-cache-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -22,6 +22,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cache) => {
           if (cache !== CACHE_NAME) {
+            console.log('[SW] Deleting old cache:', cache);
             return caches.delete(cache);
           }
         })
@@ -42,12 +43,27 @@ self.addEventListener('fetch', (event) => {
   if (!url.origin.includes(self.location.origin) || url.pathname.includes('/api/')) {
     return;
   }
+
+  // Network-first for manifest.json to ensure orientation and PWA configs are always fresh
+  if (url.pathname === '/manifest.json') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
   
-  // Cache-first for stable assets (icons, manifest, svgs, pngs)
+  // Cache-first for static icons / assets
   if (url.pathname.startsWith('/icons/') || 
       url.pathname.endsWith('.svg') || 
-      url.pathname.endsWith('.png') || 
-      url.pathname.endsWith('.json')) {
+      url.pathname.endsWith('.png')) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
         if (cachedResponse) {

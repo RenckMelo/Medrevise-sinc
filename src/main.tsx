@@ -6,6 +6,15 @@ import './internato/index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
+// Programmatically unlock screen orientation if available in PWA / browser environment
+if (typeof window !== 'undefined' && window.screen && window.screen.orientation && typeof window.screen.orientation.unlock === 'function') {
+  try {
+    window.screen.orientation.unlock();
+  } catch {
+    // Ignore if not supported by browser policy
+  }
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>

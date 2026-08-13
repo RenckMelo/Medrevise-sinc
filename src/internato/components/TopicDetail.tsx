@@ -2716,15 +2716,20 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     return null;
   };
 
+  const onTopicUpdateRef = useRef(onTopicUpdate);
+  useEffect(() => {
+    onTopicUpdateRef.current = onTopicUpdate;
+  }, [onTopicUpdate]);
+
   useEffect(() => {
     setLocalTopic(initialTopic);
-  }, [initialTopic]);
+  }, [initialTopic.id]);
 
   useEffect(() => {
     if (getAvailableDepths(localTopic).length > 0) {
       setShowSummaryWizard(false);
     }
-  }, [localTopic]);
+  }, [localTopic.id, localTopic.content, localTopic.content_standard, localTopic.content_resumo_expansao]);
 
   const lastTopicIdRef = useRef<string | null>(null);
 
@@ -2733,7 +2738,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     if (localTopic && localTopic.id) {
       safeLocalStorageSet(`topic_detail_${localTopic.id}`, JSON.stringify(localTopic));
     }
-  }, [localTopic]);
+  }, [localTopic.id, localTopic.content, localTopic.content_standard, localTopic.content_resumo_expansao]);
 
   useEffect(() => {
     if (initialTopic.id !== lastTopicIdRef.current) {
@@ -2809,9 +2814,6 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
           setLocalTopic(parsed);
           const d = detectRealDepth(parsed);
           setDepth(d !== 'none' ? d : 'standard');
-          if (onTopicUpdate) {
-            onTopicUpdate(parsed);
-          }
           return; // Skip Firestore fetching entirely!
         }
       } catch (e) {
@@ -2838,8 +2840,8 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
           const d = detectRealDepth(finalData);
           setDepth(d !== 'none' ? d : 'standard');
 
-          if (onTopicUpdate) {
-            onTopicUpdate(finalData);
+          if (onTopicUpdateRef.current) {
+            onTopicUpdateRef.current(finalData);
           }
         }
       } catch (err) {
@@ -2848,7 +2850,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     };
     
     fetchLatestTopic();
-  }, [initialTopic.id]);
+  }, [initialTopic.id, userId]);
 
   const getActiveContentByDepth = (currentDepth: GenerationDepth) => {
     const detected = detectRealDepth(topic);

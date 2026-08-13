@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { signOut } from '../firebase';
 import { 
@@ -218,6 +218,18 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
       console.warn('Error loading user progress:', err);
     }
   };
+
+  const handleTopicUpdate = useCallback((updated: Topic) => {
+    if (!updated || !updated.id) return;
+    setSelectedTopic(prev => (prev?.id === updated.id ? { ...prev, ...updated } : updated));
+    setTopics(prev => {
+      const idx = prev.findIndex(t => t.id === updated.id);
+      if (idx === -1) return [...prev, updated];
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
+  }, []);
 
   // Reset scroll to top on any view transit
   useEffect(() => {
@@ -514,10 +526,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             subjects={subjects}
             userId={userId}
             userEmail={user?.email || ''}
-            onTopicUpdate={(updated) => {
-              setSelectedTopic(updated);
-              setTopics(prev => prev.map(t => t.id === updated.id ? updated : t));
-            }}
+            onTopicUpdate={handleTopicUpdate}
             onStartPractice={() => {
               setCronogramaFilterTopics([selectedTopic.id]);
               setCurrentView('questions');
@@ -644,12 +653,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
         subjects={subjects}
         selectedTopic={currentView === 'topicDetail' ? selectedTopic : null}
         userId={userId}
-        onTopicUpdate={(updatedTopic) => {
-          if (selectedTopic && selectedTopic.id === updatedTopic.id) {
-            setSelectedTopic(updatedTopic);
-          }
-          setTopics(prev => prev.map(t => t.id === updatedTopic.id ? updatedTopic : t));
-        }}
+        onTopicUpdate={handleTopicUpdate}
       />
 
       {/* Mobile & Tablet Bottom Navigation Bar (< 2xl) */}

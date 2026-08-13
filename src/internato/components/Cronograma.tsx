@@ -31,7 +31,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, collection, doc, addDoc, updateDoc, getDocs, query, limit, deleteDoc } from '../firebase';
+import { db, collection, doc, addDoc, updateDoc, getDocs, getDoc, where, query, limit, deleteDoc } from '../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { accuracyToQuality, calculateNextReview } from '../../utils/srs';
 import { Button } from '@/components/ui/button';
@@ -427,6 +427,19 @@ export default function Cronograma({
     });
   }
 
+  const matchTopicForSchedule = (cleanTitle: string, topicsList: any[]) => {
+    if (!cleanTitle || !topicsList || topicsList.length === 0) return undefined;
+    const targetLower = cleanTitle.toLowerCase().trim();
+    const exact = topicsList.find(t => t.title && t.title.toLowerCase().trim() === targetLower);
+    if (exact) return exact;
+
+    return topicsList.find(t => {
+      if (!t.title) return false;
+      const tLower = t.title.toLowerCase().trim();
+      return tLower.length > 3 && (tLower.includes(targetLower) || targetLower.includes(tLower));
+    });
+  };
+
   const handleContinueStudy = async (
     scheduleTopic: any, 
     targetView: 'topicDetail' | 'questions' | 'flashcards' = 'topicDetail',
@@ -451,11 +464,15 @@ export default function Cronograma({
         .replace(/^🔄 \[REVISÃO DE REFORÇO\] /, '')
         .trim();
 
+      const topicIdToTry = scheduleTopic.topicId || scheduleTopic.linkedTopicId || scheduleTopic.id;
+
       let targetSubject: any;
       let targetTopic: any;
 
-      // 1. Fast path: check if matching topic already exists in topics prop
-      const matchedInMemory = matchTopicForSchedule(cleanTitle, topics || []);
+      // 1. Fast path: check in-memory cache and topics list using O(1) cache map and findMatchingTopic
+      const matchedFromCache = getMatchedDbTopic(scheduleTopic.title, topicIdToTry, scheduleTopic.type);
+      const matchedInMemory = matchedFromCache || findMatchingTopic(cleanTitle, topics || [], topicIdToTry) || matchTopicForSchedule(cleanTitle, topics || []);
+
       if (matchedInMemory) {
         targetTopic = matchedInMemory;
         targetSubject = (subjects || []).find(s => s.id === matchedInMemory.subjectId) || {
@@ -465,102 +482,160 @@ export default function Cronograma({
           icon: 'BookOpen',
           color: 'bg-blue-100 text-[#0066cc]'
         };
-      } else if (currentChoice === 'sync') {
-        // 2. Check or Create Subject with topic.subjectName under Semester in memory/Firestore
-        let foundSubject = (subjects || []).find(
-          s => s.name?.toLowerCase().trim() === scheduleTopic.subjectName?.toLowerCase().trim()
-        );
+      } else {
+        // 2. Query Firestore before creating a new topic to prevent duplicate empty topic creation
+        let foundInFirestore: any = null;
 
-        if (!foundSubject) {
-          const colors = [
-            'bg-blue-100 text-[#0066cc]',
-            'bg-[#FAF0E6] text-[#b45309]',
-            'bg-purple-100 text-purple-700',
-            'bg-rose-100 text-rose-700',
-            'bg-emerald-100 text-emerald-700',
-            'bg-indigo-100 text-indigo-700',
-            'bg-cyan-100 text-cyan-700'
-          ];
-          const icons = ['BookOpen', 'Brain', 'Pill', 'FileText', 'GraduationCap', 'Activity', 'ClipboardList'];
-          const color = colors[Math.floor(Math.random() * colors.length)];
-          const icon = icons[Math.floor(Math.random() * icons.length)];
-
-          const subjectsRef = collection(db, 'users', user.uid, 'subjects');
-          const newSubjectRef = await addDoc(subjectsRef, {
-            name: scheduleTopic.subjectName || 'Geral',
-            semesterId: 'cronograma_sem',
-            icon,
-            color,
-            createdAt: new Date().toISOString()
-          });
-          foundSubject = {
-            id: newSubjectRef.id,
-            name: scheduleTopic.subjectName || 'Geral',
-            semesterId: 'cronograma_sem',
-            icon,
-            color
-          };
-
-          if (setSubjects) {
-            setSubjects(prev => {
-              const list = [...prev, foundSubject];
-              list.sort((a, b) => a.name.localeCompare(b.name));
-              return list;
-            });
+        // A. If topicIdToTry exists, fetch by ID
+        if (topicIdToTry && typeof topicIdToTry === 'string' && !topicIdToTry.startsWith('local_')) {
+          try {
+            const topicDocRef = doc(db, 'users', user.uid, 'topics', topicIdToTry);
+            const topicSnap = await getDoc(topicDocRef);
+            if (topicSnap.exists()) {
+              foundInFirestore = { id: topicSnap.id, ...topicSnap.data() };
+            }
+          } catch (err) {
+            console.warn('Error fetching topic by ID from Firestore:', err);
           }
         }
-        targetSubject = foundSubject;
 
-        // 3. Create Topic with cleanTitle under that Subject
-        const tIncidence = scheduleTopic.historicalIncidence || 15;
-        const tImportance = scheduleTopic.importanceDegree || (
-          tIncidence >= 25 ? 'extremo' : tIncidence >= 22 ? 'alto' : tIncidence >= 18 ? 'medio' : 'baixo'
-        );
-
-        const topicsRef = collection(db, 'users', user.uid, 'topics');
-        const newTopicRef = await addDoc(topicsRef, {
-          title: cleanTitle,
-          subjectId: targetSubject.id,
-          semesterId: targetSubject.semesterId || 'cronograma_sem',
-          references: "",
-          createdAt: new Date().toISOString(),
-          historicalIncidence: tIncidence,
-          importanceDegree: tImportance,
-          completed: false
-        });
-        targetTopic = {
-          id: newTopicRef.id,
-          title: cleanTitle,
-          subjectId: targetSubject.id,
-          semesterId: targetSubject.semesterId || 'cronograma_sem',
-          references: "",
-          historicalIncidence: tIncidence,
-          importanceDegree: tImportance,
-          completed: false
-        };
-
-        if (setTopics) {
-          setTopics(prev => [...prev, targetTopic]);
+        // B. Query users/{uid}/topics by exact cleanTitle
+        if (!foundInFirestore && cleanTitle) {
+          try {
+            const qTitle = query(collection(db, 'users', user.uid, 'topics'), where('title', '==', cleanTitle), limit(1));
+            const snapTitle = await getDocs(qTitle);
+            if (!snapTitle.empty) {
+              foundInFirestore = { id: snapTitle.docs[0].id, ...snapTitle.docs[0].data() };
+            }
+          } catch (err) {
+            console.warn('Error querying topic by title from Firestore:', err);
+          }
         }
-      } else {
-        // 'internato_only': Keep planning strictly inside MedInternato
-        targetSubject = {
-          id: `local_subj_${(scheduleTopic.subjectName || 'Geral').toLowerCase().replace(/\s+/g, '_')}`,
-          name: scheduleTopic.subjectName || 'Geral',
-          semesterId: 'cronograma_local',
-          icon: 'BookOpen',
-          color: 'bg-blue-100 text-[#0066cc]'
-        };
-        targetTopic = {
-          id: scheduleTopic.id || `local_topic_${cleanTitle.toLowerCase().replace(/\s+/g, '_')}`,
-          title: cleanTitle,
-          subjectId: targetSubject.id,
-          semesterId: 'cronograma_local',
-          references: "",
-          historicalIncidence: scheduleTopic.historicalIncidence || 15,
-          importanceDegree: scheduleTopic.importanceDegree || 'medio',
-          completed: false
-        };
+
+        // C. Fallback: fetch user topics from Firestore and run findMatchingTopic
+        if (!foundInFirestore) {
+          try {
+            const userTopicsSnap = await getDocs(collection(db, 'users', user.uid, 'topics'));
+            if (!userTopicsSnap.empty) {
+              const allUserTopics = userTopicsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+              foundInFirestore = findMatchingTopic(cleanTitle, allUserTopics, topicIdToTry);
+            }
+          } catch (err) {
+            console.warn('Error querying all user topics from Firestore:', err);
+          }
+        }
+
+        if (foundInFirestore) {
+          targetTopic = foundInFirestore;
+          targetSubject = (subjects || []).find(s => s.id === foundInFirestore.subjectId) || {
+            id: foundInFirestore.subjectId,
+            name: scheduleTopic.subjectName || 'Geral',
+            semesterId: foundInFirestore.semesterId || 'cronograma_sem',
+            icon: 'BookOpen',
+            color: 'bg-blue-100 text-[#0066cc]'
+          };
+          if (setTopics) {
+            setTopics(prev => {
+              if (prev.some(t => t.id === foundInFirestore.id)) return prev;
+              return [...prev, foundInFirestore];
+            });
+          }
+        } else if (currentChoice === 'sync') {
+          // 3. Create Subject & Topic in Firestore ONLY if it really doesn't exist anywhere
+          let foundSubject = (subjects || []).find(
+            s => s.name?.toLowerCase().trim() === scheduleTopic.subjectName?.toLowerCase().trim()
+          );
+
+          if (!foundSubject) {
+            const colors = [
+              'bg-blue-100 text-[#0066cc]',
+              'bg-[#FAF0E6] text-[#b45309]',
+              'bg-purple-100 text-purple-700',
+              'bg-rose-100 text-rose-700',
+              'bg-emerald-100 text-emerald-700',
+              'bg-indigo-100 text-indigo-700',
+              'bg-cyan-100 text-cyan-700'
+            ];
+            const icons = ['BookOpen', 'Brain', 'Pill', 'FileText', 'GraduationCap', 'Activity', 'ClipboardList'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const icon = icons[Math.floor(Math.random() * icons.length)];
+
+            const subjectsRef = collection(db, 'users', user.uid, 'subjects');
+            const newSubjectRef = await addDoc(subjectsRef, {
+              name: scheduleTopic.subjectName || 'Geral',
+              semesterId: 'cronograma_sem',
+              icon,
+              color,
+              createdAt: new Date().toISOString()
+            });
+            foundSubject = {
+              id: newSubjectRef.id,
+              name: scheduleTopic.subjectName || 'Geral',
+              semesterId: 'cronograma_sem',
+              icon,
+              color
+            };
+
+            if (setSubjects) {
+              setSubjects(prev => {
+                const list = [...prev, foundSubject];
+                list.sort((a, b) => a.name.localeCompare(b.name));
+                return list;
+              });
+            }
+          }
+          targetSubject = foundSubject;
+
+          const tIncidence = scheduleTopic.historicalIncidence || 15;
+          const tImportance = scheduleTopic.importanceDegree || (
+            tIncidence >= 25 ? 'extremo' : tIncidence >= 22 ? 'alto' : tIncidence >= 18 ? 'medio' : 'baixo'
+          );
+
+          const topicsRef = collection(db, 'users', user.uid, 'topics');
+          const newTopicRef = await addDoc(topicsRef, {
+            title: cleanTitle,
+            subjectId: targetSubject.id,
+            semesterId: targetSubject.semesterId || 'cronograma_sem',
+            references: "",
+            createdAt: new Date().toISOString(),
+            historicalIncidence: tIncidence,
+            importanceDegree: tImportance,
+            completed: false
+          });
+          targetTopic = {
+            id: newTopicRef.id,
+            title: cleanTitle,
+            subjectId: targetSubject.id,
+            semesterId: targetSubject.semesterId || 'cronograma_sem',
+            references: "",
+            historicalIncidence: tIncidence,
+            importanceDegree: tImportance,
+            completed: false
+          };
+
+          if (setTopics) {
+            setTopics(prev => [...prev, targetTopic]);
+          }
+        } else {
+          // 'internato_only': Keep planning strictly inside MedInternato
+          targetSubject = {
+            id: `local_subj_${(scheduleTopic.subjectName || 'Geral').toLowerCase().replace(/\s+/g, '_')}`,
+            name: scheduleTopic.subjectName || 'Geral',
+            semesterId: 'cronograma_local',
+            icon: 'BookOpen',
+            color: 'bg-blue-100 text-[#0066cc]'
+          };
+          targetTopic = {
+            id: scheduleTopic.id || `local_topic_${cleanTitle.toLowerCase().replace(/\s+/g, '_')}`,
+            title: cleanTitle,
+            subjectId: targetSubject.id,
+            semesterId: 'cronograma_local',
+            references: "",
+            historicalIncidence: scheduleTopic.historicalIncidence || 15,
+            importanceDegree: scheduleTopic.importanceDegree || 'medio',
+            completed: false
+          };
+        }
       }
 
       setSelectedSubject(targetSubject);

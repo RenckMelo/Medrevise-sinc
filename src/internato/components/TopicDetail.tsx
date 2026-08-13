@@ -2720,6 +2720,12 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     setLocalTopic(initialTopic);
   }, [initialTopic]);
 
+  useEffect(() => {
+    if (getAvailableDepths(localTopic).length > 0) {
+      setShowSummaryWizard(false);
+    }
+  }, [localTopic]);
+
   const lastTopicIdRef = useRef<string | null>(null);
 
   // Auto-save localTopic state to local storage cache whenever it is updated

@@ -76,6 +76,13 @@ export interface Flashcard {
   subjectId?: string;
   front: string;
   back: string;
+  concept?: string;
+  easeFactor?: number;
+  interval?: number;
+  repetitions?: number;
+  nextReviewDate?: string;
+  lastReviewDate?: string;
+  subtopicTag?: string;
 }
 
 export interface QuestionAttempt {

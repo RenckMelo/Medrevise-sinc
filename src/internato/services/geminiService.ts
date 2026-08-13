@@ -1279,32 +1279,132 @@ export async function generateQuestions(
   return allQuestions;
 }
 
+export function calculateFlashcardCreditCost(cardsCount: number): number {
+  if (cardsCount <= 10) return 2;
+  if (cardsCount <= 20) return 3;
+  if (cardsCount <= 30) return 4;
+  if (cardsCount <= 40) return 5;
+  if (cardsCount <= 50) return 6;
+  return Math.min(10, Math.ceil(cardsCount / 10) + 1);
+}
+
+export interface FlashcardPotentialAnalysis {
+  estimatedIdealCards: number;
+  creditCost: number;
+  coreMedicalConcepts: string[];
+  analysisSummary: string;
+}
+
+export async function analyzeTopicFlashcardPotential(
+  topicTitle: string,
+  content: string
+): Promise<FlashcardPotentialAnalysis> {
+  const prompt = `Você é um diretor pedagógico do MedInternato especializado em Análise de Densidade de Conteúdo e Extração de Flashcards para Provas de Residência Médica.
+Examine o texto médico do tema: "${topicTitle}".
+Conteúdo do tema: ${content ? content.substring(0, 5000) : topicTitle}
+
+Sua missão:
+1. Determine o NÚMERO IDEAL DE FLASHCARDS ("estimatedIdealCards") necessário para garantir 100% DE COBERTURA dos pontos cruciais do tema (fisiopatologia, critérios diagnósticos, exames de escolha, tratamento de 1ª linha, complicações e pegadinhas de prova), sem gerar cards redundantes.
+2. Liste os principais grupos de conceitos encontrados ("coreMedicalConcepts"), por exemplo: ["Diagnóstico e Critérios", "Tratamento de 1ª Linha", "Exames Complementares", "Sinais de Alarme"].
+3. Escreva um resumo analítico direto ("analysisSummary") de 2 a 3 frases explicando por que esse número exato de cards foi recomendado para este tema específico.
+
+Formato de Resposta (JSON estrito):
+{
+  "estimatedIdealCards": 25,
+  "coreMedicalConcepts": ["Conceito 1", "Conceito 2", "Conceito 3"],
+  "analysisSummary": "Explicação pedagógica da densidade do tema..."
+}`;
+
+  try {
+    await checkUsageLimit();
+    const result = await callGemini('generateJson', prompt);
+    const estimatedIdealCards = typeof result.estimatedIdealCards === 'number' ? Math.max(5, Math.min(60, result.estimatedIdealCards)) : 20;
+    const creditCost = calculateFlashcardCreditCost(estimatedIdealCards);
+
+    return {
+      estimatedIdealCards,
+      creditCost,
+      coreMedicalConcepts: Array.isArray(result.coreMedicalConcepts) ? result.coreMedicalConcepts : ['Conceitos do Tema'],
+      analysisSummary: result.analysisSummary || `Recomendamos ${estimatedIdealCards} flashcards para cobertura integral deste tema.`
+    };
+  } catch (err) {
+    console.error('Error analyzing flashcard potential:', err);
+    return {
+      estimatedIdealCards: 20,
+      creditCost: calculateFlashcardCreditCost(20),
+      coreMedicalConcepts: ['Conceitos do Tema'],
+      analysisSummary: 'Recomendamos cerca de 20 flashcards para garantir a cobertura integral das principais condutas médicas.'
+    };
+  }
+}
+
 export async function generateFlashcards(topicTitle: string, content: string, count: number = 10, userId?: string) {
   const prompt = `Com base no conteúdo médico abaixo, gere ${count} flashcards (frente e verso) para estudo por repetição espaçada sobre o tema "${topicTitle}".
-  Conteúdo: ${content.substring(0, 4000)}
+  Conteúdo: ${content ? content.substring(0, 4000) : topicTitle}
   
   REQUISITOS:
   - Escreva a frente e o verso estritamente em PORTUGUÊS (PORTUGUÊS DO BRASIL).
-  - A frente deve ser uma pergunta curta ou um concept para completar.
+  - A frente deve ser uma pergunta curta ou conceito direto para completar.
   - O verso deve ser a resposta direta e concisa.
-  - Foque em "pérolas" de prova e conceitos fundamentais.
+  - Adicione a chave "concept" para tag de diagnóstico de assunto (ex: "Diagnóstico", "Conduta de 1ª Linha", "Exame Padrão-Ouro", "Efeitos Colaterais").
+  - Foque em "pérolas" de prova de residência e condutas médicas cruciais.
   
   Formato de Resposta (JSON estrito):
   [
     {
       "front": "Pergunta em português...",
-      "back": "Resposta em português..."
+      "back": "Resposta em português...",
+      "concept": "Conceito Médico (ex: Tratamento de 1ª linha)"
     }
   ]`;
 
   try {
     await checkUsageLimit();
     const result = await callGemini('generateJson', prompt);
-    await recordUsage(2); // Flashcards cost 2
+    const cost = calculateFlashcardCreditCost(count);
+    await recordUsage(cost);
     return result;
   } catch (error) {
     console.error('Error generating flashcards:', error);
     throw error;
+  }
+}
+
+export async function generateFlashcardDiagnosticReport(
+  topicTitle: string,
+  scores: { cardFront: string; concept?: string; rating: 'errei' | 'dificil' | 'bom' | 'facil' }[]
+) {
+  const failedConcepts = scores.filter(s => s.rating === 'errei' || s.rating === 'dificil').map(s => s.concept || s.cardFront);
+  const masteredConcepts = scores.filter(s => s.rating === 'bom' || s.rating === 'facil').map(s => s.concept || s.cardFront);
+
+  const prompt = `Você é um preceptor médico de alta performance do MedInternato.
+Análise de Diagnóstico de Domínio para o tema: "${topicTitle}".
+Desempenho nos Flashcards de Avaliação do Aluno:
+- Conceitos Com Dificuldade/Erros: ${failedConcepts.join('; ') || 'Nenhum, o aluno respondeu tudo com facilidade!'}
+- Conceitos Dominados: ${masteredConcepts.join('; ') || 'Nenhum'}
+
+Forneça um relatório pedagógico de diagnóstico em formato JSON estrito com:
+1. "overallMasteryLevel": resumo de 1 frase do nível (ex: "Nível Sólido com Lacunas em Conduta de Emergência")
+2. "whatToStudy": array de 3 a 5 pontos diretos e pragmáticos de medicina que o aluno precisa revisar imediatamente.
+3. "studyPlan": orientações práticas de como estudar (ex: "Focar na leitura do resumo de Cetoacidose e resolver 15 questões de provas recentes").
+4. "revisionSchedule": recomendação de quando e como agendar as revisões espaçadas (24h, 7d, 30d).
+
+Formato de Resposta (JSON estrito):
+{
+  "overallMasteryLevel": "...",
+  "whatToStudy": ["Ponto 1", "Ponto 2", "Ponto 3"],
+  "studyPlan": "...",
+  "revisionSchedule": "..."
+}`;
+
+  try {
+    await checkUsageLimit();
+    const result = await callGemini('generateJson', prompt);
+    await recordUsage(1);
+    return result;
+  } catch (err) {
+    console.error('Error generating diagnostic report:', err);
+    return null;
   }
 }
 

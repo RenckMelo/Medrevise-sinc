@@ -454,33 +454,22 @@ export default function Cronograma({
       let targetSubject: any;
       let targetTopic: any;
 
-      if (currentChoice === 'sync') {
-        // 1. Check or Create Semester with name "CRONOGRAMA" and number 99 in MedRevise
-        const semestersRef = collection(db, 'users', user.uid, 'semesters');
-        const semestersSnap = await getDocs(semestersRef);
-        let cronogramaSemester = semestersSnap.docs
-          .map(d => ({ id: d.id, ...d.data() } as any))
-          .find(s => s.name?.toUpperCase() === 'CRONOGRAMA');
-
-        if (!cronogramaSemester) {
-          const newSemesterRef = await addDoc(semestersRef, {
-            number: 99,
-            name: 'CRONOGRAMA',
-            createdAt: new Date().toISOString()
-          });
-          cronogramaSemester = {
-            id: newSemesterRef.id,
-            number: 99,
-            name: 'CRONOGRAMA'
-          };
-        }
-
-        // 2. Check or Create Subject with topic.subjectName under that Semester
-        const subjectsRef = collection(db, 'users', user.uid, 'subjects');
-        const subjectsSnap = await getDocs(subjectsRef);
-        let foundSubject = subjectsSnap.docs
-          .map(d => ({ id: d.id, ...d.data() } as any))
-          .find(s => s.name?.toLowerCase().trim() === scheduleTopic.subjectName?.toLowerCase().trim() && s.semesterId === cronogramaSemester.id);
+      // 1. Fast path: check if matching topic already exists in topics prop
+      const matchedInMemory = matchTopicForSchedule(cleanTitle, topics || []);
+      if (matchedInMemory) {
+        targetTopic = matchedInMemory;
+        targetSubject = (subjects || []).find(s => s.id === matchedInMemory.subjectId) || {
+          id: matchedInMemory.subjectId,
+          name: scheduleTopic.subjectName || 'Geral',
+          semesterId: matchedInMemory.semesterId || 'cronograma_local',
+          icon: 'BookOpen',
+          color: 'bg-blue-100 text-[#0066cc]'
+        };
+      } else if (currentChoice === 'sync') {
+        // 2. Check or Create Subject with topic.subjectName under Semester in memory/Firestore
+        let foundSubject = (subjects || []).find(
+          s => s.name?.toLowerCase().trim() === scheduleTopic.subjectName?.toLowerCase().trim()
+        );
 
         if (!foundSubject) {
           const colors = [
@@ -496,9 +485,10 @@ export default function Cronograma({
           const color = colors[Math.floor(Math.random() * colors.length)];
           const icon = icons[Math.floor(Math.random() * icons.length)];
 
+          const subjectsRef = collection(db, 'users', user.uid, 'subjects');
           const newSubjectRef = await addDoc(subjectsRef, {
             name: scheduleTopic.subjectName || 'Geral',
-            semesterId: cronogramaSemester.id,
+            semesterId: 'cronograma_sem',
             icon,
             color,
             createdAt: new Date().toISOString()
@@ -506,7 +496,7 @@ export default function Cronograma({
           foundSubject = {
             id: newSubjectRef.id,
             name: scheduleTopic.subjectName || 'Geral',
-            semesterId: cronogramaSemester.id,
+            semesterId: 'cronograma_sem',
             icon,
             color
           };
@@ -521,47 +511,39 @@ export default function Cronograma({
         }
         targetSubject = foundSubject;
 
-        // 3. Check or Create Topic with cleanTitle under that Subject
+        // 3. Create Topic with cleanTitle under that Subject
+        const tIncidence = scheduleTopic.historicalIncidence || 15;
+        const tImportance = scheduleTopic.importanceDegree || (
+          tIncidence >= 25 ? 'extremo' : tIncidence >= 22 ? 'alto' : tIncidence >= 18 ? 'medio' : 'baixo'
+        );
+
         const topicsRef = collection(db, 'users', user.uid, 'topics');
-        const topicsSnap = await getDocs(topicsRef);
-        let foundTopic = topicsSnap.docs
-          .map(d => ({ id: d.id, ...d.data() } as any))
-          .find(t => t.title?.toLowerCase().trim() === cleanTitle.toLowerCase() && t.subjectId === targetSubject.id);
+        const newTopicRef = await addDoc(topicsRef, {
+          title: cleanTitle,
+          subjectId: targetSubject.id,
+          semesterId: targetSubject.semesterId || 'cronograma_sem',
+          references: "",
+          createdAt: new Date().toISOString(),
+          historicalIncidence: tIncidence,
+          importanceDegree: tImportance,
+          completed: false
+        });
+        targetTopic = {
+          id: newTopicRef.id,
+          title: cleanTitle,
+          subjectId: targetSubject.id,
+          semesterId: targetSubject.semesterId || 'cronograma_sem',
+          references: "",
+          historicalIncidence: tIncidence,
+          importanceDegree: tImportance,
+          completed: false
+        };
 
-        if (!foundTopic) {
-          const tIncidence = scheduleTopic.historicalIncidence || 15;
-          const tImportance = scheduleTopic.importanceDegree || (
-            tIncidence >= 25 ? 'extremo' : tIncidence >= 22 ? 'alto' : tIncidence >= 18 ? 'medio' : 'baixo'
-          );
-
-          const newTopicRef = await addDoc(topicsRef, {
-            title: cleanTitle,
-            subjectId: targetSubject.id,
-            semesterId: cronogramaSemester.id,
-            references: "",
-            createdAt: new Date().toISOString(),
-            historicalIncidence: tIncidence,
-            importanceDegree: tImportance,
-            completed: false
-          });
-          foundTopic = {
-            id: newTopicRef.id,
-            title: cleanTitle,
-            subjectId: targetSubject.id,
-            semesterId: cronogramaSemester.id,
-            references: "",
-            historicalIncidence: tIncidence,
-            importanceDegree: tImportance,
-            completed: false
-          };
-
-          if (setTopics) {
-            setTopics(prev => [...prev, foundTopic]);
-          }
+        if (setTopics) {
+          setTopics(prev => [...prev, targetTopic]);
         }
-        targetTopic = foundTopic;
       } else {
-        // 'internato_only': Keep planning strictly inside MedInternato without creating semesters/subjects in MedRevise database.
+        // 'internato_only': Keep planning strictly inside MedInternato
         targetSubject = {
           id: `local_subj_${(scheduleTopic.subjectName || 'Geral').toLowerCase().replace(/\s+/g, '_')}`,
           name: scheduleTopic.subjectName || 'Geral',
@@ -592,55 +574,13 @@ export default function Cronograma({
       } else if (targetView === 'flashcards') {
         setView('flashcards');
       } else {
-        // Check if topic already has content
-        const hasContent = !!(
-          targetTopic.content || 
-          targetTopic.content_standard || 
-          targetTopic.content_deep || 
-          targetTopic.content_elite || 
-          targetTopic.content_master || 
-          targetTopic.content_monograph || 
-          targetTopic.content_custom_analyzed
-        );
-
-        if (!hasContent) {
-          // Run AI summary pre-analysis based on incidence and high-relevance focus
-          const aiAnalysis = await analyzeSummaryNeeds(
-            targetTopic.title,
-            targetSubject.name,
-            'custom_analyzed'
-          );
-
-          const incidencePercent = scheduleTopic.historicalIncidence || 15;
-          const importanceTextStr = scheduleTopic.importanceDegree === 'extremo' ? 'Extremo/Crítico' : scheduleTopic.importanceDegree === 'alto' ? 'Alto' : 'Médio';
-          
-          aiAnalysis.clinicalHighlights = [
-            `IMPORTÂNCIA CRÍTICA DO CRONOGRAMA: Focar intensamente em questões de alta recorrência clínica, dado que o tópico possui incidência histórica de ${incidencePercent}% (${importanceTextStr}).`,
-            ...aiAnalysis.clinicalHighlights
-          ];
-
-          targetTopic.custom_analysis = aiAnalysis;
-          safeLocalStorageSet('auto_gen_depth', 'custom_analyzed');
-          safeLocalStorageSet('auto_gen_custom_analysis', JSON.stringify({ topicId: targetTopic.id, analysis: aiAnalysis }));
-        }
-
-        // Clear general lists cache so the new entries appear instantly
-        localStorage.removeItem('cache_subjects');
-        for (let key in localStorage) {
-          if (key.startsWith('local_cache_')) {
-            localStorage.removeItem(key);
-          }
-        }
-
-        // Select the subject and topic, then transition to topic view
-        setSelectedSubject(targetSubject);
-        setSelectedTopic(targetTopic);
+        // Direct view transition without blocking AI pre-analysis delay
         setView('topicDetail');
       }
 
     } catch (err: any) {
       console.error('Error in handling continue study:', err);
-      alert('Erro ao carregar/preparar o tópico de estudos com IA: ' + err.message);
+      alert('Erro ao carregar/preparar o tópico de estudos: ' + err.message);
     } finally {
       setStudyingTopicTitle(null);
     }

@@ -8,6 +8,7 @@ import {
   query, 
   onSnapshot, 
   doc, 
+  getDoc,
   getDocs,
   addDoc,
   updateDoc,
@@ -192,6 +193,31 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
     });
     return () => unsub();
   }, [userId]);
+
+  const loadUserProgress = async () => {
+    if (!userId) return;
+    try {
+      const progressRef = doc(db, 'users', userId, 'progress', 'main');
+      const snapshot = await getDoc(progressRef);
+      if (snapshot.exists()) {
+        const data = snapshot.data() || {};
+        setUserProgress({
+          ...data,
+          userId: userId,
+          completedTopicIds: Array.isArray(data.completedTopicIds) ? data.completedTopicIds : [],
+          answeredQuestionIds: Array.isArray(data.answeredQuestionIds) ? data.answeredQuestionIds : [],
+          correctQuestionIds: Array.isArray(data.correctQuestionIds) ? data.correctQuestionIds : [],
+          flaggedQuestionIds: Array.isArray(data.flaggedQuestionIds) ? data.flaggedQuestionIds : [],
+          flashcardReviews: data.flashcardReviews && typeof data.flashcardReviews === 'object' ? data.flashcardReviews : {},
+          quizHistory: Array.isArray(data.quizHistory) ? data.quizHistory : [],
+          studySessions: Array.isArray(data.studySessions) ? data.studySessions : [],
+          attempts: data.attempts && typeof data.attempts === 'object' ? data.attempts : {},
+        } as UserProgress);
+      }
+    } catch (err) {
+      console.warn('Error loading user progress:', err);
+    }
+  };
 
   // Reset scroll to top on any view transit
   useEffect(() => {
@@ -523,6 +549,10 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             topics={topics}
             userProgress={userProgress}
             userId={userId}
+            initialTopicIds={selectedTopic ? [selectedTopic.id] : (cronogramaFilterTopics.length > 0 ? cronogramaFilterTopics : undefined)}
+            onProgressUpdate={loadUserProgress}
+            availableCredits={availableCredits}
+            setAvailableCredits={setAvailableCredits}
           />
         )}
 

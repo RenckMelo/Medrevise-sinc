@@ -1747,9 +1747,10 @@ ESTRUTURA GLOBAL E DELIMITAÇÃO RÍGIDA DE ESCOPO DESTE CAPÍTULO:
 
 DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO E NÃO REPETIÇÃO:
 1. COMECE IMEDIATAMENTE PELO TÍTULO DO CAPÍTULO: O texto do capítulo DEVE começar na PRIMEIRA LINHA com "## ${chapterTitle}". É ESTRITAMENTE PROIBIDO incluir saudações, frases preparatórias, introduções gerais sobre o tema ou re-gerar o sumário de navegação.
-2. PROIBIÇÃO ABSOLUTA DE RE-INTRODUÇÃO E DUPLICIDADES:
+2. PROIBIÇÃO ABSOLUTA DE RE-INTRODUÇÃO, REPETIÇÕES E TABELAS DUPLICADAS:
    - SE ESTE NÃO FOR O CAPÍTULO 1, NÃO REINICIE O TEMA! Não escreva introduções gerais ou definições básicas que pertençam aos capítulos iniciais. O aluno já leu as seções anteriores.
    - NÃO REPITA conceitos, epidemiologia, definições, quadros ou tabelas que pertençam ou já foram explicados nos capítulos anteriores (${previousChaptersStr}).
+   - REGRA DE OURO DAS TABELAS COMPARATIVAS (INVIOLÁVEL): CADA TABELA COMPARATIVA (ex: "Comparação entre Doença X e Doença Y", "Diagnóstico Diferencial", "Tabelas de Classificação") DEVE APARECER NO MÁXIMO UMA ÚNICA VEZ NO RESUMO INTEIRO. Se uma tabela comparativa ou quadro de diferenciação entre patologias já foi inserido em um capítulo anterior (${previousChaptersStr}), É TERMINANTEMENTE PROIBIDO recriá-lo, repeti-lo ou fazer novas variações dele neste capítulo.
    - NÃO ANTECIPE tópicos, condutas ou fármacos que pertencem aos capítulos seguintes (${futureChaptersStr}).
    - Mantenha foco 100% EXCLUSIVO e aprofundado nas especificidades do título do capítulo atual: "${chapterTitle}".
 
@@ -1774,9 +1775,9 @@ DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO E NÃO REPETIÇÃO:
 6. EXTENSÃO E DENSIDADE TÉCNICA (SEJA DETALHADO E COMPLETO):
    - Não faça resumos superficiais ou tópicos genéricos. Traga dados exatos: mecanismos fisiopatológicos celulares/moleculares, dosagens de medicamentos (ataque, manutenção, via, frequência, ajuste renal/hepático), conduta em falha terapêutica, diretrizes brasileiras e internacionais atualizadas (2024/2025).
 
-7. HIGHLIGHTS E ALERTAS:
-   - Incorpore os destaques solicitados na análise prévia:
-     ${analysis.clinicalHighlights.map(h => `- ${h}`).join('\n     ')}
+7. HIGHLIGHTS E ALERTAS (NÃO REPETITIVOS):
+   - Se este capítulo for o local ideal para abordar algum dos destaques solicitados na análise prévia (${analysis.clinicalHighlights.join('; ')}), inclua-o AQUI (APENAS SE AINDA NÃO FOI TRATADO EM CAPÍTULOS ANTERIORES).
+   - NUNCA repita o mesmo destaque clínico ou a mesma tabela comparativa em múltiplos capítulos.
    - Sempre que houver uma dica crucial de prova ou pegadinha de banca, insira um alerta no formato:
      > [!IMPORTANT]
      > **OBSERVAÇÃO CLÍNICA / HIGHLIGHT DE PROVA:**
@@ -1940,6 +1941,13 @@ function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate',
   1. Tabelas Markdown oficiais com cabeçalhos (\`| Parâmetro | Sinal de Pega | Sinal de Posicionamento |\`).
   2. Caixas de destaque GFM (\`> [!IMPORTANT]\`, \`> [!TIP]\`, \`> [!NOTE]\`, \`> [!CAUTION]\`).
   3. Listas elegantes estruturadas com negrito e setas limpas (\`• **Barreira Intestinal**: ... → ...\`).
+\n`;
+
+  instructions += `REGRA INVIOLÁVEL ANTI-DUPLICAÇÃO E TABELAS COMPARATIVAS ÚNICAS:
+- CADA TABELA COMPARATIVA (ex: "Comparação entre Doença X e Doença Y", "Diagnóstico Diferencial", "Classificação de Risco") DEVE APARECER NO MÁXIMO UMA ÚNICA VEZ EM TODO O RESUMO.
+- É TERMINANTEMENTE PROIBIDO REPETIR A MESMA TABELA COMPARATIVA OU O MESMO QUADRO EM MÚLTIPLOS CAPÍTULOS OU SEÇÕES.
+- Se uma comparação entre X e Y ou uma tabela comparativa já foi apresentada anteriormente, NÃO A RECRIE, NÃO FAÇA VARIAÇÕES DELA E NÃO A REPITA. No máximo, faça uma breve menção direta no texto.
+- Toda tabela inserida deve trazer conteúdo inédito e exclusivo daquele trecho do resumo.
 \n`;
 
   instructions += `REGRA DE SUMÁRIO DE NAVEGAÇÃO:

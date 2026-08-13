@@ -4,6 +4,7 @@
   "description": "App de revisão espaçada científico para estudantes e profissionais de medicina, baseado na curva de esquecimento de Ebbinghaus.",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#ffffff",
   "theme_color": "#141414",
   "icons": [

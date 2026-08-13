@@ -45,6 +45,102 @@ import { MEDICAL_EXAMS_DB, GLOBAL_RESIDENCY_TOPICS, CANONICAL_SUBTOPICS_MAP } fr
 import { generatePlan, generateCollegeCustomPlan, extendScheduleWithScientificRevisions, StudyPlanTopic, StudyPlanWeek, calculateCoverage } from '../utils/scheduleGenerator';
 import SchedulePlannerWizard from './SchedulePlannerWizard';
 
+const MEDICAL_ABBREVIATIONS: { [key: string]: string[] } = {
+  "has": ["hipertensao arterial sistemica", "hipertensao"],
+  "icc": ["insuficiencia cardiaca congestiva", "insuficiencia cardiaca"],
+  "ic": ["insuficiencia cardiaca"],
+  "dm": ["diabetes mellitus", "diabetes"],
+  "dm1": ["diabetes mellitus tipo 1", "diabetes tipo 1"],
+  "dm2": ["diabetes mellitus tipo 2", "diabetes tipo 2"],
+  "iam": ["infarto agudo do miocardio", "infarto"],
+  "dpoc": ["doenca pulmonar obstrutiva cronica"],
+  "tev": ["tromboembolismo venoso"],
+  "tep": ["tromboembolismo pulmonar", "tromboembolia pulmonar"],
+  "avc": ["acidente vascular cerebral", "acidente vascular encefalico", "ave"],
+  "avci": ["acidente vascular cerebral isquemico", "acidente vascular encefalico isquemico", "avei"],
+  "avch": ["acidente vascular cerebral hemorragico", "acidente vascular encefalico hemorragico", "aveh"],
+  "ave": ["acidente vascular encefalico", "acidente vascular cerebral", "avc"],
+  "go": ["ginecologia e obstetricia", "ginecologia", "obstetricia"],
+  "g&o": ["ginecologia e obstetricia", "ginecologia", "obstetricia"],
+  "ivas": ["infeccao de vias aereas superiores", "infeccoes de vias aereas superiores", "resfriado"],
+  "ira": ["insuficiencia renal aguda", "injuria renal aguda"],
+  "irc": ["insuficiencia renal cronica"],
+  "drc": ["doenca renal cronica"],
+  "dheg": [
+    "doenca hipertensiva especifica da gravidez", 
+    "doenca hipertensiva especifica da gestacao", 
+    "sindromes hipertensivas da gestacao", 
+    "sindrome hipertensiva da gestacao", 
+    "sindrome hipertensiva na gestacao",
+    "sindromes hipertensivas na gravidez",
+    "hipertensao na gravidez",
+    "hipertensao gestacional"
+  ],
+  "sindromes hipertensivas da gestacao": [
+    "dheg",
+    "doenca hipertensiva especifica da gestacao",
+    "hipertensao gestacional"
+  ],
+  "sindromes hipertensivas na gestacao": [
+    "dheg",
+    "doenca hipertensiva especifica da gestacao",
+    "hipertensao gestacional"
+  ],
+  "dst": ["doenca sexualmente transmissivel", "infeccao sexualmente transmissivel", "ist"],
+  "ist": ["infeccao sexualmente transmissivel", "doenca sexualmente transmissivel", "dst"],
+  "itu": ["infeccao do trato urinario", "infeccao urinaria"],
+  "pcr": ["parada cardiorrespiratoria"],
+  "rcp": ["reanimacao cardiopulmonar"],
+  "dac": ["doenca arterial coronariana"],
+  "daop": ["doenca arterial obstrutiva periferica"],
+  "geca": ["gastroenterocolite aguda", "gastroenterite aguda", "gea"],
+  "gea": ["gastroenterite aguda", "gastroenterocolite aguda", "geca"],
+  "fa": ["fibrilacao atrial"],
+  "tvp": ["trombose venosa profunda"],
+  "drge": ["doenca do refluxo gastroesofagico", "refluxo gastroesofagico"],
+  "les": ["lupus eritematoso sistemico", "lupus"],
+  "ar": ["artrite reumatoide"],
+  "tb": ["tuberculose"],
+  "sdra": ["sindrome do desconforto respiratorio agudo", "sindrome da angustia respiratoria aguda", "sara"],
+  "sara": ["sindrome da angustia respiratoria aguda", "sindrome do desconforto respiratorio agudo", "sdra"],
+  "tpp": ["trabalho de parto prematuro"],
+  "rpmo": ["ruptura prematura de membranas ovulares", "amniorrexe prematura"],
+  "civd": ["coagulacao intravascular disseminada"],
+  "hda": ["hemorragia digestiva alta"],
+  "hdb": ["hemorragia digestiva baixa"],
+  "anestesio": ["anestesiologia"],
+  "anestesiologia": ["anestesio"],
+  "obstet": ["obstetricia"],
+  "ginec": ["ginecologia"]
+};
+
+const expandPhrase = (cleanText: string): string[] => {
+  if (!cleanText) return [];
+  const words = cleanText.split(" ");
+  let combinations = [words];
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (MEDICAL_ABBREVIATIONS[w]) {
+      const expansions = MEDICAL_ABBREVIATIONS[w];
+      const nextCombos: string[][] = [];
+      for (const combo of combinations) {
+        nextCombos.push(combo);
+        for (const exp of expansions) {
+          const newCombo = [...combo];
+          newCombo[i] = exp;
+          nextCombos.push(newCombo);
+        }
+      }
+      combinations = nextCombos.slice(0, 8);
+    }
+  }
+
+  const resultSet = new Set<string>();
+  combinations.forEach(c => resultSet.add(c.join(" ").replace(/\s+/g, " ").trim()));
+  return Array.from(resultSet);
+};
+
 interface CronogramaProps {
   user: any;
   subjects: any[];
@@ -147,99 +243,6 @@ const findMatchingTopic = (title: string, userTopics: any[], manualTopicId?: str
     return cleanAndNormalize(text)
       .split(" ")
       .filter(w => w.length > 0 && !stopWords.has(w));
-  };
-
-  const MEDICAL_ABBREVIATIONS: { [key: string]: string[] } = {
-    "has": ["hipertensao arterial sistemica", "hipertensao"],
-    "icc": ["insuficiencia cardiaca congestiva", "insuficiencia cardiaca"],
-    "ic": ["insuficiencia cardiaca"],
-    "dm": ["diabetes mellitus", "diabetes"],
-    "dm1": ["diabetes mellitus tipo 1", "diabetes tipo 1"],
-    "dm2": ["diabetes mellitus tipo 2", "diabetes tipo 2"],
-    "iam": ["infarto agudo do miocardio", "infarto"],
-    "dpoc": ["doenca pulmonar obstrutiva cronica"],
-    "tev": ["tromboembolismo venoso"],
-    "tep": ["tromboembolismo pulmonar", "tromboembolia pulmonar"],
-    "avc": ["acidente vascular cerebral", "acidente vascular encefalico", "ave"],
-    "avci": ["acidente vascular cerebral isquemico", "acidente vascular encefalico isquemico", "avei"],
-    "avch": ["acidente vascular cerebral hemorragico", "acidente vascular encefalico hemorragico", "aveh"],
-    "ave": ["acidente vascular encefalico", "acidente vascular cerebral", "avc"],
-    "go": ["ginecologia e obstetricia", "ginecologia", "obstetricia"],
-    "g&o": ["ginecologia e obstetricia", "ginecologia", "obstetricia"],
-    "ivas": ["infeccao de vias aereas superiores", "infeccoes de vias aereas superiores", "resfriado"],
-    "ira": ["insuficiencia renal aguda", "injuria renal aguda"],
-    "irc": ["insuficiencia renal cronica"],
-    "drc": ["doenca renal cronica"],
-    "dheg": [
-      "doenca hipertensiva especifica da gravidez", 
-      "doenca hipertensiva especifica da gestacao", 
-      "sindromes hipertensivas da gestacao", 
-      "sindrome hipertensiva da gestacao", 
-      "sindrome hipertensiva na gestacao",
-      "sindromes hipertensivas na gravidez",
-      "hipertensao na gravidez",
-      "hipertensao gestacional"
-    ],
-    "sindromes hipertensivas da gestacao": [
-      "dheg",
-      "doenca hipertensiva especifica da gestacao",
-      "hipertensao gestacional"
-    ],
-    "sindromes hipertensivas na gestacao": [
-      "dheg",
-      "doenca hipertensiva especifica da gestacao",
-      "hipertensao gestacional"
-    ],
-    "dst": ["doenca sexualmente transmissivel", "infeccao sexualmente transmissivel", "ist"],
-    "ist": ["infeccao sexualmente transmissivel", "doenca sexualmente transmissivel", "dst"],
-    "itu": ["infeccao do trato urinario", "infeccao urinaria"],
-    "pcr": ["parada cardiorrespiratoria"],
-    "rcp": ["reanimacao cardiopulmonar"],
-    "dac": ["doenca arterial coronariana"],
-    "daop": ["doenca arterial obstrutiva periferica"],
-    "geca": ["gastroenterocolite aguda", "gastroenterite aguda", "gea"],
-    "gea": ["gastroenterite aguda", "gastroenterocolite aguda", "geca"],
-    "fa": ["fibrilacao atrial"],
-    "tvp": ["trombose venosa profunda"],
-    "drge": ["doenca do refluxo gastroesofagico", "refluxo gastroesofagico"],
-    "les": ["lupus eritematoso sistemico", "lupus"],
-    "ar": ["artrite reumatoide"],
-    "tb": ["tuberculose"],
-    "sdra": ["sindrome do desconforto respiratorio agudo", "sindrome da angustia respiratoria aguda", "sara"],
-    "sara": ["sindrome da angustia respiratoria aguda", "sindrome do desconforto respiratorio agudo", "sdra"],
-    "tpp": ["trabalho de parto prematuro"],
-    "rpmo": ["ruptura prematura de membranas ovulares", "amniorrexe prematura"],
-    "civd": ["coagulacao intravascular disseminada"],
-    "hda": ["hemorragia digestiva alta"],
-    "hdb": ["hemorragia digestiva baixa"],
-    "anestesio": ["anestesiologia"],
-    "anestesiologia": ["anestesio"],
-    "obstet": ["obstetricia"],
-    "ginec": ["ginecologia"]
-  };
-
-  // Expand abbreviations in a word list to generate all alternative expanded clean phrases
-  const expandPhrase = (cleanText: string): string[] => {
-    const words = cleanText.split(" ");
-    let combinations = [words];
-
-    for (let i = 0; i < words.length; i++) {
-      const w = words[i];
-      if (MEDICAL_ABBREVIATIONS[w]) {
-        const expansions = MEDICAL_ABBREVIATIONS[w];
-        const nextCombos: string[][] = [];
-        for (const combo of combinations) {
-          for (const exp of expansions) {
-            const newCombo = [...combo];
-            newCombo[i] = exp;
-            nextCombos.push(newCombo);
-          }
-        }
-        combinations = [...combinations, ...nextCombos];
-      }
-    }
-
-    return combinations.map(c => c.join(" ").replace(/\s+/g, " ").trim());
   };
 
   const titleClean = cleanAndNormalize(title);
@@ -728,98 +731,6 @@ export default function Cronograma({
         .filter(w => w.length > 0 && !stopWords.has(w));
     };
 
-    const MEDICAL_ABBREVIATIONS: { [key: string]: string[] } = {
-      "has": ["hipertensao arterial sistemica", "hipertensao"],
-      "icc": ["insuficiencia cardiaca congestiva", "insuficiencia cardiaca"],
-      "ic": ["insuficiencia cardiaca"],
-      "dm": ["diabetes mellitus", "diabetes"],
-      "dm1": ["diabetes mellitus tipo 1", "diabetes tipo 1"],
-      "dm2": ["diabetes mellitus tipo 2", "diabetes tipo 2"],
-      "iam": ["infarto agudo do miocardio", "infarto"],
-      "dpoc": ["doenca pulmonar obstrutiva cronica"],
-      "tev": ["tromboembolismo venoso"],
-      "tep": ["tromboembolismo pulmonar", "tromboembolia pulmonar"],
-      "avc": ["acidente vascular cerebral", "acidente vascular encefalico", "ave"],
-      "avci": ["acidente vascular cerebral isquemico", "acidente vascular encefalico isquemico", "avei"],
-      "avch": ["acidente vascular cerebral hemorragico", "acidente vascular encefalico hemorragico", "aveh"],
-      "ave": ["acidente vascular encefalico", "acidente vascular cerebral", "avc"],
-      "go": ["ginecologia e obstetricia", "ginecologia", "obstetricia"],
-      "g&o": ["ginecologia e obstetricia", "ginecologia", "obstetricia"],
-      "ivas": ["infeccao de vias aereas superiores", "infeccoes de vias aereas superiores", "resfriado"],
-      "ira": ["insuficiencia renal aguda", "injuria renal aguda"],
-      "irc": ["insuficiencia renal cronica"],
-      "drc": ["doenca renal cronica"],
-      "dheg": [
-        "doenca hipertensiva especifica da gravidez", 
-        "doenca hipertensiva especifica da gestacao", 
-        "sindromes hipertensivas da gestacao", 
-        "sindrome hipertensiva da gestacao", 
-        "sindrome hipertensiva na gestacao",
-        "sindromes hipertensivas na gravidez",
-        "hipertensao na gravidez",
-        "hipertensao gestacional"
-      ],
-      "sindromes hipertensivas da gestacao": [
-        "dheg",
-        "doenca hipertensiva especifica da gestacao",
-        "hipertensao gestacional"
-      ],
-      "sindromes hipertensivas na gestacao": [
-        "dheg",
-        "doenca hipertensiva especifica da gestacao",
-        "hipertensao gestacional"
-      ],
-      "dst": ["doenca sexualmente transmissivel", "infeccao sexualmente transmissivel", "ist"],
-      "ist": ["infeccao sexualmente transmissivel", "doenca sexualmente transmissivel", "dst"],
-      "itu": ["infeccao do trato urinario", "infeccao urinaria"],
-      "pcr": ["parada cardiorrespiratoria"],
-      "rcp": ["reanimacao cardiopulmonar"],
-      "dac": ["doenca arterial coronariana"],
-      "daop": ["doenca arterial obstrutiva periferica"],
-      "geca": ["gastroenterocolite aguda", "gastroenterite aguda", "gea"],
-      "gea": ["gastroenterite aguda", "gastroenterocolite aguda", "geca"],
-      "fa": ["fibrilacao atrial"],
-      "tvp": ["trombose venosa profunda"],
-      "drge": ["doenca do refluxo gastroesofagico", "refluxo gastroesofagico"],
-      "les": ["lupus eritematoso sistemico", "lupus"],
-      "ar": ["artrite reumatoide"],
-      "tb": ["tuberculose"],
-      "sdra": ["sindrome do desconforto respiratorio agudo", "sindrome da angustia respiratoria aguda", "sara"],
-      "sara": ["sindrome da angustia respiratoria aguda", "sindrome do desconforto respiratorio agudo", "sdra"],
-      "tpp": ["trabalho de parto prematuro"],
-      "rpmo": ["ruptura prematura de membranas ovulares", "amniorrexe prematura"],
-      "civd": ["coagulacao intravascular disseminada"],
-      "hda": ["hemorragia digestiva alta"],
-      "hdb": ["hemorragia digestiva baixa"],
-      "anestesio": ["anestesiologia"],
-      "anestesiologia": ["anestesio"],
-      "obstet": ["obstetricia"],
-      "ginec": ["ginecologia"]
-    };
-
-    const expandPhrase = (cleanText: string): string[] => {
-      const words = cleanText.split(" ");
-      let combinations = [words];
-
-      for (let i = 0; i < words.length; i++) {
-        const w = words[i];
-        if (MEDICAL_ABBREVIATIONS[w]) {
-          const expansions = MEDICAL_ABBREVIATIONS[w];
-          const nextCombos: string[][] = [];
-          for (const combo of combinations) {
-            for (const exp of expansions) {
-              const newCombo = [...combo];
-              newCombo[i] = exp;
-              nextCombos.push(newCombo);
-            }
-          }
-          combinations = [...combinations, ...nextCombos];
-        }
-      }
-
-      return combinations.map(c => c.join(" ").replace(/\s+/g, " ").trim());
-    };
-
     return topics.map(t => {
       const tTitle = t.title || t.name || '';
       const tClean = cleanAndNormalize(tTitle);
@@ -871,98 +782,6 @@ export default function Cronograma({
       return cleanAndNormalize(text)
         .split(" ")
         .filter(w => w.length > 0 && !stopWords.has(w));
-    };
-
-    const MEDICAL_ABBREVIATIONS: { [key: string]: string[] } = {
-      "has": ["hipertensao arterial sistemica", "hipertensao"],
-      "icc": ["insuficiencia cardiaca congestiva", "insuficiencia cardiaca"],
-      "ic": ["insuficiencia cardiaca"],
-      "dm": ["diabetes mellitus", "diabetes"],
-      "dm1": ["diabetes mellitus tipo 1", "diabetes tipo 1"],
-      "dm2": ["diabetes mellitus tipo 2", "diabetes tipo 2"],
-      "iam": ["infarto agudo do miocardio", "infarto"],
-      "dpoc": ["doenca pulmonar obstrutiva cronica"],
-      "tev": ["tromboembolismo venoso"],
-      "tep": ["tromboembolismo pulmonar", "tromboembolia pulmonar"],
-      "avc": ["acidente vascular cerebral", "acidente vascular encefalico", "ave"],
-      "avci": ["acidente vascular cerebral isquemico", "acidente vascular encefalico isquemico", "avei"],
-      "avch": ["acidente vascular cerebral hemorragico", "acidente vascular encefalico hemorragico", "aveh"],
-      "ave": ["acidente vascular encefalico", "acidente vascular cerebral", "avc"],
-      "go": ["ginecologia e obstetricia", "ginecologia", "obstetricia"],
-      "g&o": ["ginecologia e obstetricia", "ginecologia", "obstetricia"],
-      "ivas": ["infeccao de vias aereas superiores", "infeccoes de vias aereas superiores", "resfriado"],
-      "ira": ["insuficiencia renal aguda", "injuria renal aguda"],
-      "irc": ["insuficiencia renal cronica"],
-      "drc": ["doenca renal cronica"],
-      "dheg": [
-        "doenca hipertensiva especifica da gravidez", 
-        "doenca hipertensiva especifica da gestacao", 
-        "sindromes hipertensivas da gestacao", 
-        "sindrome hipertensiva da gestacao", 
-        "sindrome hipertensiva na gestacao",
-        "sindromes hipertensivas na gravidez",
-        "hipertensao na gravidez",
-        "hipertensao gestacional"
-      ],
-      "sindromes hipertensivas da gestacao": [
-        "dheg",
-        "doenca hipertensiva especifica da gestacao",
-        "hipertensao gestacional"
-      ],
-      "sindromes hipertensivas na gestacao": [
-        "dheg",
-        "doenca hipertensiva especifica da gestacao",
-        "hipertensao gestacional"
-      ],
-      "dst": ["doenca sexualmente transmissivel", "infeccao sexualmente transmissivel", "ist"],
-      "ist": ["infeccao sexualmente transmissivel", "doenca sexualmente transmissivel", "dst"],
-      "itu": ["infeccao do trato urinario", "infeccao urinaria"],
-      "pcr": ["parada cardiorrespiratoria"],
-      "rcp": ["reanimacao cardiopulmonar"],
-      "dac": ["doenca arterial coronariana"],
-      "daop": ["doenca arterial obstrutiva periferica"],
-      "geca": ["gastroenterocolite aguda", "gastroenterite aguda", "gea"],
-      "gea": ["gastroenterite aguda", "gastroenterocolite aguda", "geca"],
-      "fa": ["fibrilacao atrial"],
-      "tvp": ["trombose venosa profunda"],
-      "drge": ["doenca do refluxo gastroesofagico", "refluxo gastroesofagico"],
-      "les": ["lupus eritematoso sistemico", "lupus"],
-      "ar": ["artrite reumatoide"],
-      "tb": ["tuberculose"],
-      "sdra": ["sindrome do desconforto respiratorio agudo", "sindrome da angustia respiratoria aguda", "sara"],
-      "sara": ["sindrome da angustia respiratoria aguda", "sindrome do desconforto respiratorio agudo", "sdra"],
-      "tpp": ["trabalho de parto prematuro"],
-      "rpmo": ["ruptura prematura de membranas ovulares", "amniorrexe prematura"],
-      "civd": ["coagulacao intravascular disseminada"],
-      "hda": ["hemorragia digestiva alta"],
-      "hdb": ["hemorragia digestiva baixa"],
-      "anestesio": ["anestesiologia"],
-      "anestesiologia": ["anestesio"],
-      "obstet": ["obstetricia"],
-      "ginec": ["ginecologia"]
-    };
-
-    const expandPhrase = (cleanText: string): string[] => {
-      const words = cleanText.split(" ");
-      let combinations = [words];
-
-      for (let i = 0; i < words.length; i++) {
-        const w = words[i];
-        if (MEDICAL_ABBREVIATIONS[w]) {
-          const expansions = MEDICAL_ABBREVIATIONS[w];
-          const nextCombos: string[][] = [];
-          for (const combo of combinations) {
-            for (const exp of expansions) {
-              const newCombo = [...combo];
-              newCombo[i] = exp;
-              nextCombos.push(newCombo);
-            }
-          }
-          combinations = [...combinations, ...nextCombos];
-        }
-      }
-
-      return combinations.map(c => c.join(" ").replace(/\s+/g, " ").trim());
     };
 
     const areWordsSimilar = (w1: string, w2: string): boolean => {

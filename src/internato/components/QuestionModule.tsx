@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { CheckCircle2, XCircle, ChevronRight, ChevronLeft, HelpCircle, Trophy, RefreshCcw, Sparkles, Loader2, Clock, Filter, Layers, Brain, BookCheck, RotateCcw, List, Bookmark, Trash2, SlidersHorizontal, AlertCircle, Building2, Calendar, Eye, Search, Plus } from 'lucide-react';
+import { CheckCircle2, XCircle, ChevronRight, ChevronLeft, ArrowLeft, HelpCircle, Trophy, RefreshCcw, Sparkles, Loader2, Clock, Filter, Layers, Brain, BookCheck, RotateCcw, List, Bookmark, Trash2, SlidersHorizontal, AlertCircle, Building2, Calendar, Eye, Search, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { db, collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove, addDoc, setDoc, getDoc, increment, orderBy, limit, deleteDoc } from '../firebase';
@@ -108,6 +108,16 @@ export default function QuestionModule({
   const [selectedQuizForDetail, setSelectedQuizForDetail] = useState<QuizAttempt | null>(null);
   const [detailQuestions, setDetailQuestions] = useState<Question[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const lastInitKeyRef = useRef<string | null>(null);
+  const lastStatsKeyRef = useRef<string | null>(null);
+
+  // Topic Preparation states
+  const [isTopicPreparing, setIsTopicPreparing] = useState(false);
+  const [topicPrepQuestions, setTopicPrepQuestions] = useState<Question[]>([]);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [generationStatus, setGenerationStatus] = useState('');
+  const [isGeneratingTopicQuestions, setIsGeneratingTopicQuestions] = useState(false);
+  const [selectedCountFromExisting, setSelectedCountFromExisting] = useState(10);
 
   // Selected Topics Questions & Stats State
   const [topicStatsMap, setTopicStatsMap] = useState<Record<string, {
@@ -907,6 +917,14 @@ export default function QuestionModule({
           ? [initialTopicId] 
           : [];
 
+      const currentInitKey = `${activeTids.join(',')}_${initialQuestionsCount || 5}_${initialMode || 'custom'}`;
+      if (activeTids.length > 0 && lastInitKeyRef.current === currentInitKey) {
+        return;
+      }
+      if (activeTids.length > 0) {
+        lastInitKeyRef.current = currentInitKey;
+      }
+
       if (activeTids.length > 0) {
         setSelectedTopicIds(activeTids);
         if (initialQuestionsCount) {
@@ -974,73 +992,11 @@ export default function QuestionModule({
           }
           fetched = fetched.sort(() => Math.random() - 0.5);
 
-          if (initialQuestionsCount && initialQuestionsCount > 0) {
-            fetched = fetched.slice(0, initialQuestionsCount);
-          }
-
-          // Resilient fallback if no questions or fewer questions exist in specified topics yet
-          const targetCount = initialQuestionsCount || 5;
-          if (fetched.length < targetCount && activeTids.length > 0) {
-            const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
-            const targetExam = preset ? preset.name : undefined;
-            
-            for (const tid of activeTids) {
-              const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
-              const existingTexts = fetched.map(q => q.text);
-              const needed = Math.max(1, targetCount - fetched.length);
-              try {
-                const newQuestions = await generateQuestions(topicTitle, subjectName, needed, existingTexts, userId, targetExam);
-                if (newQuestions && Array.isArray(newQuestions)) {
-                  for (const qData of newQuestions) {
-                    const docRef = await addDoc(collection(db, 'questions'), {
-                      ...qData,
-                      topicId: topicId,
-                      subjectId: subjectId
-                    });
-                    const createdQ = { id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question;
-                    fetched.push(createdQ);
-                  }
-                  safeLocalStorageRemove(`questions_topic_${topicId}`);
-                }
-              } catch (genErr) {
-                console.warn('Auto AI question generation fallback failed:', genErr);
-              }
-            }
-          }
-
-          if (fetched.length === 0) {
-            const matchedSubjects = new Set<string>();
-            activeTids.forEach(tid => {
-              const { subjectId } = findTopicAndSubject(tid, topics, subjects);
-              if (subjectId) {
-                matchedSubjects.add(subjectId);
-              }
-            });
-
-            if (matchedSubjects.size > 0) {
-              const subIds = Array.from(matchedSubjects);
-              const q = query(collection(db, 'questions'), where('subjectId', 'in', subIds), limit(targetCount * 3));
-              const snapshot = await getDocs(q);
-              fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Question));
-              fetched = fetched.sort(() => Math.random() - 0.5).slice(0, targetCount);
-            }
-          }
-
-          if (fetched.length > 0) {
-            setQuestions(fetched);
-            setIsActive(true);
-            setSeconds(0);
-            setSecondsRemaining((initialQuestionsCount ? Math.ceil(initialQuestionsCount * 1.5) : 30) * 60);
-            setExamAnswers({});
-            setCurrentIndex(0);
-            setIsAnswered(false);
-            setSelectedOption(null);
-            setAiExplanation(null);
-            setShowResults(false);
-            setIsSelecting(false);
-          } else {
-            setIsSelecting(true);
-          }
+          // Redirect to custom topic preparation screen with the existing pool
+          setTopicPrepQuestions(fetched);
+          setIsTopicPreparing(true);
+          setSelectedCountFromExisting(Math.min(10, fetched.length > 0 ? fetched.length : 10));
+          setIsSelecting(true);
         } catch (err) {
           console.error("Error loading mock study session:", err);
           setIsSelecting(true);
@@ -1444,6 +1400,147 @@ export default function QuestionModule({
     }
   }, [selectedTopicIds, userProgress]);
 
+  const handleGenerateTopicQuestions = async (countToGen: number, isAddingMore: boolean = false) => {
+    const uniqueTids = Array.from(new Set(selectedTopicIds)).filter(Boolean);
+    if (uniqueTids.length === 0) return;
+
+    setIsGeneratingTopicQuestions(true);
+    setGenerationProgress(5);
+    setGenerationStatus("Conectando ao preceptor IA de residência...");
+
+    const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+    const targetExam = preset ? preset.name : undefined;
+    const allAdded: Question[] = [];
+
+    // Smooth progress simulation helper
+    let progressInterval: NodeJS.Timeout | null = null;
+    const simulateProgress = (start: number, end: number, durationMs: number) => {
+      if (progressInterval) clearInterval(progressInterval);
+      const steps = 20;
+      const stepTime = durationMs / steps;
+      const increment = (end - start) / steps;
+      let current = start;
+      progressInterval = setInterval(() => {
+        current += increment;
+        if (current >= end) {
+          current = end;
+          if (progressInterval) clearInterval(progressInterval);
+        }
+        setGenerationProgress(Math.min(98, Math.round(current)));
+      }, stepTime);
+    };
+
+    try {
+      // We will generate in batches of 5 questions to maintain progress updates
+      const batchSize = 5;
+      const batchesCount = Math.ceil(countToGen / batchSize);
+
+      for (let b = 0; b < batchesCount; b++) {
+        const currentBatchSize = Math.min(batchSize, countToGen - (b * batchSize));
+        const batchStartPct = Math.round((b / batchesCount) * 80) + 5;
+        const batchEndPct = Math.round(((b + 1) / batchesCount) * 80) + 5;
+
+        setGenerationStatus(`Gerando questões: lote ${b + 1} de ${batchesCount}...`);
+        simulateProgress(batchStartPct, batchEndPct - 10, 8000);
+
+        for (const tid of uniqueTids) {
+          const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
+          const existingTexts = [
+            ...topicPrepQuestions.map(q => q.text),
+            ...allAdded.map(q => q.text)
+          ];
+
+          const newQuestions = await generateQuestions(
+            topicTitle, 
+            subjectName, 
+            currentBatchSize, 
+            existingTexts, 
+            userId, 
+            targetExam
+          );
+
+          if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
+            setGenerationStatus(`Gravando lote ${b + 1} de ${batchesCount} no banco de dados...`);
+            setGenerationProgress(batchEndPct - 5);
+
+            for (const qData of newQuestions) {
+              const docRef = await addDoc(collection(db, 'questions'), {
+                ...qData,
+                topicId: topicId,
+                subjectId: subjectId
+              });
+              allAdded.push({ id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question);
+            }
+            safeLocalStorageRemove(`questions_topic_${topicId}`);
+            if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
+          }
+        }
+      }
+
+      if (progressInterval) clearInterval(progressInterval);
+      setGenerationProgress(95);
+      setGenerationStatus("Sincronizando banco de dados local...");
+
+      // Reload topic stats to update the dashboard counter
+      await loadSelectedTopicsStats(uniqueTids);
+
+      // Consolidate the entire pool of questions
+      const finalQuestionsPool = isAddingMore 
+        ? [...topicPrepQuestions, ...allAdded]
+        : allAdded;
+
+      if (finalQuestionsPool.length > 0) {
+        setQuestions(finalQuestionsPool);
+        setIsActive(true);
+        setSeconds(0);
+        setSecondsRemaining(Math.ceil(finalQuestionsPool.length * 1.5) * 60);
+        setExamAnswers({});
+        setCurrentIndex(0);
+        setIsAnswered(false);
+        setSelectedOption(null);
+        setAiExplanation(null);
+        setShowResults(false);
+        
+        setGenerationProgress(100);
+        setGenerationStatus("Pronto! Iniciando simulado...");
+        
+        setTimeout(() => {
+          setIsSelecting(false);
+          setIsTopicPreparing(false);
+          setIsGeneratingTopicQuestions(false);
+        }, 1000);
+      } else {
+        throw new Error("Nenhuma questão pôde ser gerada.");
+      }
+
+    } catch (err: any) {
+      if (progressInterval) clearInterval(progressInterval);
+      console.error('Error generating questions:', err);
+      alert(`Erro ao gerar novas questões: ${err?.message || 'Falha na comunicação com a IA.'}`);
+      setIsGeneratingTopicQuestions(false);
+    }
+  };
+
+  const handleStartWithExisting = (countToUse: number) => {
+    // Take a random or slice of existing questions
+    const shuffled = [...topicPrepQuestions].sort(() => Math.random() - 0.5);
+    const finalSelection = shuffled.slice(0, countToUse);
+
+    setQuestions(finalSelection);
+    setIsActive(true);
+    setSeconds(0);
+    setSecondsRemaining(Math.ceil(finalSelection.length * 1.5) * 60);
+    setExamAnswers({});
+    setCurrentIndex(0);
+    setIsAnswered(false);
+    setSelectedOption(null);
+    setAiExplanation(null);
+    setShowResults(false);
+    
+    setIsSelecting(false);
+    setIsTopicPreparing(false);
+  };
+
   const handleGenerateMoreForTopic = async (tid: string, countToGen: number = 5) => {
     setGeneratingTopicId(tid);
     try {
@@ -1628,7 +1725,252 @@ export default function QuestionModule({
   };
 
   if (loading) return <div className="text-center py-20">Carregando questões...</div>;
-  
+
+  if (isTopicPreparing) {
+    const activeTid = selectedTopicIds[0];
+    const topicObj = topics.find(t => t.id === activeTid);
+    const subjectObj = subjects.find(s => s.id === topicObj?.subjectId);
+    const existingCount = topicPrepQuestions.length;
+
+    return (
+      <div className="max-w-3xl mx-auto py-10 px-4">
+        <div className="bg-white rounded-3xl border border-[#E2E0D9] p-8 space-y-8 shadow-sm">
+          {/* Header with Back button */}
+          <div className="flex items-center justify-between border-b border-[#E2E0D9] pb-6">
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => {
+                  setIsTopicPreparing(false);
+                  setSelectedTopicIds([]);
+                  setQuestions([]);
+                  setIsSelecting(true);
+                }}
+                className="h-9 w-9 rounded-xl hover:bg-slate-100"
+              >
+                <ArrowLeft className="w-5 h-5 text-stone-600" />
+              </Button>
+              <div>
+                <Badge className="bg-primary/10 text-primary border-none text-[8px] font-black uppercase tracking-wider mb-1">
+                  {subjectObj?.name || 'MedInternato'}
+                </Badge>
+                <h2 className="text-2xl font-display font-black leading-tight text-[#1A1A1A]">
+                  {topicObj?.title || 'Preparando Simulado'}
+                </h2>
+              </div>
+            </div>
+            
+            <Button 
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsTopicPreparing(false);
+                setSelectedTopicIds([]);
+                setQuestions([]);
+                setIsSelecting(true);
+              }}
+              className="rounded-xl text-[10px] uppercase font-bold tracking-widest"
+            >
+              Cancelar
+            </Button>
+          </div>
+
+          {/* If currently generating with IA, show the progressive status screen */}
+          {isGeneratingTopicQuestions ? (
+            <div className="py-12 space-y-8 text-center">
+              <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
+                {/* Spinner & Percent circle */}
+                <div className="absolute inset-0 border-4 border-slate-100 rounded-full" />
+                <div 
+                  className="absolute inset-0 border-4 border-primary border-t-transparent rounded-full animate-spin" 
+                  style={{ animationDuration: '2s' }}
+                />
+                <span className="text-2xl font-display font-black text-primary">
+                  {generationProgress}%
+                </span>
+              </div>
+              
+              <div className="space-y-3 max-w-md mx-auto">
+                <h3 className="text-lg font-display font-bold text-[#1A1A1A]">
+                  Gerando questões estruturadas...
+                </h3>
+                <p className="text-sm text-[#8E8A82] font-semibold">
+                  {generationStatus}
+                </p>
+              </div>
+
+              {/* Progress bar container */}
+              <div className="w-full max-w-md mx-auto bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-primary h-full rounded-full transition-all duration-300" 
+                  style={{ width: `${generationProgress}%` }}
+                />
+              </div>
+
+              <p className="text-[10px] text-[#8E8A82] uppercase tracking-widest font-black max-w-sm mx-auto leading-relaxed">
+                Isso pode levar de 15 a 30 segundos. Estamos formulando casos clínicos reais com base nas bancas de residência.
+              </p>
+            </div>
+          ) : (
+            // The choice screens
+            <div className="space-y-8">
+              {existingCount === 0 ? (
+                /* SCREEN 1: No existing questions */
+                <div className="space-y-6">
+                  <div className="p-6 bg-amber-50/50 border border-amber-200/60 rounded-2xl flex gap-4 items-start">
+                    <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-amber-900 text-sm">Banco de dados vazio para este tema</h4>
+                      <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                        Você ainda não possui nenhuma questão gerada para este tópico. Escolha abaixo a quantidade de questões que deseja que nosso preceptor IA crie agora mesmo!
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
+                      Quantidade de questões a serem geradas:
+                    </span>
+                    <div className="grid grid-cols-4 gap-3">
+                      {[5, 10, 15, 20].map((qty) => (
+                        <button
+                          key={`qty-choice-${qty}`}
+                          type="button"
+                          onClick={() => setNumQuestionsPerTopic(qty)}
+                          className={cn(
+                            "py-4 rounded-xl border text-sm font-black transition-all flex flex-col items-center justify-center gap-1",
+                            numQuestionsPerTopic === qty 
+                              ? "bg-primary/5 border-primary text-primary shadow-sm" 
+                              : "bg-white border-[#E2E0D9] text-[#1A1A1A] hover:bg-slate-50"
+                          )}
+                        >
+                          <span className="text-lg font-display">{qty}</span>
+                          <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#8E8A82]">Questões</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-[#E2E0D9] flex flex-col sm:flex-row gap-4 items-center justify-between">
+                    <p className="text-[10px] text-[#8E8A82] font-semibold max-w-md leading-normal uppercase">
+                      Custo estimado: {Math.max(3, Math.ceil((numQuestionsPerTopic / 5) * 3))} créditos de simulação de preceptor.
+                    </p>
+                    <Button 
+                      onClick={() => handleGenerateTopicQuestions(numQuestionsPerTopic)}
+                      className="bg-primary text-white text-xs uppercase tracking-widest font-black px-8 h-12 rounded-xl gap-2 w-full sm:w-auto"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Gerar {numQuestionsPerTopic} Questões e Começar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                /* SCREEN 2: Existing questions found */
+                <div className="space-y-8">
+                  <div className="p-6 bg-emerald-50/50 border border-emerald-200/60 rounded-2xl flex gap-4 items-start">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-emerald-900 text-sm">Questões encontradas no seu banco de dados</h4>
+                      <p className="text-xs text-emerald-700 mt-1 leading-relaxed">
+                        Encontramos um total de <strong className="font-black">{existingCount}</strong> questões já geradas para o tópico <strong>"{topicObj?.title}"</strong>. Escolha como gostaria de prosseguir abaixo.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Block A: Solve Existing */}
+                    <div className="border border-[#E2E0D9] rounded-2xl p-6 space-y-4 flex flex-col justify-between bg-[#FAF9F6]">
+                      <div className="space-y-2">
+                        <h4 className="font-display font-black text-sm text-[#1A1A1A] uppercase tracking-wider">
+                          1. Usar Questões Existentes
+                        </h4>
+                        <p className="text-xs text-[#8E8A82] leading-normal font-semibold">
+                          Inicie o simulado imediatamente utilizando as questões já disponíveis no seu banco de dados local.
+                        </p>
+                      </div>
+
+                      <div className="space-y-4 pt-4 border-t border-[#E2E0D9]/60">
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
+                            Quantas deseja resolver:
+                          </label>
+                          <select 
+                            value={selectedCountFromExisting}
+                            onChange={(e) => setSelectedCountFromExisting(Number(e.target.value))}
+                            className="w-full bg-white border border-[#E2E0D9] rounded-xl px-3 py-2 text-xs font-bold text-[#1A1A1A] outline-none focus:border-primary"
+                          >
+                            {[5, 10, 15, 20].filter(qty => qty <= existingCount).map(qty => (
+                              <option key={`existing-qty-${qty}`} value={qty}>{qty} questões</option>
+                            ))}
+                            <option value={existingCount}>Todas as {existingCount} questões</option>
+                          </select>
+                        </div>
+
+                        <Button 
+                          onClick={() => handleStartWithExisting(selectedCountFromExisting)}
+                          className="w-full bg-stone-900 text-white text-[10px] uppercase tracking-widest font-black h-11 rounded-xl"
+                        >
+                          Iniciar com {selectedCountFromExisting} Existentes
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Block B: Generate More */}
+                    <div className="border border-primary/20 rounded-2xl p-6 space-y-4 flex flex-col justify-between bg-primary/[0.01]">
+                      <div className="space-y-2">
+                        <h4 className="font-display font-black text-sm text-primary uppercase tracking-wider flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4" />
+                          2. Gerar mais com IA
+                        </h4>
+                        <p className="text-xs text-[#8E8A82] leading-normal font-semibold">
+                          Deseja testar casos inéditos? Gere mais questões com nosso preceptor de IA e junte ao seu simulado.
+                        </p>
+                      </div>
+
+                      <div className="space-y-4 pt-4 border-t border-primary/10">
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
+                            Gerar mais quantas questões:
+                          </label>
+                          <div className="grid grid-cols-4 gap-2">
+                            {[5, 10, 15, 20].map((qty) => (
+                              <button
+                                key={`gen-more-${qty}`}
+                                type="button"
+                                onClick={() => setNumQuestionsPerTopic(qty)}
+                                className={cn(
+                                  "py-2 rounded-lg border text-xs font-black transition-all",
+                                  numQuestionsPerTopic === qty 
+                                    ? "bg-primary/5 border-primary text-primary" 
+                                    : "bg-white border-[#E2E0D9] text-[#1A1A1A] hover:bg-slate-50"
+                                )}
+                              >
+                                +{qty}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <Button 
+                          onClick={() => handleGenerateTopicQuestions(numQuestionsPerTopic, true)}
+                          className="w-full bg-primary text-white text-[10px] uppercase tracking-widest font-black h-11 rounded-xl gap-1.5"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Gerar +{numQuestionsPerTopic} e Iniciar
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (isSelecting || questions.length === 0) {
     return (
       <div className="max-w-4xl mx-auto space-y-10">

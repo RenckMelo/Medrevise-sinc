@@ -60,6 +60,8 @@ interface QuestionModuleProps {
   initialQuestionsCount?: number;
   initialMode?: 'study' | 'exam';
   onProgressUpdate?: (updates: Partial<UserProgress>) => void;
+  availableCredits?: number;
+  setAvailableCredits?: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export default function QuestionModule({ 
@@ -71,7 +73,9 @@ export default function QuestionModule({
   initialTopicIds,
   initialQuestionsCount,
   initialMode,
-  onProgressUpdate 
+  onProgressUpdate,
+  availableCredits,
+  setAvailableCredits
 }: QuestionModuleProps) {
    const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -1089,6 +1093,7 @@ export default function QuestionModule({
       setIsActive(false);
       
       // Save Quiz Attempt summary
+      const finalDuration = Math.max(15, seconds);
       const quizAttempt = {
         id: Math.random().toString(36).substr(2, 9),
         userId,
@@ -1097,15 +1102,23 @@ export default function QuestionModule({
         questions: currentQuizResults,
         score,
         totalQuestions: questions.length,
-        timeSpentSeconds: seconds,
+        timeSpentSeconds: finalDuration,
         timestamp: new Date().toISOString(),
         type: selectedSubjectIds.length > 1 ? 'simulado' : 'individual' as any
+      };
+
+      const studySessionEntry = {
+        id: Math.random().toString(36).substr(2, 9),
+        subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || 'geral',
+        startTime: new Date(Date.now() - finalDuration * 1000).toISOString(),
+        durationSeconds: finalDuration
       };
       
       if (onProgressUpdate && userProgress) {
         onProgressUpdate({
-          totalStudyTimeSeconds: (userProgress.totalStudyTimeSeconds || 0) + seconds,
-          quizHistory: [...(userProgress.quizHistory || []), quizAttempt]
+          totalStudyTimeSeconds: (userProgress.totalStudyTimeSeconds || 0) + finalDuration,
+          quizHistory: [...(userProgress.quizHistory || []), quizAttempt],
+          studySessions: [...(userProgress.studySessions || []), studySessionEntry]
         });
       }
 
@@ -1113,8 +1126,20 @@ export default function QuestionModule({
         await addDoc(collection(db, 'quizAttempts'), quizAttempt);
         const progressRef = doc(db, 'userProgress', userId);
         await updateDoc(progressRef, {
-          totalStudyTimeSeconds: increment(seconds),
-          quizHistory: arrayUnion(quizAttempt) // Store full object for recent display if needed, or just rely on collection
+          totalStudyTimeSeconds: increment(finalDuration),
+          quizHistory: arrayUnion(quizAttempt),
+          studySessions: arrayUnion(studySessionEntry)
+        });
+
+        // Also add session to MedRevise users/{userId}/studySessions collection
+        await addDoc(collection(db, 'users', userId, 'studySessions'), {
+          topicId: selectedTopicIds[0] || questions[0]?.topicId || '',
+          subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || '',
+          date: new Date().toISOString(),
+          questionsCount: questions.length,
+          correctCount: score,
+          studyTimeMinutes: Math.max(1, Math.round(finalDuration / 60)),
+          description: `Sessão de Questões no MedInternato (${score}/${questions.length} acertos)`
         });
       } catch (err) {
         console.warn('Firestore write failed, saved in local-first cache:', err);
@@ -1171,6 +1196,7 @@ export default function QuestionModule({
         updates.correctQuestionIds = arrayUnion(...correctIds);
       }
       
+      const finalExamDuration = Math.max(15, seconds);
       const quizAttempt = {
         id: Math.random().toString(36).substr(2, 9),
         userId,
@@ -1179,13 +1205,21 @@ export default function QuestionModule({
         questions: quizResults,
         score: finalScore,
         totalQuestions: questions.length,
-        timeSpentSeconds: seconds,
+        timeSpentSeconds: finalExamDuration,
         timestamp: new Date().toISOString(),
         type: 'simulado' as any
       };
+
+      const studySessionEntry = {
+        id: Math.random().toString(36).substr(2, 9),
+        subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || 'geral',
+        startTime: new Date(Date.now() - finalExamDuration * 1000).toISOString(),
+        durationSeconds: finalExamDuration
+      };
       
-      updates.totalStudyTimeSeconds = increment(seconds);
+      updates.totalStudyTimeSeconds = increment(finalExamDuration);
       updates.quizHistory = arrayUnion(quizAttempt);
+      updates.studySessions = arrayUnion(studySessionEntry);
       
       questions.forEach(q => {
         if (q.subjectId) {
@@ -1213,8 +1247,9 @@ export default function QuestionModule({
           attempts: localAttempts,
           answeredQuestionIds: localAnswered,
           correctQuestionIds: localCorrect,
-          totalStudyTimeSeconds: (userProgress.totalStudyTimeSeconds || 0) + seconds,
+          totalStudyTimeSeconds: (userProgress.totalStudyTimeSeconds || 0) + finalExamDuration,
           quizHistory: [...(userProgress.quizHistory || []), quizAttempt],
+          studySessions: [...(userProgress.studySessions || []), studySessionEntry],
           stats: localStats
         });
       }
@@ -1222,6 +1257,17 @@ export default function QuestionModule({
       try {
         await addDoc(collection(db, 'quizAttempts'), quizAttempt);
         await updateDoc(progressRef, updates);
+
+        // Also add session to MedRevise users/{userId}/studySessions collection
+        await addDoc(collection(db, 'users', userId, 'studySessions'), {
+          topicId: selectedTopicIds[0] || questions[0]?.topicId || '',
+          subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || '',
+          date: new Date().toISOString(),
+          questionsCount: questions.length,
+          correctCount: finalScore,
+          studyTimeMinutes: Math.max(1, Math.round(finalExamDuration / 60)),
+          description: `Simulado MedInternato (${finalScore}/${questions.length} acertos)`
+        });
       } catch (err) {
         console.warn('Firestore write failed, saved in local-first cache:', err);
       }

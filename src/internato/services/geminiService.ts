@@ -307,18 +307,20 @@ export type GenerationDepth = 'standard' | 'deep' | 'elite' | 'master' | 'monogr
 export type ProgressCallback = (data: { current: number; total: number; message: string; partialContent?: string }) => void;
 
 /**
- * MODO EXTENSIVO / MASTER (50cr): Geração intermediária com 3 partes altamente detalhadas cobrindo início, meio e fim (introdução, desenvolvimento e conclusão) sem repetição e com foco didático funcional.
+ * MODO EXTENSIVO / MASTER (50cr):
+ * Arquitetura modular de alta performance (5 a 6 capítulos dinâmicos estruturados por tema),
+ * gerados sequencialmente com profundidade máxima, tabelas de escores completas,
+ * farmacologia exata, guia de manejo passo a passo e zero repetição.
  */
 async function generateMasterSummary(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate') {
   const model = "gemini-3.1-flash-lite";
   
   try {
     await checkUsageLimit();
-    console.log(`[Resumo Extensivo] Iniciando geração intermediária para: ${title}`);
+    console.log(`[Resumo Master 50cr] Iniciando geração aprofundada por capítulos dinâmicos para: ${title}`);
     
     const { residencyFocus, isCustom } = await getUserFocusSettings(userId);
-    const focusTarget = isCustom ? residencyFocus : "Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)";
-    const regionalTitle = isCustom ? `PECULIARIDADES DE EXAME PARA: ${residencyFocus.toUpperCase()}` : "PECULIARIDADES DE EXAME EM GO/DF";
+    const focusTarget = isCustom ? residencyFocus : "GOIÁS (SES-GO, UFG, PSU-GO) e DISTRITO FEDERAL (SES-DF, UnB, ENARE DF, PSU-DF)";
     const regionalShort = isCustom ? residencyFocus : "GO/DF";
     
     // Process extra credits difference based on preferences (baseline is moderate)
@@ -332,182 +334,138 @@ async function generateMasterSummary(title: string, area: string, reference?: st
     if (extra !== 0) {
       await recordUsage(extra);
     }
-    
-    let fullContent = `# ${title.toUpperCase()}\n\n*Resumo Extensivo de Elite (50cr) - Método Preceptor IA*\n\n---\n\n`;
 
     const isProcedure = /parto|assistência|assistencia|técnica|tecnica|semiologia|exame|procedimento|manobra|reanimação|reanimacao|intubação|intubacao|acesso|sutura|curativo|planejamento|consulta|anamnese|avaliação|avaliacao|escore|escala|aleitamento|vacina|imunização|imunizacao|suporte|atendimento/i.test(title);
 
-    // Sumário com hiperlinks
-    fullContent += `## SUMÁRIO DE NAVEGAÇÃO\n\n`;
-    if (isProcedure) {
-      fullContent += `1. [Parte 1: Introdução Clínica, Anatomia/Fisiologia Aplicada e Indicações](#inicio-introducao-clinica-anatomiafisiologia-aplicada-e-indicacoes)\n`;
-      fullContent += `2. [Parte 2: Desenvolvimento Prático, Passo a Passo e Técnicas de Execução](#meio-desenvolvimento-pratico-passo-a-passo-e-tecnicas-de-execucao)\n`;
-      fullContent += `3. [Parte 3: Conclusão Clínica, Intercorrências Tardias, Alta e Checklist de Cuidados](#fim-conclusao-clinica-intercorrencias-tardias-alta-e-checklist-de-cuidados)\n`;
-    } else {
-      fullContent += `1. [Parte 1: Introdução Clínica, Fisiopatologia, Semiologia e Apresentação](#inicio-introducao-clinica-fisiopatologia-semiologia-e-apresentacao)\n`;
-      fullContent += `2. [Parte 2: Desenvolvimento Clínico, Propedêutica, Raciocínio Diagnóstico e Fluxo](#meio-desenvolvimento-clinico-propedeutica-raciocinio-diagnostico-e-fluxo)\n`;
-      fullContent += `3. [Parte 3: Conclusão Terapêutica, Condutas Completas, Doses e Particularidades Regionais (${regionalShort})](#fim-conclusao-terapeutica-condutas-completas-doses-e-particularidades-regionais-${slugify(regionalShort)})\n`;
+    onProgress?.({ current: 1, total: 7, message: "Estruturando ementa de alta densidade (50cr)..." });
+
+    // Planejar ementa modular adaptada ao tema (5 a 6 capítulos)
+    const masterOutlinePrompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica.
+Crie a ementa de capítulos para um RESUMO MASTER EXTENSIVO DE ALTA PERFORMANCE (50 créditos) sobre:
+Título: "${title}"
+Área: "${area}"
+Foco Regional de Provas: "${focusTarget}"
+
+DIRETRIZES DA EMENTA MASTER (5 a 6 CAPÍTULOS):
+- A ementa DEVE ter exatamente entre 5 e 6 capítulos numerados, claros, específicos e sem sobreposição de escopo.
+- SE O TÓPICO FOR UMA DOENÇA/PATOLOGIA:
+  1. Introdução, Epidemiologia e Fundamentos Fisiopatológicos Celulares
+  2. Quadro Clínico, Propedêutica, Raciocínio Diagnóstico e Diagnósticos Diferenciais
+  3. Classificações Oficiais, Escores de Risco e Escalas Clínicas na Íntegra
+  4. Guia de Manejo Clínico Prático e Algoritmo Terapêutico Passo a Passo
+  5. Farmacoterapia Detalhada (Doses, Vias, Linhas de Tratamento e Ajustes)
+  6. Peculiaridades de Provas Regionais (${regionalShort}), Controvérsias e Casos Especiais
+- SE O TÓPICO FOR UM PROCEDIMENTO, CONDUTA DE EMERGÊNCIA OU TEMA PRÁTICO:
+  1. Fundamentos Fisiológicos, Anatômicos, Indicações e Avaliação Pré-Procedimento
+  2. Escores de Risco/Dificuldade, Materiais e Checklist Beira-Leito
+  3. Farmacologia Completa (Doses mg/kg, Fármacos e Sequência Operatória)
+  4. Algoritmo Passo a Passo de Execução Prática e Metas Imediatas
+  5. Prevenção e Manejo de Intercorrências Críticas, Plano de Resgate e Alta
+  6. Particularidades de Bancas (${regionalShort}) e Diretrizes 2024-2026
+
+Retorne APENAS um array JSON de strings com os títulos dos 5 a 6 capítulos numerados. Ex: ["1. Introdução e Fisiopatologia", "2. Quadro Clínico...", ...]`;
+
+    let chapters: string[] = [];
+    try {
+      const outlineRes = await callGemini('generateJson', masterOutlinePrompt, model);
+      if (Array.isArray(outlineRes) && outlineRes.length >= 4) {
+        chapters = outlineRes;
+      }
+    } catch (outlineErr) {
+      console.warn('[Resumo Master] Falha ao obter ementa dinâmica, utilizando ementa padrão estruturada:', outlineErr);
     }
+
+    if (chapters.length === 0) {
+      chapters = isProcedure ? [
+        '1. Fundamentos Fisiológicos, Anatômicos e Indicações Clínicas',
+        '2. Avaliação de Risco, Escores e Preparação Beira-Leito',
+        '3. Farmacologia Aplicada (Doses mg/kg) e Parâmetros Iniciais',
+        '4. Algoritmo Passo a Passo de Execução e Técnica Prática',
+        '5. Manejo de Intercorrências Críticas, Falhas e Plano de Resgate',
+        `6. Particularidades de Bancas Regionais (${regionalShort}) e Diretrizes Atuais`
+      ] : [
+        '1. Introdução, Epidemiologia e Fisiopatologia Celular Detalhada',
+        '2. Quadro Clínico, Semiologia e Propedêutica Diagnóstica',
+        '3. Classificações Oficiais, Escores de Risco e Escalas Clínicas',
+        '4. Guia de Manejo Clínico Prático e Algoritmo Passo a Passo',
+        '5. Tratamento Farmacológico Completo, Doses e Linhas Terapêuticas',
+        `6. Particularidades de Prova (${regionalShort}), Controvérsias e Situações Especiais`
+      ];
+    }
+
+    const totalChapters = chapters.length;
+    let fullContent = `# ${title.toUpperCase()}\n\n*Resumo Extensivo Master (50cr) - Método Preceptor IA de Alta Performance*\n\n---\n\n## SUMÁRIO DE NAVEGAÇÃO\n\n`;
+
+    chapters.forEach((chapter) => {
+      const slug = slugify(chapter);
+      fullContent += `- [${chapter}](#${slug})\n`;
+    });
     fullContent += `\n---\n\n`;
 
-    const parts = isProcedure ? [
-      {
-        title: "Início: Introdução Clínica, Anatomia/Fisiologia Aplicada e Indicações",
-        prompt: `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite. Seu objetivo é TREINAR o aluno para as residências mais difíceis, com foco no Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE).
-        REQUISITOS DO CONTEÚDO E COMPLETUDE TOTAL (MANDATÓRIO):
-        - DENSIDADE E APROFUNDAMENTO TÉCNICO: Aprofunde ao máximo com fisiopatologia explicada, dados anatômicos, posologias/doses exatas e procedimentos detalhados sem enrolações ou generalismos.
-        - ESCALAS E CLASSIFICAÇÕES QUE MAIS CAEM EM PROVAS: Inclua todas as escalas, escores e classificações de maior prevalência em provas de residência (ex: Glasgow, Mallampati, Cormack-Lehane, ASA, NYHA, Child-Pugh, CURB-65, CHADS-VASc, Ranson, Wells, Geneva, Alvarado, Apgar, qSOFA, Balthazar, Tisdale, Marshall, PIRADS, BI-RADS, Killip, TIMI, GINA, GOLD, NIHSS, etc. aplicáveis) com critérios, pontuações e condutas de prova.
-        - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Forneça explicações extremamente detalhadas, didáticas, exaustivas e eficazes de todos os conceitos teóricos, fisiológicos ou anatômicos necessários. O foco é a máxima clareza e suficiência acadêmica para que o estudante compreenda todo o tema com profundidade e consiga responder com sucesso a qualquer questão de prova de residência médica.
-        - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
-        - INTRODUÇÃO DIDÁTICA: Apresente o procedimento de forma objetiva, seu papel no cenário nacional e importância prática.
-        - EMBASAMENTO ANATÔMICO/FISIOLÓGICO: Explique a anatomia e a fisiologia e correlações essenciais necessárias para guiar o procedimento de ponta a ponta.
-        - INDICAÇÕES E CONTRAINDICAÇÕES: Forneça uma tabela ou uma lista lógica com indicações formais claras e contraindicações absolutas e relativas secundárias.
-        - PREPARAÇÃO BEIRA DE LEITO: Preparação inicial básica do leito, materiais/instrumentais fundamentais.
-        - Use caixas de texto with "DICA DO PRECEPTOR" e "ANALOGIA CLÍNICA".
-        - AVISO DE EVITAÇÃO DE REPETIÇÃO: Concentre-se apenas na fundamentação conceitual e anatômica inicial. NÃO descreva o passo a passo operatório ou condutas tardias de alta aqui, pois serão abordadas nas próximas partes.
-        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
-        - Formate em Markdown elegante. Use LaTeX para termos matemáticos/médicos (como $ \rightarrow $, $ \beta $-bloqueadores, etc).`
-      },
-      {
-        title: "Meio: Desenvolvimento Prático, Passo a Passo e Técnicas de Execução",
-        prompt: `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite. Seu objetivo é TREINAR o aluno para as residências mais difíceis, com foco no Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE).
-        Escreva a **Parte 2 (Meio: Desenvolvimento Prático, Passo a Passo e Técnicas de Execução)** para o tema da assistência/procedimento clínico: "${title}" (${area}).
-        
-        REQUISITOS DO CONTEÚDO E COMPLETUDE TOTAL (MANDATÓRIO):
-        - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Forneça explicações extremamente detalhadas, didáticas, exaustivas e eficazes de todos os conceitos teóricos, fisiológicos ou anatômicos necessários. O foco é a máxima clareza e suficiência acadêmica para que o estudante compreenda todo o tema com profundidade e consiga responder com sucesso a qualquer questão de prova de residência médica.
-        - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
-        - DESENVOLVIMENTO DETALHADO DO PASSO A PASSO: Descreva detalhadamente o roteiro clínico sequencial de execução técnica do procedimento e tempos essenciais beira-de-leito (fases de realização, posicionamento, manobras físicas ou operatórias essenciais com maestria, p. ex., manobras de proteção perineal).
-        - ADMINISTRAÇÃO E CUIDADOS DE ATIVIDADE: Fármacos utilizados especificamente durante a realização (fórmula, diluição, via, timing).
-        - MONITORIZAÇÃO: Parâmetros fisiológicos obrigatórios beira de leito a serem observados pelo interno médico de elite durante o procedimento.
-        - Use caixas de texto estilizadas "TÉCNICA PRÁTICA" ou "BOX DE PRESCRIÇÃO/MANOBRA".
-        - AVISO DE EVITAÇÃO DE REPETIÇÃO: NÃO reintroduza o tema, não revise a epidemiologia ou indicações e não cite as complicações tardias. Vá diretamente ao "como fazer" de forma funcional and altamente procedimental.
-        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
-        - Formate com LaTeX para símbolos e fórmulas médicas e use Markdown profissional.`
-      },
-      {
-        title: "Fim: Conclusão Clínica, Intercorrências Tardias, Alta e Checklist de Cuidados",
-        prompt: `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite. Seu objetivo é TREINAR o aluno para as residências mais difíceis, com foco no Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE).
-        Escreva a **Parte 3 (Fim: Conclusão Clínica, Intercorrências Tardias, Alta e Checklist de Cuidados)** para o tema da assistência/procedimento clínico: "${title}" (${area}).
-        
-        REQUISITOS DO CONTEÚDO E COMPLETUDE TOTAL (MANDATÓRIO):
-        - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Forneça explicações extremamente detalhadas, didáticas, exaustivas e eficazes de todos os conceitos teóricos, fisiológicos ou anatômicos necessários. O foco é a máxima clareza e suficiência acadêmica para que o estudante compreenda todo o tema com profundidade e consiga responder com sucesso a qualquer questão de prova de residência médica.
-        - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
-        - CONCLUSÃO E FLUXO PÓS-ASSISTÊNCIA: Descreva os cuidados pós-procedimento imediatos e critérios de alta ou finalização.
-        - INTERCORRÊNCIAS E COMPLICAÇÕES: Como prevenir, identificar precocemente e conduzir as intercorrências tardias mais comuns associadas (ex: lacerações, sangramentos, infecção local).
-        - REGIONALIZAÇÃO (GO/DF): Crie uma seção mestre chamada "PECULIARIDADES DE EXAME EM GO/DF" com caixas de destaque descrevendo de forma resolutiva como as grandes bancas do Centro-Oeste (UFG, UnB, PSU-GO, PSU-DF) abordam essa assistência.
-        - CHECKLIST FINAL: Conclua com uma lista estruturada de verificação de segurança no pós-procedimento beira-de-leito.
-        - AVISO DE EVITAÇÃO DE REPETIÇÃO: NÃO repita discussões fisiopatológicas iniciais ou passos detalhados do procedimento. Concentre-se inteiramente no desfecho, prevenção de danos, conclusão e particularidades locais.
-        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
-        - Formate usando LaTeX para fórmulas e notações e use Markdown puro.`
-      }
-    ] : [
-      {
-        title: "Início: Introdução Clínica, Fisiopatologia, Semiologia e Apresentação",
-        prompt: `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite. Seu objetivo é TREINAR o aluno para as residências mais difíceis, com foco no Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE).
-        Escreva a **Parte 1 (Início: Introdução Clínica, Fisiopatologia, Semiologia e Apresentação)** para o tema: "${title}" (${area}). ${reference ? `Use como preferência de referência: "${reference}".` : ""}
-        
-        REQUISITOS DO CONTEÚDO E COMPLETUDE TOTAL (MANDATÓRIO):
-        - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Forneça explicações extremamente detalhadas, didáticas, exaustivas e eficazes de todos os conceitos teóricos, fisiológicos ou anatômicos necessários. O foco é a máxima clareza e suficiência acadêmica para que o estudante compreenda todo o tema com profundidade e consiga responder com sucesso a qualquer questão de prova de residência médica.
-        - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
-        - INTRODUÇÃO DIDÁTICA: Defina a doença, sua prevalência expressiva e relevância clínica regional e nacional.
-        - FISIOPATOLOGIA INTEGRADA: Apresente a cascata fisiopatológica de modo extremamente visual-textual, usando analogias lúdicas aplicadas à prática.
-        - SEMIOLOGIA BEIRA DE LEITO: Descreva as manifestações clínicas com riqueza de detalhes de exame físico (sinais epônimos, manobras especiais diagnósticas, segredos propedêuticos de inspeção/palpação/ausculta).
-        - Use caixas de texto com "DICA DO PRECEPTOR" and "ANALOGIA CLÍNICA".
-        - AVISO DE EVITAÇÃO DE REPETIÇÃO: Esta é a introdução. NÃO cite exames subsidiários específicos (laboratório/imagem) e NÃO descreva condutas ou posologias de tratamento aqui para garantir zero repetição.
-        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
-        - Formate em Markdown elegante. Use LaTeX para termos matemáticos/médicos (como $ \rightarrow $, $ \beta $-bloqueadores, etc).`
-      },
-      {
-        title: "Meio: Desenvolvimento Clínico, Propedêutica, Raciocínio Diagnóstico e Fluxo",
-        prompt: `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite. Seu objetivo é TREINAR o aluno para as residências mais difíceis, com foco no Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE).
-        Escreva a **Parte 2 (Meio: Desenvolvimento Clínico, Propedêutica, Raciocínio Diagnóstico e Fluxo)** para o tema: "${title}" (${area}).
-        
-        REQUISITOS DO CONTEÚDO E COMPLETUDE TOTAL (MANDATÓRIO):
-        - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Forneça explicações extremamente detalhadas, didáticas, exaustivas e eficazes de todos os conceitos teóricos, fisiológicos ou anatômicos necessários. O foco é a máxima clareza e suficiência acadêmica para que o estudante compreenda todo o tema com profundidade e consiga responder com sucesso a qualquer questão de prova de residência médica.
-        - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
-        - DISCUTIR EXAMES SUBSIDIÁRIOS: Detalhe a ordem lógica de indicação de exames propedêuticos (exames iniciais, triagem, confirmatório de imagem, métodos padrão-ouro) com respectivas sensibilidades/especificidades fundamentais se aplicável.
-        - ESCORES, ESCALAS E CRITÉRIOS DIAGNÓSTICOS QUE MAIS CAEM EM PROVAS: Apresente de forma exaustiva e em tabelas limpas todas as escalas, escores e classificações formais consagradas cobradas nas provas de residência (ex: Glasgow, Mallampati, Cormack-Lehane, ASA, NYHA, Child-Pugh, CURB-65, CHADS-VASc, Ranson, Wells, Geneva, Alvarado, Apgar, qSOFA, Balthazar, Tisdale, Marshall, PIRADS, BI-RADS, Killip, TIMI, GRACE, Framingham, GINA, GOLD, NIHSS, Hunt-Hess, Fisher, etc.). Para cada escala: detalhe pontuações exatas, estratificação de risco e conduta imediata.
-        - DIAGNÓSTICO DIFERENCIAL CHAVE: Tabela ou lista pontual diferenciando clinicamente as principais patologias que simulam esse quadro clínico.
-        - ALGORITMO DIAGNÓSTICO TEXTUAL: Descreva um algoritmo passo a passo de investigação no texto de forma lógica.
-        - Use caixas de texto com estilo "MENSAGEM DO INTERNATO: Raciocínio Clínico Real".
-        - AVISO DE EVITAÇÃO DE REPETIÇÃO: NÃO reintroduza a definição da patologia ou sua fisiologia. NÃO inicie discussões sobre fármacos ou dosagens terapêuticas aqui, pois as condutas específicas e medicamentosas pertencem exclusivamente à próxima parte (Conclusão).
-        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
-        - Formate com LaTeX para símbolos e fórmulas médicas e use Markdown profissional.`
-      },
-      {
-        title: `Fim: Conclusão Terapêutica, Condutas Completas, Doses e Particularidades Regionais (${regionalShort})`,
-        prompt: `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite. Seu objetivo é TREINAR o aluno para as residências mais difíceis, com foco no Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE).
-        Escreva a **Parte 3 (Fim: Conclusão Terapêutica, Condutas Completas, Doses e Particularidades Regionais (${regionalShort}))** para o tema: "${title}" (${area}).
-        
-        REQUISITOS DO CONTEÚDO E COMPLETUDE TOTAL (MANDATÓRIO):
-        - NÃO RESTRINJA O TAMANHO DOS PARÁGRAFOS: Forneça explicações extremamente detalhadas, didáticas, exaustivas e eficazes de todos os conceitos teóricos, fisiológicos ou anatômicos necessários. O foco é a máxima clareza e suficiência acadêmica para que o estudante compreenda todo o tema com profundidade e consiga responder com sucesso a qualquer questão de prova de residência médica.
-        - EXCELENTE ESTRUTURAÇÃO COESA: Evite informações jogadas ou soltas. Cada dado clínico deve estar perfeitamente encadeado dentro de uma narrativa lógica, progressiva e integrada.
-        - CONDUTA TERAPÊUTICA COMPLETA DE ALTA PERFORMANCE: Especifique a strategy terapêutica medicamentosa e não-medicamentosa com precisão cirúrgica: doses exatas, vias preferenciais, intervalos e período total de tratamento e manejo de falha da primeira linha.
-        - FLUXOS DO SUS E DIRETRIZES: Enquadre a conduta de acordo com as diretrizes oficiais do Ministério da Saúde e notas técnicas regionais (SES-GO / SES-DF).
-        - REGIONALIZAÇÃO DA COBRANÇA (GO/DF): Escreva uma rica seção intitulada "PECULIARIDADES DE EXAME EM GO/DF" revelando o foco de abordagem predileto de bancas como UnB, UFG, PSU-GO, PSU-DF e SES sobre este tema terapêutico.
-        - CHECKLIST DE CONVENÇÃO: Resuma as ações críticas de salvamento ou alta através de um checklist resolutivo.
-        - SEÇÃO FINAL OBRIGATÓRIA - REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS: Ao final da Parte 3, inclua obrigatoriamente a seção "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS" listando e descrevendo detalhadamente (de 3 a 5 fontes) com o nome do livro/diretriz (ex: UpToDate 2025/2026, Diretrizes do Ministério da Saúde, FEBRASGO, SBP, Harrison's, Sabiston, etc.), explicando resumidamente por que cada fonte respalda as condutas descritas. ${reference ? `Destaque a referência preferencial informada: "${reference}".` : ""}
-        - AVISO DE EVITAÇÃO DE REPETIÇÃO: NÃO gaste tempo explicando epidemiologia, exame físico ou escores diagnósticos. Vá direto ao tratamento, prognóstico de alta e as questões regionais específicas.
-        - PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
-        - Formate usando LaTeX para fórmulas e notações e use Markdown puro.`
-      }
-    ];
+    const costPerChapter = Math.floor(50 / totalChapters);
 
-    parts.forEach(part => {
-      part.prompt = part.prompt
-        .replace(/foco no Centro-Oeste \(UFG, SES-GO, SES-DF, UnB, ENARE\)/g, `foco em ${focusTarget}`)
-        .replace(/PECULIARIDADES DE EXAME EM GO\/DF/g, regionalTitle)
-        .replace(/\(UFG, UnB, PSU-GO, PSU-DF\)/g, `(${focusTarget})`)
-        .replace(/\(GO\/DF\)/g, `(${regionalShort})`)
-        .replace(/SES-GO \/ SES-DF/g, focusTarget)
-        .replace(/SES-GO\/SES-DF/g, focusTarget);
-    });
-
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
+    // Gerar sequencialmente cada capítulo para reter profundidade extrema sem bater timeouts agregados
+    for (let i = 0; i < totalChapters; i++) {
+      const chapterTitle = chapters[i];
       onProgress?.({ 
         current: i + 1, 
-        total: 4, 
-        message: `Escrevendo ${part.title} (Parte ${i+1}/3)...` 
+        total: totalChapters + 1, 
+        message: `Escrevendo capítulo ${i + 1}/${totalChapters}: ${chapterTitle}...`,
+        partialContent: fullContent
       });
 
       if (i > 0) {
-        // Breve pausa técnica para evitar limite de requisição simultânea
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
 
-      console.log(`[Resumo Extensivo] Chamando API para Parte ${i+1}`);
-      let partContent = "";
-      const finalPartPrompt = part.prompt + getPromptPreferenceInstructions(illustrationLevel, alertBoxLevel);
+      const previousChaptersStr = i > 0 ? chapters.slice(0, i).map((c, idx) => `Capítulo ${idx+1}: "${c}"`).join(' | ') : 'Nenhum (Este é o Capítulo 1)';
+      const futureChaptersStr = i < totalChapters - 1 ? chapters.slice(i + 1).map((c, idx) => `Capítulo ${i+2+idx}: "${c}"`).join(' | ') : 'Nenhum (Este é o Capítulo Final)';
+
+      const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Estamos redigindo um RESUMO MASTER EXTENSIVO DE ALTA PERFORMANCE (50 créditos) sobre "${title}" (${area}).
+Foco de Bancas: ${focusTarget} (${regionalShort})
+
+Capítulo Atual (${i + 1}/${totalChapters}): "${chapterTitle}"
+Capítulos Anteriores já redigidos: ${previousChaptersStr}
+Capítulos Posteriores a serem redigidos: ${futureChaptersStr}
+
+DIRETRIZES FUNDAMENTAIS DE RIGOR, DENSIDADE E NÃO REPETIÇÃO:
+1. COMECE IMEDIATAMENTE PELO TÍTULO DO CAPÍTULO: O texto DEVE iniciar na primeira linha com "## ${chapterTitle}".
+2. NÃO REPITA CONCEITOS OU TABELAS JÁ DISCUTIDAS: Se este não for o Capítulo 1, não reintroduza o tema. Concentre-se 100% no tema específico deste capítulo.
+3. TABELAS DE ESCORES E ESCALAS NA ÍNTEGRA: Se o capítulo envolver qualquer escore ou escala de estratificação de risco ou critérios diagnósticos oficiais (ex: Glasgow, Wells, CURB-65, CHADS-VASc, HAS-BLED, NIHSS, SOFA, Child-Pugh, MELD, Alvarado, Ranson, Mallampati, Cormack-Lehane, LEMON, ASA, etc.), inclua a TABELA COMPLETA com itens, pontuações e condutas vinculadas.
+4. GUIA DE MANEJO PASSO A PASSO: Se este capítulo for sobre Manejo/Conduta, descreva o fluxo sequencial, claro e acionável de atendimento, com doses exatas em mg/kg, vias, intervalos e manobras clínicas beira-leito.
+5. RIGOR FISIOPATOLÓGICO: Explique os mecanismos de ação celular/molecular, receptores e cascatas biológicas com clareza cristalina.
+6. ALERTA DE PROVAS: Intercale boxes de observação de bancas:
+   > [!IMPORTANT]
+   > **HIGHLIGHT DE PROVA / PEGADINHA DE BANCA (${regionalShort}):**
+   > [Dica clínica e pegadinha recorrente em provas]
+
+${i === totalChapters - 1 ? `7. SEÇÃO FINAL MANDATÓRIA: Inclua ao final a seção "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS" detalhando de 3 a 5 fontes oficiais (UpToDate 2025/2026, Ministério da Saúde, SBC, SBPT, FEBRASGO, SBP, Harrison, etc.). ${reference ? `Destaque: "${reference}".` : ''}` : ''}
+
+Escreva o capítulo "${chapterTitle}" com densidade técnica impecável, parágrafos ricos e explicativos em Markdown puro com LaTeX.`;
+
+      const finalPrompt = prompt + getPromptPreferenceInstructions(illustrationLevel, alertBoxLevel);
+      let chapterText = "";
       
-      const modelsToTry = ["gemini-3.1-flash-lite"];
-      for (let attempt = 0; attempt < 6; attempt++) {
+      for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          const currentModel = modelsToTry[attempt % modelsToTry.length];
-          partContent = await callGemini('generateContent', finalPartPrompt, currentModel);
-          if (partContent && partContent.trim().length > 0) break;
-        } catch (partErr: any) {
-          console.warn(`[Resumo Extensivo] Tentativa ${attempt + 1} falhou para Parte ${i + 1}:`, partErr?.message);
-          await new Promise(r => setTimeout(r, 5000)); // Wait 5s between retry attempts
+          chapterText = await callGemini('generateContent', finalPrompt, model);
+          if (chapterText && chapterText.trim().length > 100) break;
+        } catch (capErr: any) {
+          console.warn(`[Resumo Master] Tentativa ${attempt + 1}/4 falhou no capítulo ${i + 1}:`, capErr?.message);
+          await new Promise(r => setTimeout(r, 4000));
         }
       }
 
-      if (partContent && partContent.trim().length > 0) {
-        fullContent += `## ${part.title}\n\n${partContent}\n\n---\n\n`;
-        const creditsToRecord = i === 1 ? 20 : 15;
-        await recordUsage(creditsToRecord);
+      if (chapterText && chapterText.trim().length > 100) {
+        const cleanedText = cleanLeadingChapterTitle(chapterText, chapterTitle);
+        fullContent += `## ${chapterTitle}\n\n${cleanedText}\n\n---\n\n`;
+        await recordUsage(costPerChapter);
       } else {
-        fullContent += `## ${part.title}\n\n*Nota: Seção gerada com síntese por limitação temporária do provedor.*\n\n---\n\n`;
+        fullContent += `## ${chapterTitle}\n\n*Nota: Seção resumida por instabilidade temporária da rede. Utilize a opção Retomar Geração para restaurar.*\n\n---\n\n`;
       }
-      onProgress?.({ 
-        current: i + 1, 
-        total: 4, 
-        message: `Parte ${i+1}/3 concluída.`, 
-        partialContent: fullContent 
-      });
     }
 
-    onProgress?.({ current: 4, total: 4, message: "Resumo Extensivo concluído!" });
+    onProgress?.({ current: totalChapters + 1, total: totalChapters + 1, message: "Resumo Master 50cr concluído com sucesso!", partialContent: fullContent });
     return removeDuplicateSumarios(fullContent);
   } catch (error) {
     console.error('Error generating master summary:', error);
@@ -1591,7 +1549,7 @@ Nível de Profundidade Desejado: ${depthText}
 Seu objetivo é definir as necessidades exatas para que o aluno receba um resumo completo, profundamente detalhado, didático e autossuficiente (capaz de substituir livros-texto), cobrindo tanto a BASE DIDÁTICA FISIOPATOLÓGICA/FISIOLÓGICA quanto o CONTEÚDO PRÁTICO DE PROVA E MANEJO COMPLETO (critérios oficiais na íntegra, doses exatas mg/kg, checklists de procedimento, todas as escalas e escores relevantes e pegadinhas de bancas).
 
 DIRETRIZES DE ESTRUTURAÇÃO DE CAPÍTULOS CONFORME A NATUREZA DO TEMA:
-1. SE O TÓPICO FOR UMA PATOLOGIA/DOENÇA: Crie capítulos cobrindo: Introdução/Epidemiologia -> Fisiopatologia Celular e Mecanismos -> Quadro Clínico e Propedêutica -> Classificações e Escores Oficiais -> Tratamento Medicamentoso (Doses, Vias, Linhas) -> Peculiaridades e Casos Complexos.
+1. SE O TÓPICO FOR UMA PATOLOGIA/DOENÇA: Crie capítulos cobrindo: Introdução/Epidemiologia -> Fisiopatologia Celular e Mecanismos -> Quadro Clínico e Propedêutica -> Classificações e Escores Oficiais -> Manejo Clínico Prático e Algoritmo Passo a Passo (Obrigatório) -> Tratamento Medicamentoso (Doses, Vias, Linhas) -> Peculiaridades e Casos Complexos.
 2. SE O TÓPICO FOR UM PROCEDIMENTO, MANEJO DE EMERGÊNCIA OU TEMA PRÁTICO NÃO-DOENÇA (ex: Manejo de Via Aérea, Ventilação Mecânica, Sequência Rápida de Intubação, Parada Cardiorrespiratória, Acesso Venoso Central, ATLS/Trauma, Reposição Volêmica, Distúrbios Eletrolíticos/Ácido-Básicos, DVA/Vasopressores, etc.):
    Garantir obrigatoriamente capítulos estruturados para abranger o MANEJO COMPLETO:
    - Cap. 1: Fundamentos Fisiológicos, Anatômicos, Indicações e Fisiologia Aplicada
@@ -1600,14 +1558,19 @@ DIRETRIZES DE ESTRUTURAÇÃO DE CAPÍTULOS CONFORME A NATUREZA DO TEMA:
    - Cap. 4: Confirmação Beira-Leito, Cuidados Pós-Procedimento, Metas Terapêuticas e Monitorização
    - Cap. 5: Complicações Imediatas, Plano de Resgate / Manejo de Falhas ('Não Intubo, Não Oxigeno', Crico de Urgência) e Pegadinhas de Prova
 
+DIRETRIZ OBRIGATÓRIA DE CAPÍTULO DE MANEJO PASSO A PASSO:
+- Todo plano de capítulos DEVE OBRIGATORIAMENTE conter um capítulo dedicado ao MANEJO CLÍNICO PRÁTICO E ALGORITMO PASSO A PASSO (ex: "Manejo Clínico Prático, Algoritmo Passo a Passo e Conduta Imediata" ou "Guia de Manejo Beira-Leito e Algoritmo Terapêutico Passo a Passo").
+- Esse capítulo deve funcionar como um roteiro prático e resolutivo do que fazer imediatamente diante do paciente, desde a admissão até a estabilização/alta.
+- Adicionalmente, na lista "suggestedExtraChapters", sempre inclua ou sugira um capítulo complementar focado em variações de manejo (ex: "Manejo de Complicações Graves e Situações de Exceção" ou "Manejo em Populações Especiais e Casos Refratários").
+
 Determine:
 1. Um custo justo em créditos: ${costText !== null ? `DEVE ser exatamente ${costText} créditos para este nível de profundidade.` : 'Um custo justo calculado diretamente pela quantidade de capítulos necessários para cobrir 100% do tema (ex: 5 créditos por capítulo).'}
 2. Justificativa didática profunda em português (por que esse tema exige essa estrutura, a razão fisiopatológica e as particularidades de provas cobradas pelas bancas).
-3. Uma lista "chapters" de capítulos/seções sugeridos para o resumo principal. 
+3. Uma lista "chapters" de capítulos/seções sugeridos para o resumo principal (SEMPRE incluindo um capítulo de Manejo Passo a Passo). 
    - ATENÇÃO A DELIMITAÇÃO DE ESCOPO: Crie capítulos com títulos claros, específicos e NENHUMA SOBREPOSIÇÃO entre eles.
    - OBRIGATÓRIO PARA ESCALAS/ESCORES: Se o tema envolver qualquer escala médica, escore de risco, estratificação de gravidade ou critérios oficiais de diagnóstico (ex: Wells, PERC, CURB-65, CHA2DS2-VASc, HAS-BLED, NIHSS, Glasgow, Child-Pugh, MELD, Alvarado, Centor, Ranson, qSOFA/SOFA, TIMI, GRACE, BI-RADS, Mallampati, Cormack-Lehane, LEMON, ASA, etc.), GARANTA que haja capítulo dedicado ou subseção explícita no sumário para contemplá-los inteiramente em tabelas de pontuação.
 4. Uma lista "suggestedExtraChapters" de 2 a 4 capítulos COMPLEMENTARES OPCIONAIS que NÃO estão na lista principal "chapters", mas que seriam acréscimos excelentes para provas exigentes. Para cada capítulo sugerido a mais, informe:
-   - "title": Título claro do capítulo
+   - "title": Título claro do capítulo (incluindo opções de manejo avançado ou situações especiais)
    - "reason": Breve justificativa de 1 frase apontando a relevância
    - "insertAtIndex": Número inteiro de 0 a N indicando o índice exato na lista "chapters" onde este capítulo se ENCAIXA MELHOR DIDATICAMENTE.
 5. Uma lista de "clinicalHighlights" (Destaques Clínicos Essenciais) que DEVEM ser incluídos (exigem tabelas de escalas completas, doses exatas mg/kg, classificações oficiais e pegadinhas de provas regionais).
@@ -1621,22 +1584,24 @@ Retorne APENAS um JSON válido no seguinte formato:
     "2. Fisiopatologia e Quadro Clínico Detalhado",
     "3. Classificações Oficiais, Escores de Risco e Escalas Clínicas",
     "4. Propedêutica Diagnóstica e Algoritmo de Investigação",
-    "5. Tratamento Medicamentoso, Doses e Manejo de Complicações"
+    "5. Manejo Clínico Prático e Algoritmo Passo a Passo",
+    "6. Tratamento Medicamentoso, Doses e Peculiaridades de Provas"
   ],
   "suggestedExtraChapters": [
     {
-      "title": "Manejo em Populações Especiais (Gestantes e Idosos)",
-      "reason": "Muito cobrado em questões de Medicina Preventiva e de Família para adaptação de dose e conduta.",
-      "insertAtIndex": 2
+      "title": "Manejo de Complicações e Situações Refratárias",
+      "reason": "Passo a passo avançado de resgate para provas de alto nível e plantão.",
+      "insertAtIndex": 5
     },
     {
-      "title": "Apresentações Raras e Complicações de Urgência",
-      "reason": "Diferencial relevante em bancas exigentes como ENARE e USP.",
-      "insertAtIndex": 3
+      "title": "Manejo em Populações Especiais (Gestantes, Idosos e DRC)",
+      "reason": "Muito cobrado em questões de Medicina de Família e Clínica Médica para ajuste de conduta.",
+      "insertAtIndex": 5
     }
   ],
   "clinicalHighlights": [
     "Tabela oficial da escala X na íntegra com pontuação e conduta",
+    "Passo a passo sequencial de manejo imediato beira-leito",
     "Fornecer dose exata de Y para primeira linha",
     "Destacar a pegadinha de prova Z"
   ]
@@ -1649,9 +1614,9 @@ Retorne APENAS um JSON válido no seguinte formato:
     const chapters = Array.isArray(data.chapters) ? data.chapters : [
       '1. Introdução e Epidemiologia',
       '2. Fisiopatologia e Apresentação Clínica',
-      '3. Propedêutica Diagnóstica',
-      '4. Tratamento, Doses e Condutas Completas',
-      '5. Peculiaridades de Provas locais e Prática'
+      '3. Propedêutica Diagnóstica e Escores',
+      '4. Manejo Clínico Prático e Algoritmo Passo a Passo',
+      '5. Tratamento Farmacológico, Doses e Peculiaridades de Provas'
     ];
 
     const suggestedExtraChapters: SuggestedExtraChapter[] = Array.isArray(data.suggestedExtraChapters)
@@ -1667,14 +1632,14 @@ Retorne APENAS um JSON válido no seguinte formato:
             insertAtIndex: Math.min(2, chapters.length)
           },
           {
-            title: 'Complicações Graves e Abordagem de Urgência',
+            title: 'Manejo de Complicações Graves e Abordagem de Urgência',
             reason: 'Foco em questões avançadas de residência médica.',
             insertAtIndex: Math.min(3, chapters.length)
           }
         ];
 
-    // Preço do resumo inteligente cobrado estritamente pela quantidade de capítulos (5 créditos por capítulo)
-    const finalCost = depth === 'custom_analyzed' ? Math.max(5, chapters.length * 5) : (costText !== null ? costText : 25);
+    // Preço do resumo inteligente cobrado estritamente pela quantidade de capítulos (10 créditos por capítulo)
+    const finalCost = depth === 'custom_analyzed' ? Math.max(10, chapters.length * 10) : (costText !== null ? costText : 50);
     return {
       cost: finalCost,
       justification: data.justification || 'Análise realizada com sucesso.',
@@ -1688,14 +1653,14 @@ Retorne APENAS um JSON válido no seguinte formato:
     const chapters = [
       '1. Introdução e Epidemiologia',
       '2. Fisiopatologia e Apresentação Clínica',
-      '3. Propedêutica Diagnóstica',
-      '4. Tratamento, Doses e Condutas Completas',
-      '5. Peculiaridades de Provas locais e Prática'
+      '3. Propedêutica Diagnóstica e Escores',
+      '4. Manejo Clínico Prático e Algoritmo Passo a Passo',
+      '5. Tratamento Farmacológico, Doses e Peculiaridades de Provas'
     ];
-    const fallbackCost = depth === 'custom_analyzed' ? chapters.length * 5 : (costText !== null ? costText : 25);
+    const fallbackCost = depth === 'custom_analyzed' ? chapters.length * 10 : (costText !== null ? costText : 50);
     return {
       cost: fallbackCost,
-      justification: 'Análise automática realizada. O tema possui complexidade média e exige cobertura abrangente.',
+      justification: 'Análise automática realizada. O tema possui complexidade média e exige cobertura abrangente com manejo prático passo a passo.',
       chapters,
       suggestedExtraChapters: [
         {

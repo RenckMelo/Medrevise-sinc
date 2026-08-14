@@ -549,6 +549,9 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             initialTopicIds={cronogramaFilterTopics}
             initialQuestionsCount={cronogramaQuestionsCount}
             initialMode={cronogramaMode}
+            onProgressUpdate={loadUserProgress}
+            availableCredits={availableCredits}
+            setAvailableCredits={setAvailableCredits}
           />
         )}
 

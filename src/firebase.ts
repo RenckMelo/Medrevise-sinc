@@ -56,6 +56,15 @@ export function doc(dbInstance: any, ...pathSegments: string[]): any {
     collectionName = pathSegments.join('/');
     id = '';
   }
+
+  // Canonicalize userProgress paths so users/${userId}/progress/main and userProgress/${userId} are 100% unified
+  if (collectionName.startsWith('users/') && collectionName.split('/').length === 3) {
+    const parts = collectionName.split('/');
+    if (parts[2] === 'progress' && id === 'main') {
+      collectionName = 'userProgress';
+      id = parts[1];
+    }
+  }
   
   return {
     type: 'doc',
@@ -126,30 +135,45 @@ export async function getDoc(docRef: any): Promise<any> {
     console.warn(`[Supabase] Note on loading doc ${collectionName}/${id}:`, error?.message || error);
   }
 
-  // Fallback 1: users/${userId}/progress/main -> userProgress/${userId}
-  if (!data?.data && collectionName.startsWith('users/') && collectionName.split('/').length === 3) {
-    const parts = collectionName.split('/');
-    const subCol = parts[2];
-    if (subCol === 'progress' && id === 'main') {
-      const { data: mainProgress } = await supabase
-        .from('firestore_documents')
-        .select('*')
-        .eq('collection', 'userProgress')
-        .eq('id', parts[1])
-        .maybeSingle();
-      if (mainProgress?.data) data = mainProgress;
-    }
-  }
-
-  // Fallback 2: userProgress/${userId} -> users/${userId}/progress/main
-  if (!data?.data && collectionName === 'userProgress') {
+  // Merging legacy progress records if userProgress is loaded
+  if (collectionName === 'userProgress') {
     const { data: altProgress } = await supabase
       .from('firestore_documents')
       .select('*')
       .eq('collection', `users/${id}/progress`)
       .eq('id', 'main')
       .maybeSingle();
-    if (altProgress?.data) data = altProgress;
+    if (altProgress?.data) {
+      if (!data?.data) {
+        data = altProgress;
+      } else {
+        // Merge attempts and arrays seamlessly
+        const mainData = data.data || {};
+        const legacyData = altProgress.data || {};
+        const mergedAttempts = { ...(legacyData.attempts || {}), ...(mainData.attempts || {}) };
+        const mergedAnswered = Array.from(new Set([...(legacyData.answeredQuestionIds || []), ...(mainData.answeredQuestionIds || [])]));
+        const mergedCorrect = Array.from(new Set([...(legacyData.correctQuestionIds || []), ...(mainData.correctQuestionIds || [])]));
+        const mergedCompleted = Array.from(new Set([...(legacyData.completedTopicIds || []), ...(mainData.completedTopicIds || [])]));
+        const mergedSessions = [...(legacyData.studySessions || []), ...(mainData.studySessions || [])];
+        const mergedQuizHistory = [...(legacyData.quizHistory || []), ...(mainData.quizHistory || [])];
+        const totalTime = Math.max(mainData.totalStudyTimeSeconds || 0, legacyData.totalStudyTimeSeconds || 0);
+
+        data = {
+          ...data,
+          data: {
+            ...legacyData,
+            ...mainData,
+            attempts: mergedAttempts,
+            answeredQuestionIds: mergedAnswered,
+            correctQuestionIds: mergedCorrect,
+            completedTopicIds: mergedCompleted,
+            studySessions: mergedSessions,
+            quizHistory: mergedQuizHistory,
+            totalStudyTimeSeconds: totalTime
+          }
+        };
+      }
+    }
   }
   
   const docData = data?.data || null;

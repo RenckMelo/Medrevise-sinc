@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Subject, Topic, UserProgress, Semester, StudySession } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { BookOpen, HelpCircle, Brain, Trophy, Clock, ChevronRight, BarChart3, Filter, Trash2, Calendar, AlertCircle, CheckCircle2, XCircle, Sparkles } from 'lucide-react';
+import { BookOpen, HelpCircle, Brain, Trophy, Clock, ChevronRight, BarChart3, Filter, Trash2, Calendar, AlertCircle, CheckCircle2, XCircle, Sparkles, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { db, collection, query, orderBy, onSnapshot, doc, updateDoc } from '../firebase';
+import { db, collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from '../firebase';
 import { cn } from '@/lib/utils';
 
 interface DashboardProps {
@@ -30,6 +31,48 @@ export default function Dashboard({
   userId,
   onOpenTour
 }: DashboardProps) {
+  const [dbStudySessions, setDbStudySessions] = useState<any[]>([]);
+  const [dbQuizAttempts, setDbQuizAttempts] = useState<any[]>([]);
+  const [isLoadingExtra, setIsLoadingExtra] = useState(false);
+
+  // Real-time listener for studySessions from MedRevise / MedInternato
+  useEffect(() => {
+    if (!userId) return;
+    try {
+      const sessionsColl = collection(db, 'users', userId, 'studySessions');
+      const unsubSessions = onSnapshot(sessionsColl, (snapshot) => {
+        const list: any[] = [];
+        snapshot.forEach((d: any) => {
+          list.push({ id: d.id, ...d.data() });
+        });
+        setDbStudySessions(list);
+      }, (err) => {
+        console.warn('Note on listening to user studySessions:', err);
+      });
+
+      const quizColl = collection(db, 'quizAttempts');
+      const unsubQuiz = onSnapshot(quizColl, (snapshot) => {
+        const list: any[] = [];
+        snapshot.forEach((d: any) => {
+          const data = d.data();
+          if (data.userId === userId) {
+            list.push({ id: d.id, ...data });
+          }
+        });
+        setDbQuizAttempts(list);
+      }, (err) => {
+        console.warn('Note on listening to quizAttempts:', err);
+      });
+
+      return () => {
+        unsubSessions();
+        unsubQuiz();
+      };
+    } catch (e) {
+      console.warn('Error setting up dashboard listeners:', e);
+    }
+  }, [userId]);
+
   const formatTime = (totalSeconds: number) => {
     const hours = Math.floor(totalSeconds / 3600);
     const mins = Math.floor((totalSeconds % 3600) / 60);
@@ -37,52 +80,220 @@ export default function Dashboard({
     return `${mins}m`;
   };
 
-  const stats = useMemo(() => {
+  const isDateToday = (dateStr?: string | Date | number) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const weekAgo = today - (7 * 24 * 60 * 60 * 1000);
+    return d.getFullYear() === now.getFullYear() &&
+           d.getMonth() === now.getMonth() &&
+           d.getDate() === now.getDate();
+  };
 
+  const isDateThisWeek = (dateStr?: string | Date | number) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+    const now = new Date();
+    const weekAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7).getTime();
+    return d.getTime() >= weekAgo;
+  };
+
+  const stats = useMemo(() => {
     const attempts = Object.values(userProgress?.attempts || {});
-    const sessions = userProgress?.studySessions || [];
+    
+    // Merge attempts from quiz history if not present in attempts
+    const allQuizAttempts = [...(userProgress?.quizHistory || []), ...dbQuizAttempts];
+    const uniqueQuizAttemptsMap = new Map<string, any>();
+    allQuizAttempts.forEach(q => {
+      if (q.id) uniqueQuizAttemptsMap.set(q.id, q);
+    });
+    const mergedQuizAttempts = Array.from(uniqueQuizAttemptsMap.values());
 
-    const todayAttempts = attempts.filter(a => new Date(a.timestamp).getTime() > today);
-    const weekAttempts = attempts.filter(a => new Date(a.timestamp).getTime() > weekAgo);
+    // 1. Calculate today questions
+    let todayQuestionsCount = 0;
+    const todayAttempts = attempts.filter(a => isDateToday(a.timestamp));
+    todayQuestionsCount = todayAttempts.length;
 
-    // Time per subject
-    const timeBySubject: Record<string, number> = {};
-    sessions.forEach(s => {
-      timeBySubject[s.subjectId] = (timeBySubject[s.subjectId] || 0) + s.durationSeconds;
+    // Add quiz attempts from today if they had questions not individually in attempts
+    let todayQuizQuestions = 0;
+    mergedQuizAttempts.forEach(q => {
+      if (isDateToday(q.timestamp)) {
+        todayQuizQuestions += (q.totalQuestions || q.questions?.length || 0);
+      }
     });
 
-    // Questions per subject
+    // Add study sessions questions from today
+    let todaySessionQuestions = 0;
+    dbStudySessions.forEach(s => {
+      if (isDateToday(s.date || s.startTime || s.createdAt)) {
+        todaySessionQuestions += (Number(s.questionsCount) || 0);
+      }
+    });
+
+    // Use the maximum reliable count for today
+    const finalTodayCount = Math.max(todayQuestionsCount, todayQuizQuestions, todaySessionQuestions);
+
+    // 2. Calculate week questions
+    const weekAttempts = attempts.filter(a => isDateThisWeek(a.timestamp));
+    let weekQuizQuestions = 0;
+    mergedQuizAttempts.forEach(q => {
+      if (isDateThisWeek(q.timestamp)) {
+        weekQuizQuestions += (q.totalQuestions || q.questions?.length || 0);
+      }
+    });
+    let weekSessionQuestions = 0;
+    dbStudySessions.forEach(s => {
+      if (isDateThisWeek(s.date || s.startTime || s.createdAt)) {
+        weekSessionQuestions += (Number(s.questionsCount) || 0);
+      }
+    });
+    const finalWeekCount = Math.max(weekAttempts.length, weekQuizQuestions, weekSessionQuestions);
+
+    // 3. Calculate total study time
+    let computedTimeSeconds = userProgress?.totalStudyTimeSeconds || 0;
+    
+    // Add time from dbStudySessions (convert minutes to seconds if not already accounted)
+    let sessionsTimeSeconds = 0;
+    dbStudySessions.forEach(s => {
+      if (s.durationSeconds) {
+        sessionsTimeSeconds += Number(s.durationSeconds);
+      } else if (s.studyTimeMinutes) {
+        sessionsTimeSeconds += Number(s.studyTimeMinutes) * 60;
+      }
+    });
+
+    let quizTimeSeconds = 0;
+    mergedQuizAttempts.forEach(q => {
+      if (q.timeSpentSeconds) {
+        quizTimeSeconds += Number(q.timeSpentSeconds);
+      }
+    });
+
+    const finalTotalTimeSeconds = Math.max(computedTimeSeconds, sessionsTimeSeconds + quizTimeSeconds, computedTimeSeconds + sessionsTimeSeconds);
+
+    // 4. Time per subject
+    const timeBySubject: Record<string, number> = {};
+    (userProgress?.studySessions || []).forEach(s => {
+      if (s.subjectId) {
+        timeBySubject[s.subjectId] = (timeBySubject[s.subjectId] || 0) + (s.durationSeconds || 0);
+      }
+    });
+    dbStudySessions.forEach(s => {
+      if (s.subjectId) {
+        const secs = s.durationSeconds ? Number(s.durationSeconds) : (Number(s.studyTimeMinutes || 0) * 60);
+        timeBySubject[s.subjectId] = (timeBySubject[s.subjectId] || 0) + secs;
+      }
+    });
+
+    // 5. Questions per subject
     const questionsBySubject: Record<string, number> = {};
     attempts.forEach(a => {
-      const q = topics.find(t => t.id === a.questionId);
-      if (q) {
-        questionsBySubject[q.subjectId] = (questionsBySubject[q.subjectId] || 0) + 1;
+      let subId = a.subjectId;
+      if (!subId && a.questionId) {
+        const q = topics.find(t => t.id === a.questionId);
+        if (q) subId = q.subjectId;
+      }
+      if (subId) {
+        questionsBySubject[subId] = (questionsBySubject[subId] || 0) + 1;
+      }
+    });
+
+    // Merge sessions for display
+    const formattedSessions: any[] = [];
+    (userProgress?.studySessions || []).forEach(s => {
+      formattedSessions.push({
+        id: s.id,
+        subjectId: s.subjectId,
+        startTime: s.startTime,
+        durationSeconds: s.durationSeconds,
+        type: 'local'
+      });
+    });
+    dbStudySessions.forEach(s => {
+      formattedSessions.push({
+        id: s.id,
+        subjectId: s.subjectId,
+        topicId: s.topicId,
+        startTime: s.date || s.startTime || s.createdAt || new Date().toISOString(),
+        durationSeconds: s.durationSeconds ? Number(s.durationSeconds) : (Number(s.studyTimeMinutes || 15) * 60),
+        questionsCount: s.questionsCount,
+        correctCount: s.correctCount,
+        description: s.description,
+        type: 'db'
+      });
+    });
+    mergedQuizAttempts.forEach(q => {
+      formattedSessions.push({
+        id: q.id,
+        subjectId: q.subjectIds?.[0] || 'geral',
+        startTime: q.timestamp || new Date().toISOString(),
+        durationSeconds: q.timeSpentSeconds || 120,
+        questionsCount: q.totalQuestions || q.questions?.length,
+        correctCount: q.score,
+        description: q.type === 'simulado' ? `Simulado MedInternato (${q.score}/${q.totalQuestions || q.questions?.length})` : `Quiz MedInternato (${q.score}/${q.totalQuestions || q.questions?.length})`,
+        type: 'quiz'
+      });
+    });
+
+    // Deduplicate sessions by ID or approximate timestamp
+    const uniqueSessionsMap = new Map<string, any>();
+    formattedSessions.forEach(s => {
+      if (s.id && !uniqueSessionsMap.has(s.id)) {
+        uniqueSessionsMap.set(s.id, s);
+      }
+    });
+
+    const mergedSortedSessions = Array.from(uniqueSessionsMap.values()).sort(
+      (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+    );
+
+    // Question attempts list
+    const allAttemptsList = [...attempts];
+    mergedQuizAttempts.forEach(q => {
+      if (Array.isArray(q.questions)) {
+        q.questions.forEach((qa: any) => {
+          if (qa && !allAttemptsList.some(ex => ex.questionId === qa.questionId && ex.timestamp === qa.timestamp)) {
+            allAttemptsList.push(qa);
+          }
+        });
       }
     });
 
     return {
-      todayCount: todayAttempts.length,
-      weekCount: weekAttempts.length,
-      totalCount: attempts.length,
+      todayCount: finalTodayCount,
+      weekCount: finalWeekCount,
+      totalCount: Math.max(attempts.length, allAttemptsList.length),
+      totalStudyTimeSeconds: finalTotalTimeSeconds,
       timeBySubject,
       questionsBySubject,
-      sessions: [...sessions].sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+      sessions: mergedSortedSessions,
+      recentAttempts: allAttemptsList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     };
-  }, [userProgress, topics]);
+  }, [userProgress, topics, dbStudySessions, dbQuizAttempts]);
 
-  const handleDeleteSession = async (sessionId: string) => {
-    if (!userProgress || !userId) return;
-    const updatedSessions = userProgress.studySessions?.filter(s => s.id !== sessionId) || [];
-    const sessionToDelete = userProgress.studySessions?.find(s => s.id === sessionId);
-    
-    const progressRef = doc(db, 'userProgress', userId);
-    await updateDoc(progressRef, {
-      studySessions: updatedSessions,
-      totalStudyTimeSeconds: (userProgress.totalStudyTimeSeconds || 0) - (sessionToDelete?.durationSeconds || 0)
-    });
+  const handleDeleteSession = async (sessionItem: any) => {
+    if (!userId) return;
+    try {
+      if (sessionItem.type === 'db') {
+        const sRef = doc(db, 'users', userId, 'studySessions', sessionItem.id);
+        await deleteDoc(sRef);
+      } else if (sessionItem.type === 'quiz') {
+        const qRef = doc(db, 'quizAttempts', sessionItem.id);
+        await deleteDoc(qRef);
+      }
+      
+      if (userProgress) {
+        const updatedLocal = (userProgress.studySessions || []).filter(s => s.id !== sessionItem.id);
+        const progressRef = doc(db, 'userProgress', userId);
+        await updateDoc(progressRef, {
+          studySessions: updatedLocal,
+          totalStudyTimeSeconds: Math.max(0, (userProgress.totalStudyTimeSeconds || 0) - (sessionItem.durationSeconds || 0))
+        });
+      }
+    } catch (e) {
+      console.warn('Error removing session:', e);
+    }
   };
 
   const totalTopics = totalTopicsCount || topics.length;
@@ -95,7 +306,7 @@ export default function Dashboard({
         <div className="flex flex-col gap-2 text-center lg:text-left">
           <div className="text-[10px] lg:text-[11px] uppercase tracking-widest text-[#8E8A82] font-bold">Bem-vindo de volta</div>
           <h2 className="text-2xl lg:text-5xl font-display font-black">Seu Painel de Estudos</h2>
-          <p className="text-[#8E8A82] italic font-display text-sm lg:text-lg">Continue seus estudos de onde parou.</p>
+          <p className="text-[#8E8A82] italic font-display text-sm lg:text-lg">Continue seus estudos e acompanhe seu rendimento em tempo real.</p>
         </div>
 
         {onOpenTour && (
@@ -115,34 +326,32 @@ export default function Dashboard({
         <Card className="bg-[#141414] text-white border-none shadow-xl rounded-2xl p-4 lg:p-6">
           <div className="flex flex-col gap-2 lg:gap-4">
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-black opacity-60">Questões Hoje</div>
-            <div className="text-2xl lg:text-4xl font-black">{stats.todayCount}</div>
-            <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-bold opacity-60">Meta: 20</div>
+            <div className="text-2xl lg:text-4xl font-black text-amber-400">{stats.todayCount}</div>
+            <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-bold opacity-60">Meta: 20 questões</div>
           </div>
         </Card>
         <Card className="bg-white border-[#E2E0D9] shadow-none rounded-2xl p-4 lg:p-6">
           <div className="flex flex-col gap-2 lg:gap-4">
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Questões Semana</div>
-            <div className="text-2xl lg:text-4xl font-black">{stats.weekCount}</div>
+            <div className="text-2xl lg:text-4xl font-black text-[#1A1A1A]">{stats.weekCount}</div>
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-bold text-primary">Status: Em dia</div>
           </div>
         </Card>
         <Card className="bg-white border-[#E2E0D9] shadow-none rounded-2xl p-4 lg:p-6">
           <div className="flex flex-col gap-2 lg:gap-4">
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Tempo Total</div>
-            <div className="text-2xl lg:text-4xl font-black">{formatTime(userProgress?.totalStudyTimeSeconds || 0)}</div>
+            <div className="text-2xl lg:text-4xl font-black text-[#1A1A1A]">{formatTime(stats.totalStudyTimeSeconds)}</div>
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-bold text-[#8E8A82]">Foco: Medicina</div>
           </div>
         </Card>
         <Card className="bg-white border-[#E2E0D9] shadow-none rounded-2xl p-4 lg:p-6">
           <div className="flex flex-col gap-2 lg:gap-4">
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Progresso</div>
-            <div className="text-2xl lg:text-4xl font-black">{progressPercentage}%</div>
+            <div className="text-2xl lg:text-4xl font-black text-[#1A1A1A]">{progressPercentage}%</div>
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-bold text-[#8E8A82] truncate">{completedTopics} concluídos</div>
           </div>
         </Card>
       </div>
-
-
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 xl:gap-12 w-full max-w-full min-w-0 overflow-hidden">
         <div className="lg:col-span-2 space-y-12 min-w-0 w-full overflow-hidden">
@@ -153,13 +362,12 @@ export default function Dashboard({
             </h3>
             <Card className="border-[#E2E0D9] shadow-none rounded-2xl bg-[#FBFBFA] w-full min-w-0">
               <CardContent className="p-4 md:p-6 space-y-4 min-w-0">
-                {Object.keys(userProgress?.attempts || {}).length > 0 ? (
-                  Object.values(userProgress!.attempts)
-                    .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                    .slice(0, 5)
+                {stats.recentAttempts.length > 0 ? (
+                  stats.recentAttempts
+                    .slice(0, 6)
                     .map((attempt: any, idx) => (
                       <div 
-                        key={idx} 
+                        key={`attempt-${attempt.questionId || idx}-${idx}`} 
                         onClick={() => onSelectQuestion(attempt)}
                         className="flex items-center justify-between p-4 bg-white border border-[#E2E0D9] rounded-xl hover:border-primary cursor-pointer transition-all group w-full min-w-0 shadow-sm"
                       >
@@ -168,9 +376,12 @@ export default function Dashboard({
                             {attempt.isCorrect ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="text-[11px] font-bold line-clamp-2 break-words overflow-hidden text-ellipsis pr-2 max-w-full leading-normal">{attempt.content || 'Questão do Simulado'}</div>
-                            <div className="text-[9px] text-[#8E8A82] font-medium tracking-tight">
+                            <div className="text-[11px] font-bold line-clamp-2 break-words overflow-hidden text-ellipsis pr-2 max-w-full leading-normal">
+                              {attempt.content || 'Questão Praticada'}
+                            </div>
+                            <div className="text-[9px] text-[#8E8A82] font-medium tracking-tight mt-0.5">
                               {attempt.timestamp ? new Date(attempt.timestamp).toLocaleDateString('pt-BR') : 'Recentemente'} • {attempt.isCorrect ? 'Acertou' : 'Errou'}
+                              {attempt.timeSpentSeconds ? ` • ${Math.round(attempt.timeSpentSeconds)}s` : ''}
                             </div>
                           </div>
                         </div>
@@ -189,25 +400,42 @@ export default function Dashboard({
           {/* Session History */}
           <div className="space-y-6">
             <h3 className="text-sm uppercase tracking-widest font-black text-[#1A1A1A] flex items-center gap-3 border-b border-[#E2E0D9] pb-4">
-              <Calendar className="w-4 h-4 text-primary" /> Histórico de Sessões
+              <Calendar className="w-4 h-4 text-primary" /> Histórico de Sessões & Estudos
             </h3>
             <Card className="border-[#E2E0D9] shadow-none rounded-2xl bg-[#FBFBFA] w-full min-w-0">
               <CardContent className="p-4 md:p-6 space-y-4 min-w-0">
                 {stats.sessions.length > 0 ? (
-                  stats.sessions.slice(0, 5).map(session => {
+                  stats.sessions.slice(0, 6).map((session, sIdx) => {
                     const subject = subjects.find(s => s.id === session.subjectId);
+                    const topic = topics.find(t => t.id === session.topicId);
+                    const titleDisplay = session.description || topic?.title || subject?.name || 'Sessão de Estudos';
+
                     return (
-                      <div key={session.id} className="flex items-center justify-between p-4 bg-white border border-[#E2E0D9] rounded-xl hover:border-primary transition-all group w-full min-w-0 shadow-sm">
+                      <div key={`session-${session.id || sIdx}`} className="flex items-center justify-between p-4 bg-white border border-[#E2E0D9] rounded-xl hover:border-primary transition-all group w-full min-w-0 shadow-sm">
                         <div className="flex items-center gap-4 min-w-0 flex-1 mr-3">
                           <div className="w-10 h-10 rounded-lg bg-[#F0EEE9] flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
                             <Clock className="w-4 h-4 text-[#8E8A82] group-hover:text-primary transition-colors" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="text-[11px] font-bold truncate pr-2 w-full">{subject?.name || 'Estudo Geral'}</div>
-                            <div className="text-[9px] text-[#8E8A82] font-medium tracking-tight flex items-center gap-1.5 flex-wrap">
-                              <span>{new Date(session.startTime).toLocaleDateString('pt-BR')} às {new Date(session.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                              <span className="hidden sm:inline">•</span>
-                              <span className="text-primary font-black uppercase tracking-tighter">{formatTime(session.durationSeconds)}</span>
+                            <div className="text-[11px] font-bold truncate pr-2 w-full text-[#1A1A1A]">
+                              {titleDisplay}
+                            </div>
+                            <div className="text-[9px] text-[#8E8A82] font-medium tracking-tight flex items-center gap-1.5 flex-wrap mt-0.5">
+                              <span>
+                                {session.startTime ? new Date(session.startTime).toLocaleDateString('pt-BR') : 'Hoje'} às {session.startTime ? new Date(session.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}
+                              </span>
+                              <span>•</span>
+                              <span className="text-primary font-black uppercase tracking-tighter">
+                                {formatTime(session.durationSeconds || 0)}
+                              </span>
+                              {session.questionsCount !== undefined && session.questionsCount > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-semibold text-stone-700">
+                                    {session.questionsCount} questões {session.correctCount !== undefined ? `(${session.correctCount} acertos)` : ''}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -216,9 +444,10 @@ export default function Dashboard({
                           size="sm" 
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteSession(session.id);
+                            handleDeleteSession(session);
                           }}
                           className="text-[#8E8A82] hover:text-red-500 hover:bg-red-50 h-8 w-8 p-0 shrink-0"
+                          title="Remover do histórico"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
@@ -240,7 +469,7 @@ export default function Dashboard({
             <BarChart3 className="w-4 h-4 text-primary" /> Estudo por Matéria
           </h3>
           <Card className="border-[#E2E0D9] shadow-none rounded-2xl bg-[#FBFBFA]">
-            <CardContent className="p-8 space-y-8">
+            <CardContent className="p-6 md:p-8 space-y-6 md:space-y-8">
               {subjects.slice(0, 6).map(subject => {
                 const subjectTime = stats.timeBySubject[subject.id] || 0;
                 const subjectQuestions = stats.questionsBySubject[subject.id] || 0;

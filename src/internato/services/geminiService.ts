@@ -1174,10 +1174,11 @@ export async function generateQuestions(
     4. EXPLICAÇÃO DIDÁTICA E EXCLUSÃO DE ALTERNATIVAS: O campo "explanation" DEVE conter um comentário técnico completo em PORTUGUÊS garantindo o entendimento total da questão, explicando fundamentadamente por que a alternativa correta é a verdadeira E detalhando a exclusão exata/motivo do erro de cada uma das alternativas incorretas (ex: "Alternativa A incorreta pois...", "Alternativa B correta por...").
 
     REQUISITOS ADICIONAIS:
-    1. Evite repetir enunciados parecidos com: ${currentExisting.join(', ')}.
-    2. Estatísticas Regionais ("regionalIncidenceStats") e Termômetro ("heatLevel"): Frequência aproximada de cobrança do tema e termômetro ('baixo', 'medio', 'alto', 'extremo').
-    3. Pegadinhas ("frequentMistakesExplanation"): Detalhes do distrator da banca em português.
-    4. Gabarito Conflitante ("gabaritoConflict"): Anulações ou divergências em português.
+    1. DIVERSIDADE REAL DE ORIGEM E ANO: Cada questão gerada/recuperada DEVE possuir a sua banca e o seu ano ESPECÍFICOS e REAIS (ex: varie entre ENARE, SES-DF, SES-GO, UFG, UnB, USP, UNIFESP, UNICAMP, PSU-MG, AMRIGS e anos entre 2021 e 2026). É ESTRITAMENTE PROIBIDO atribuir a mesma banca e o mesmo ano fixo (como ENARE 2023) a todas as questões de um lote, a menos que o candidato tenha selecionado um filtro específico de banca única.
+    2. Evite repetir enunciados parecidos com: ${currentExisting.join(', ')}.
+    3. Estatísticas Regionais ("regionalIncidenceStats") e Termômetro ("heatLevel"): Frequência aproximada de cobrança do tema e termômetro ('baixo', 'medio', 'alto', 'extremo').
+    4. Pegadinhas ("frequentMistakesExplanation"): Detalhes do distrator da banca em português.
+    5. Gabarito Conflitante ("gabaritoConflict"): Anulações ou divergências em português.
 
     FORMATO DE RESPOSTA (APENAS JSON ESTREITO):
     [
@@ -1186,7 +1187,7 @@ export async function generateQuestions(
         "options": ["Alternativa A completa", "Alternativa B completa", "Alternativa C completa", "Alternativa D completa"],
         "correctOptionIndex": 0,
         "explanation": "Comentário técnico minucioso e fundamentado em português...",
-        "source": "SIGLA DA BANCA (ANO) - EX: ENARE (2025)",
+        "source": "SIGLA DA BANCA REAL (ANO REAL DA QUESTÃO)",
         "regionalIncidenceStats": {
           "SES-DF": 12,
           "SES-GO": 8,

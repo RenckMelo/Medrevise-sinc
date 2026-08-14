@@ -1929,7 +1929,7 @@ export default function QuestionModule({
               </div>
 
               <p className="text-[10px] text-[#8E8A82] uppercase tracking-widest font-black max-w-sm mx-auto leading-relaxed">
-                Isso pode levar de 15 a 30 segundos. Estamos formulando casos clínicos reais com base nas bancas de residência.
+                Isso pode levar de 15 a 30 segundos. Buscando e organizando questões reais das bancas de residência médica.
               </p>
             </div>
           ) : (
@@ -3741,9 +3741,17 @@ export default function QuestionModule({
                 {(() => {
                   const q = currentQuestion as any;
                   const rawSource = q.source || 'Residência Médica';
-                  const yearMatch = rawSource.match(/\b(20\d{2}|19\d{2})\b/);
+                  const cleanedSource = rawSource.replace(/-\s*\[Nota:[\s\S]*?\]/gi, '').replace(/\[Nota:[\s\S]*?\]/gi, '').trim();
+                  const yearMatch = cleanedSource.match(/\b(20\d{2}|19\d{2})\b/);
                   const yearStr = q.year ? String(q.year) : (yearMatch ? yearMatch[1] : null);
-                  const instMatch = rawSource.replace(/\b(20\d{2}|19\d{2})\b/, '').replace(/[-–—]/g, ' ').trim();
+                  
+                  let instMatch = cleanedSource
+                    .replace(/\b(20\d{2}|19\d{2})\b/, '')
+                    .replace(/\(\s*\)/g, '')
+                    .replace(/\[\s*\]/g, '')
+                    .replace(/^[-–—:\s]+|[-–—:\s]+$/g, '')
+                    .trim();
+
                   const institutionStr = q.institution || q.exam || (instMatch || rawSource);
 
                   return (

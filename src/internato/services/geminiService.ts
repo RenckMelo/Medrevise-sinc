@@ -420,6 +420,7 @@ Retorne APENAS um array JSON de strings com os títulos dos 5 a 6 capítulos num
 
       const previousChaptersStr = i > 0 ? chapters.slice(0, i).map((c, idx) => `Capítulo ${idx+1}: "${c}"`).join(' | ') : 'Nenhum (Este é o Capítulo 1)';
       const futureChaptersStr = i < totalChapters - 1 ? chapters.slice(i + 1).map((c, idx) => `Capítulo ${i+2+idx}: "${c}"`).join(' | ') : 'Nenhum (Este é o Capítulo Final)';
+      const previousSignatures = extractPreviousContentSignatures(fullContent);
 
       const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Estamos redigindo um RESUMO MASTER EXTENSIVO DE ALTA PERFORMANCE (50 créditos) sobre "${title}" (${area}).
 Foco de Bancas: ${focusTarget} (${regionalShort})
@@ -428,13 +429,17 @@ Capítulo Atual (${i + 1}/${totalChapters}): "${chapterTitle}"
 Capítulos Anteriores já redigidos: ${previousChaptersStr}
 Capítulos Posteriores a serem redigidos: ${futureChaptersStr}
 
+ELEMENTOS JÁ GERADOS NOS CAPÍTULOS ANTERIORES (REGRA RÍGIDA ANTI-DUPLICAÇÃO):
+${previousSignatures}
+* É ESTRITAMENTE PROIBIDO REPETIR QUALQUER TABELA, ESCORE OU CAIXA DE DICA ACIMA.
+
 DIRETRIZES FUNDAMENTAIS DE RIGOR, DENSIDADE E NÃO REPETIÇÃO:
 1. COMECE IMEDIATAMENTE PELO TÍTULO DO CAPÍTULO: O texto DEVE iniciar na primeira linha com "## ${chapterTitle}".
 2. NÃO REPITA CONCEITOS OU TABELAS JÁ DISCUTIDAS: Se este não for o Capítulo 1, não reintroduza o tema. Concentre-se 100% no tema específico deste capítulo.
-3. TABELAS DE ESCORES E ESCALAS NA ÍNTEGRA: Se o capítulo envolver qualquer escore ou escala de estratificação de risco ou critérios diagnósticos oficiais (ex: Glasgow, Wells, CURB-65, CHADS-VASc, HAS-BLED, NIHSS, SOFA, Child-Pugh, MELD, Alvarado, Ranson, Mallampati, Cormack-Lehane, LEMON, ASA, etc.), inclua a TABELA COMPLETA com itens, pontuações e condutas vinculadas.
-4. GUIA DE MANEJO PASSO A PASSO: Se este capítulo for sobre Manejo/Conduta, descreva o fluxo sequencial, claro e acionável de atendimento, com doses exatas em mg/kg, vias, intervalos e manobras clínicas beira-leito.
-5. RIGOR FISIOPATOLÓGICO: Explique os mecanismos de ação celular/molecular, receptores e cascatas biológicas com clareza cristalina.
-6. ALERTA DE PROVAS: Intercale boxes de observação de bancas:
+3. DENSIDADE ACADÊMICA E RIGOR TÉCNICO MÁXIMO: Escreva parágrafos substanciais, explicativos e aprofundados. Detalhe a fisiopatologia molecular/celular, mecanismo de ação, posologia exata com dosagens em mg/kg ou mg/dia, vias de administração e ajustes para clearance renal/função hepática.
+4. TABELAS DE ESCORES E ESCALAS NA ÍNTEGRA (INÉDITAS): Se o capítulo envolver qualquer escore ou escala médica ainda não apresentada, inclua a TABELA COMPLETA com itens, pontuações e condutas vinculadas.
+5. GUIA DE MANEJO PASSO A PASSO: Se este capítulo for sobre Manejo/Conduta, descreva o fluxo sequencial, claro e acionável de atendimento, com doses exatas em mg/kg, vias, intervalos e manobras clínicas beira-leito.
+6. ALERTA DE PROVAS: Intercale boxes de observação inéditos de bancas:
    > [!IMPORTANT]
    > **HIGHLIGHT DE PROVA / PEGADINHA DE BANCA (${regionalShort}):**
    > [Dica clínica e pegadinha recorrente em provas]
@@ -622,7 +627,8 @@ export async function generateTopicContent(
     .replace(/Na UFG costuma-se cobrar\.\.\., "No PSU-GO o foco é\.\.\.", "ENARE e UnB divergem aqui\.\.\."/g, `Na banca ${regionalShort} o foco principal é...`)
     .replace(/UFG, UnB, PSU-GO, PSU-DF/g, focusTarget);
 
-  return generateWithAI(customPrompt, model, finalCredits);
+  const rawResult = await generateWithAI(customPrompt, model, finalCredits);
+  return removeDuplicateSumarios(rawResult);
 }
 
 function slugify(text: any): string {
@@ -1799,6 +1805,7 @@ export async function generateCustomAnalyzedSummary(
 
       const previousChaptersStr = i > 0 ? chapters.slice(0, i).map((c, idx) => `Capítulo ${idx+1}: "${c}"`).join(' | ') : 'Nenhum (Este é o Capítulo 1)';
       const futureChaptersStr = i < totalChapters - 1 ? chapters.slice(i + 1).map((c, idx) => `Capítulo ${i+2+idx}: "${c}"`).join(' | ') : 'Nenhum (Este é o Capítulo Final)';
+      const previousSignatures = extractPreviousContentSignatures(fullContent);
 
       const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Estamos gerando um TRATADO PERSONALIZADO de Alta Performance para o aluno gabaritar qualquer questão e ter segurança absoluta na prática clínica.
 
@@ -1809,6 +1816,10 @@ ESTRUTURA GLOBAL E DELIMITAÇÃO RÍGIDA DE ESCOPO DESTE CAPÍTULO:
 - Capítulos Anteriores (Já escritos no resumo): ${previousChaptersStr}
 - Capítulo Atual a ser escrito AGORA: Capítulo ${i + 1} de ${totalChapters} ("${chapterTitle}")
 - Capítulos Seguintes (Serão escritos depois): ${futureChaptersStr}
+
+ELEMENTOS JÁ GERADOS NOS CAPÍTULOS ANTERIORES (REGRA RÍGIDA ANTI-DUPLICAÇÃO):
+${previousSignatures}
+* É ESTRITAMENTE PROIBIDO REPETIR QUALQUER TABELA, ESCORE OU CAIXA DE DICA LISTADA ACIMA.
 
 DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO E NÃO REPETIÇÃO:
 1. COMECE IMEDIATAMENTE PELO TÍTULO DO CAPÍTULO: O texto do capítulo DEVE começar na PRIMEIRA LINHA com "## ${chapterTitle}". É ESTRITAMENTE PROIBIDO incluir saudações, frases preparatórias, introduções gerais sobre o tema ou re-gerar o sumário de navegação.
@@ -1945,42 +1956,198 @@ Escreva o capítulo "${chapterTitle}" de forma exaustiva, 100% aprofundada, sem 
   }
 }
 
+export function extractPreviousContentSignatures(contentSoFar: string): string {
+  if (!contentSoFar || contentSoFar.length < 50) return 'Nenhum capítulo anterior gerado ainda.';
+
+  const summaries: string[] = [];
+
+  // Extract table headers
+  const tableHeaders = contentSoFar.match(/^\|([^\n]+)\|/gm);
+  if (tableHeaders && tableHeaders.length > 0) {
+    const uniqueHeaders = Array.from(new Set(tableHeaders
+      .filter(h => !h.includes('---'))
+      .map(h => h.replace(/\|/g, ' ').trim())
+      .filter(h => h.length > 5)
+    )).slice(0, 10);
+    if (uniqueHeaders.length > 0) {
+      summaries.push(`TABELAS E ESCORES JÁ INCLUÍDOS (PROIBIDO REPETIR): ${uniqueHeaders.join(' | ')}`);
+    }
+  }
+
+  // Extract callout headers/first lines
+  const alertMatches = contentSoFar.match(/^>\s*\[!(IMPORTANT|CAUTION|WARNING|TIP|NOTE)\][\s\S]*?(?=\n\n|\n[^\>]|$)/gm);
+  if (alertMatches && alertMatches.length > 0) {
+    const alertTitles = alertMatches.map(a => {
+      const firstLine = a.split('\n').find(l => l.includes('**') || l.length > 15) || '';
+      return firstLine.replace(/^>\s*/, '').replace(/\*\*/g, '').trim();
+    }).filter(Boolean);
+    const uniqueAlerts = Array.from(new Set(alertTitles)).slice(0, 10);
+    if (uniqueAlerts.length > 0) {
+      summaries.push(`DICAS E ALERTAS JÁ INCLUÍDOS (PROIBIDO REPETIR): ${uniqueAlerts.join('; ')}`);
+    }
+  }
+
+  return summaries.length > 0 ? summaries.join('\n\n') : 'Capítulos anteriores analisados.';
+}
+
+export function deduplicateTablesAndAlerts(content: string): string {
+  if (!content) return content;
+
+  const lines = content.split('\n');
+  const resultLines: string[] = [];
+  
+  const seenAlertSignatures = new Set<string>();
+  const seenTableSignatures = new Set<string>();
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // 1. Check for GFM Callout / Alert box start: "> [!IMPORTANT]" or "> [!CAUTION]", etc.
+    if (/^>\s*\[!(IMPORTANT|CAUTION|WARNING|TIP|NOTE)\]/i.test(trimmed)) {
+      const alertLines: string[] = [lines[i]];
+      let j = i + 1;
+      while (j < lines.length && (lines[j].trim().startsWith('>') || lines[j].trim() === '')) {
+        if (lines[j].trim() === '' && (j + 1 < lines.length && !lines[j + 1].trim().startsWith('>'))) {
+          break;
+        }
+        alertLines.push(lines[j]);
+        j++;
+      }
+
+      // Normalize alert text
+      const alertText = alertLines
+        .map(l => l.replace(/^>\s*/, '').trim())
+        .join(' ')
+        .toLowerCase()
+        .replace(/[^\w\s\u00C0-\u00FF]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (alertText.length >= 15) {
+        let isDuplicateAlert = false;
+        for (const seenSig of seenAlertSignatures) {
+          if (seenSig === alertText) {
+            isDuplicateAlert = true;
+            break;
+          }
+          if (alertText.length > 30 && seenSig.length > 30) {
+            if (seenSig.includes(alertText) || alertText.includes(seenSig)) {
+              isDuplicateAlert = true;
+              break;
+            }
+          }
+        }
+
+        if (isDuplicateAlert) {
+          // Skip duplicate alert box!
+          i = j;
+          continue;
+        } else {
+          seenAlertSignatures.add(alertText);
+        }
+      }
+
+      for (const aLine of alertLines) {
+        resultLines.push(aLine);
+      }
+      i = j;
+      continue;
+    }
+
+    // 2. Check for Markdown Table start
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const tableLines: string[] = [];
+      let j = i;
+      while (j < lines.length && lines[j].trim().startsWith('|') && lines[j].trim().endsWith('|')) {
+        tableLines.push(lines[j]);
+        j++;
+      }
+
+      const hasDelimiter = tableLines.some(l => /^\|?\s*:?-+:?\s*(\||\+)/.test(l.trim()));
+      if (tableLines.length >= 2 && hasDelimiter) {
+        const normalizedCells = tableLines
+          .filter(l => !/^\|?\s*:?-+:?\s*(\||\+)/.test(l.trim()))
+          .map(l => l.split('|').map(c => c.trim().toLowerCase().replace(/[^\w\u00C0-\u00FF]/g, '')).filter(Boolean).join('|'))
+          .filter(Boolean)
+          .join('||');
+
+        if (normalizedCells.length >= 20) {
+          let isDuplicateTable = false;
+          for (const seenSig of seenTableSignatures) {
+            if (seenSig === normalizedCells) {
+              isDuplicateTable = true;
+              break;
+            }
+            if (seenSig.length > 30 && normalizedCells.length > 30) {
+              const sig1Cells = new Set(seenSig.split('||'));
+              const sig2Cells = normalizedCells.split('||');
+              const matchCount = sig2Cells.filter(c => sig1Cells.has(c)).length;
+              if (matchCount / Math.max(1, sig2Cells.length) >= 0.7) {
+                isDuplicateTable = true;
+                break;
+              }
+            }
+          }
+
+          if (isDuplicateTable) {
+            resultLines.push('\n*(Tabela comparativa / escore oficial apresentado em capítulo anterior)*\n');
+            i = j;
+            continue;
+          } else {
+            seenTableSignatures.add(normalizedCells);
+          }
+        }
+      }
+
+      for (const tLine of tableLines) {
+        resultLines.push(tLine);
+      }
+      i = j;
+      continue;
+    }
+
+    resultLines.push(line);
+    i++;
+  }
+
+  return resultLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function removeDuplicateSumarios(content: string): string {
   if (!content) return content;
   
+  let cleaned = content;
+
   // Encontra todas as ocorrências de SUMÁRIO DE NAVEGAÇÃO / SUMÁRIO / ÍNDICE
   const sumarioRegex = /#+\s*(SUMÁRIO\s*DE\s*NAVEGAÇÃO|SUMÁRIO|SUMARIO|ÍNDICE|INDICE)/gi;
-  const matches = [...content.matchAll(sumarioRegex)];
+  const matches = [...cleaned.matchAll(sumarioRegex)];
   
-  if (matches.length === 0) return content;
+  if (matches.length > 1) {
+    const firstMatch = matches[0];
+    const firstIndex = firstMatch.index ?? 0;
 
-  if (matches.length === 1) {
-    // Se a única ocorrência estiver muito no meio do texto (> 1200 caracteres), remove
-    if (matches[0].index !== undefined && matches[0].index > 1200) {
-      return content.replace(/#+\s*(SUMÁRIO\s*DE\s*NAVEGAÇÃO|SUMÁRIO|SUMARIO|ÍNDICE|INDICE)[\s\S]*?(?=\n#+\s+[A-Za-z0-9]|\n---\n|$)/gi, '').trim();
+    const afterFirstHeader = firstIndex + firstMatch[0].length;
+    const nextHeadingMatch = cleaned.substring(afterFirstHeader).match(/\n---\n|\n##\s+/);
+    
+    let firstBlockEnd = cleaned.length;
+    if (nextHeadingMatch && nextHeadingMatch.index !== undefined) {
+      firstBlockEnd = afterFirstHeader + nextHeadingMatch.index + nextHeadingMatch[0].length;
     }
-    return content;
+
+    const topPart = cleaned.substring(0, firstBlockEnd);
+    let restPart = cleaned.substring(firstBlockEnd);
+
+    restPart = restPart.replace(/#+\s*(SUMÁRIO\s*DE\s*NAVEGAÇÃO|SUMÁRIO|SUMARIO|ÍNDICE|INDICE)[\s\S]*?(?=\n#+\s+[A-Za-z0-9]|\n---\n|$)/gi, '');
+
+    cleaned = topPart + restPart;
+  } else if (matches.length === 1 && matches[0].index !== undefined && matches[0].index > 1200) {
+    cleaned = cleaned.replace(/#+\s*(SUMÁRIO\s*DE\s*NAVEGAÇÃO|SUMÁRIO|SUMARIO|ÍNDICE|INDICE)[\s\S]*?(?=\n#+\s+[A-Za-z0-9]|\n---\n|$)/gi, '').trim();
   }
 
-  // Mantém APENAS a primeira ocorrência (no topo do documento)
-  const firstMatch = matches[0];
-  const firstIndex = firstMatch.index ?? 0;
-
-  const afterFirstHeader = firstIndex + firstMatch[0].length;
-  const nextHeadingMatch = content.substring(afterFirstHeader).match(/\n---\n|\n##\s+/);
-  
-  let firstBlockEnd = content.length;
-  if (nextHeadingMatch && nextHeadingMatch.index !== undefined) {
-    firstBlockEnd = afterFirstHeader + nextHeadingMatch.index + nextHeadingMatch[0].length;
-  }
-
-  const topPart = content.substring(0, firstBlockEnd);
-  let restPart = content.substring(firstBlockEnd);
-
-  // Remove todas as ocorrências secundárias do restPart
-  restPart = restPart.replace(/#+\s*(SUMÁRIO\s*DE\s*NAVEGAÇÃO|SUMÁRIO|SUMARIO|ÍNDICE|INDICE)[\s\S]*?(?=\n#+\s+[A-Za-z0-9]|\n---\n|$)/gi, '');
-
-  return topPart + restPart;
+  // Remove tabelas e caixas de alerta duplicadas
+  return deduplicateTablesAndAlerts(cleaned);
 }
 
 function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate'): string {

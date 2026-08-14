@@ -155,66 +155,130 @@ export default function QuestionModule({
   const [isSavingMedRevise, setIsSavingMedRevise] = useState(false);
   const [medReviseResult, setMedReviseResult] = useState<{ isFirst: boolean; nextDate: string; topicTitle: string } | null>(null);
 
+  // MedRevise Auto-Sync Mode ('auto' vs 'manual')
+  const [questionsSyncMode, setQuestionsSyncMode] = useState<'auto' | 'manual'>(() => {
+    try {
+      const saved = localStorage.getItem('medinternato_questions_sync_mode');
+      if (saved === 'auto' || saved === 'manual') return saved;
+      const syncModeSaved = localStorage.getItem('medinternato_sync_medrevise_mode');
+      if (syncModeSaved === 'internato_only') return 'manual';
+    } catch (e) {}
+    return 'auto';
+  });
+
+  const updateQuestionsSyncMode = (mode: 'auto' | 'manual') => {
+    setQuestionsSyncMode(mode);
+    try {
+      localStorage.setItem('medinternato_questions_sync_mode', mode);
+      localStorage.setItem('medinternato_sync_medrevise_mode', mode === 'auto' ? 'sync' : 'internato_only');
+    } catch (e) {}
+  };
+
   useEffect(() => {
     if (showResults) {
       setMedReviseMinutes(Math.max(1, Math.round((seconds || 0) / 60)));
     }
   }, [showResults, seconds]);
 
-  const handleRegisterMedRevise = async () => {
-    if (!userId) {
-      alert("Usuário não autenticado.");
-      return;
-    }
-    setIsSavingMedRevise(true);
+  // Multi-Topic MedRevise Sync Logic
+  const syncQuizResultToMedRevise = async (
+    quizQuestions: Question[],
+    finalScore: number,
+    durationSeconds: number,
+    customMinutes?: number,
+    resultsToUse?: QuestionAttempt[]
+  ) => {
+    if (!userId) return null;
+
     try {
-      let targetTopicObjs: Topic[] = [];
-      if (selectedTopicIds.length > 0) {
-        targetTopicObjs = topics.filter(t => selectedTopicIds.includes(t.id));
-      }
-      if (targetTopicObjs.length === 0) {
-        const qTopicIds = [...new Set(questions.map(q => q.topicId).filter(Boolean) as string[])];
-        targetTopicObjs = topics.filter(t => qTopicIds.includes(t.id));
+      // 1. Collect all candidate topic IDs
+      const topicIdsFromParams = (selectedTopicIds || []).filter(Boolean);
+      const topicIdsFromQuestions = Array.from(new Set(quizQuestions.map(q => q.topicId).filter(Boolean) as string[]));
+      const allTopicIds = Array.from(new Set([...topicIdsFromParams, ...topicIdsFromQuestions]));
+
+      let targetTopics: Topic[] = [];
+
+      if (allTopicIds.length > 0) {
+        targetTopics = topics.filter(t => allTopicIds.includes(t.id));
       }
 
-      if (targetTopicObjs.length === 0) {
-        alert("Selecione ou vincule a um tema do MedRevise para registrar seu progresso.");
-        setIsSavingMedRevise(false);
-        return;
+      // Check if any candidate topic IDs were missing from in-memory topics state array
+      for (const tid of allTopicIds) {
+        if (!targetTopics.some(t => t.id === tid) && typeof tid === 'string' && !tid.startsWith('local_')) {
+          try {
+            const snap = await getDoc(doc(db, 'users', userId, 'topics', tid));
+            if (snap.exists()) {
+              targetTopics.push({ id: snap.id, ...snap.data() } as Topic);
+            }
+          } catch (e) {}
+        }
       }
 
-      const totalQ = questions.length;
-      const finalScore = score;
-      const quality = accuracyToQuality(finalScore, totalQ);
+      // Fallback: if no topics matched by ID, try matching by subject
+      if (targetTopics.length === 0 && quizQuestions.length > 0) {
+        const subIds = Array.from(new Set(quizQuestions.map(q => q.subjectId).filter(Boolean) as string[]));
+        for (const sid of subIds) {
+          const matchedBySubj = topics.find(t => t.subjectId === sid);
+          if (matchedBySubj && !targetTopics.some(t => t.id === matchedBySubj.id)) {
+            targetTopics.push(matchedBySubj);
+          }
+        }
+      }
+
+      if (targetTopics.length === 0) return null;
+
       const dateIso = new Date().toISOString();
+      const calcMinutes = customMinutes || Math.max(1, Math.round(durationSeconds / 60));
+      const minutesPerTopic = Math.max(1, Math.round(calcMinutes / Math.max(1, targetTopics.length)));
 
+      const updatedTopicTitles: string[] = [];
       let lastIsFirst = false;
-      let lastNextDate = '';
-      let lastTopicTitle = '';
+      let lastNextDateStr = '';
 
-      for (const tObj of targetTopicObjs) {
-        lastTopicTitle = tObj.title || (tObj as any).name || 'Tópico';
+      const attemptsToUse = resultsToUse || currentQuizResults;
+
+      for (const tObj of targetTopics) {
+        const topicQs = quizQuestions.filter(q => q.topicId === tObj.id);
+        const qCount = topicQs.length > 0 ? topicQs.length : Math.max(1, Math.round(quizQuestions.length / targetTopics.length));
+        
+        let cCount = 0;
+        if (topicQs.length > 0) {
+          cCount = topicQs.filter(q => {
+            const attempt = attemptsToUse.find(r => r.questionId === q.id);
+            return attempt ? attempt.isCorrect : false;
+          }).length;
+        } else {
+          cCount = Math.round((finalScore / Math.max(1, quizQuestions.length)) * qCount);
+        }
+
+        const tTitle = tObj.title || (tObj as any).name || 'Tópico';
+        updatedTopicTitles.push(tTitle);
+
         const topicRef = doc(db, 'users', userId, 'topics', tObj.id);
-        const topicSnap = await getDoc(topicRef);
-
         let currentReps = 0;
         let prevInterval = 0;
         let prevEase = 2.5;
 
-        if (topicSnap.exists()) {
-          const data = topicSnap.data();
-          currentReps = typeof data.repetitions === 'number' ? data.repetitions : 0;
-          prevInterval = typeof data.interval === 'number' ? data.interval : 0;
-          prevEase = typeof data.easinessFactor === 'number' ? data.easinessFactor : 2.5;
-        } else {
+        try {
+          const topicSnap = await getDoc(topicRef);
+          if (topicSnap.exists()) {
+            const data = topicSnap.data();
+            currentReps = typeof data.repetitions === 'number' ? data.repetitions : 0;
+            prevInterval = typeof data.interval === 'number' ? data.interval : 0;
+            prevEase = typeof data.easinessFactor === 'number' ? data.easinessFactor : 2.5;
+          } else {
+            currentReps = typeof tObj.repetitions === 'number' ? tObj.repetitions : 0;
+            prevInterval = typeof tObj.interval === 'number' ? tObj.interval : 0;
+            prevEase = typeof tObj.easinessFactor === 'number' ? tObj.easinessFactor : 2.5;
+          }
+        } catch (e) {
           currentReps = typeof tObj.repetitions === 'number' ? tObj.repetitions : 0;
-          prevInterval = typeof tObj.interval === 'number' ? tObj.interval : 0;
-          prevEase = typeof tObj.easinessFactor === 'number' ? tObj.easinessFactor : 2.5;
         }
 
         const isFirstRegistration = currentReps === 0;
         lastIsFirst = isFirstRegistration;
 
+        const quality = accuracyToQuality(cCount, qCount);
         const srsUpdate = calculateNextReview(
           quality,
           currentReps,
@@ -223,24 +287,24 @@ export default function QuestionModule({
           new Date()
         );
 
-        lastNextDate = srsUpdate.nextReviewDate;
+        lastNextDateStr = new Date(srsUpdate.nextReviewDate).toLocaleDateString('pt-BR');
 
-        // Register studySession
+        // Add studySession entry in Firestore
         await addDoc(collection(db, 'users', userId, 'studySessions'), {
           topicId: tObj.id,
           subjectId: tObj.subjectId,
           date: dateIso,
-          questionsCount: totalQ,
-          correctCount: finalScore,
-          studyTimeMinutes: medReviseMinutes || 15,
+          questionsCount: qCount,
+          correctCount: cCount,
+          studyTimeMinutes: minutesPerTopic,
           description: isFirstRegistration
-            ? `Estudo Inicial por Questões MedInternato (${finalScore}/${totalQ} acertos - ${Math.round((finalScore/totalQ)*100)}%)`
-            : `Revisão por Questões MedInternato (${finalScore}/${totalQ} acertos - ${Math.round((finalScore/totalQ)*100)}%)`
+            ? `Estudo Inicial por Questões (${cCount}/${qCount} acertos)`
+            : `Revisão por Questões (${cCount}/${qCount} acertos)`
         });
 
-        // Update or Set topic state in MedRevise
+        // Update topic SM-2 and completion in MedRevise
         await setDoc(topicRef, {
-          name: tObj.title || (tObj as any).name || '',
+          name: tTitle,
           subjectId: tObj.subjectId,
           completed: true,
           repetitions: srsUpdate.repetitions,
@@ -253,11 +317,33 @@ export default function QuestionModule({
         }, { merge: true });
       }
 
-      setMedReviseResult({
+      const summaryObj = {
         isFirst: lastIsFirst,
-        nextDate: new Date(lastNextDate).toLocaleDateString('pt-BR'),
-        topicTitle: lastTopicTitle
-      });
+        nextDate: lastNextDateStr,
+        topicTitle: updatedTopicTitles.length > 1 
+          ? `${updatedTopicTitles.length} tópicos (${updatedTopicTitles.slice(0, 3).join(', ')}${updatedTopicTitles.length > 3 ? '...' : ''})`
+          : updatedTopicTitles[0] || 'Tópico'
+      };
+
+      setMedReviseResult(summaryObj);
+      return summaryObj;
+    } catch (err) {
+      console.error("Erro ao sincronizar com o MedRevise:", err);
+      return null;
+    }
+  };
+
+  const handleRegisterMedRevise = async () => {
+    if (!userId) {
+      alert("Usuário não autenticado.");
+      return;
+    }
+    setIsSavingMedRevise(true);
+    try {
+      const res = await syncQuizResultToMedRevise(questions, score, seconds, medReviseMinutes);
+      if (!res) {
+        alert("Selecione ou vincule a um tema do MedRevise para registrar seu progresso.");
+      }
     } catch (err) {
       console.error("Erro ao registrar no MedRevise:", err);
       alert("Ocorreu um erro ao salvar o registro no MedRevise.");
@@ -1131,16 +1217,10 @@ export default function QuestionModule({
           studySessions: arrayUnion(studySessionEntry)
         });
 
-        // Also add session to MedRevise users/{userId}/studySessions collection
-        await addDoc(collection(db, 'users', userId, 'studySessions'), {
-          topicId: selectedTopicIds[0] || questions[0]?.topicId || '',
-          subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || '',
-          date: new Date().toISOString(),
-          questionsCount: questions.length,
-          correctCount: score,
-          studyTimeMinutes: Math.max(1, Math.round(finalDuration / 60)),
-          description: `Sessão de Questões no MedInternato (${score}/${questions.length} acertos)`
-        });
+        // Sync tested/studied topics to MedRevise if automatic mode is enabled
+        if (questionsSyncMode === 'auto') {
+          await syncQuizResultToMedRevise(questions, score, finalDuration, undefined, currentQuizResults);
+        }
       } catch (err) {
         console.warn('Firestore write failed, saved in local-first cache:', err);
       }
@@ -1258,16 +1338,10 @@ export default function QuestionModule({
         await addDoc(collection(db, 'quizAttempts'), quizAttempt);
         await updateDoc(progressRef, updates);
 
-        // Also add session to MedRevise users/{userId}/studySessions collection
-        await addDoc(collection(db, 'users', userId, 'studySessions'), {
-          topicId: selectedTopicIds[0] || questions[0]?.topicId || '',
-          subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || '',
-          date: new Date().toISOString(),
-          questionsCount: questions.length,
-          correctCount: finalScore,
-          studyTimeMinutes: Math.max(1, Math.round(finalExamDuration / 60)),
-          description: `Simulado MedInternato (${finalScore}/${questions.length} acertos)`
-        });
+        // Sync tested/studied topics to MedRevise if automatic mode is enabled
+        if (questionsSyncMode === 'auto') {
+          await syncQuizResultToMedRevise(questions, finalScore, finalExamDuration, undefined, quizResults);
+        }
       } catch (err) {
         console.warn('Firestore write failed, saved in local-first cache:', err);
       }
@@ -3404,20 +3478,46 @@ export default function QuestionModule({
                 </div>
                 <div>
                   <h3 className="text-base font-display font-black text-[#1A1A1A]">
-                    Registrar no MedRevise
+                    Sincronização com o MedRevise
                   </h3>
                   <p className="text-xs text-[#8E8A82]">
-                    Sincronize seu desempenho com o algoritmo de repetição espaçada (SM-2)
+                    Envie seu desempenho para o algoritmo de repetição espaçada (SM-2)
                   </p>
                 </div>
               </div>
-              {medReviseResult && (
-                <Badge className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-3 py-1 text-xs font-bold gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                  Registrado como {medReviseResult.isFirst ? 'ESTUDO' : 'REVISÃO'}
-                </Badge>
-              )}
+
+              {/* Mode Selection Toggle */}
+              <div className="flex items-center gap-1 bg-[#EAE8E3] p-1 rounded-2xl border border-[#D8D5CC]">
+                <button
+                  type="button"
+                  onClick={() => updateQuestionsSyncMode('auto')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    questionsSyncMode === 'auto'
+                      ? 'bg-primary text-white shadow-xs'
+                      : 'text-stone-600 hover:text-black'
+                  }`}
+                >
+                  ⚡ Automático
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateQuestionsSyncMode('manual')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    questionsSyncMode === 'manual'
+                      ? 'bg-primary text-white shadow-xs'
+                      : 'text-stone-600 hover:text-black'
+                  }`}
+                >
+                  🖐️ Manual
+                </button>
+              </div>
             </div>
+
+            {questionsSyncMode === 'manual' && !medReviseResult && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200/80 p-3 rounded-xl font-medium">
+                💡 <strong>Modo Manual selecionado:</strong> O seu teste foi salvo no MedInternato. Ajuste o tempo abaixo e clique em <strong>"Registrar no MedRevise"</strong> quando desejar enviar os dados para o MedRevise.
+              </p>
+            )}
 
             {!medReviseResult ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
@@ -3451,7 +3551,7 @@ export default function QuestionModule({
                   <Button
                     onClick={handleRegisterMedRevise}
                     disabled={isSavingMedRevise}
-                    className="w-full h-11 bg-primary hover:bg-primary/90 text-white font-bold text-xs uppercase tracking-widest rounded-xl gap-2 shadow-md shadow-primary/20"
+                    className="w-full h-11 bg-primary hover:bg-primary/90 text-white font-bold text-xs uppercase tracking-widest rounded-xl gap-2 shadow-md shadow-primary/20 cursor-pointer"
                   >
                     {isSavingMedRevise ? (
                       <Loader2 className="w-4 h-4 animate-spin" />

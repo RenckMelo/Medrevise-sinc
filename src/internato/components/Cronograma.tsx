@@ -1955,6 +1955,113 @@ export default function Cronograma({
     }
   };
 
+  // Helper to ensure a schedule topic exists in MedRevise topics & subjects
+  const ensureTopicInMedRevise = async (
+    rawTitle: string,
+    subjectNameHint: string = 'Geral',
+    manualTopicId?: string
+  ) => {
+    if (!user) return null;
+
+    const cleanTitle = (rawTitle || '')
+      .replace(/^Revisão Ativa \+ Flashcards: /, '')
+      .replace(/^⚡ \[QUESTÕES AVANÇADAS\] /, '')
+      .replace(/^🔄 \[REVISÃO DE REFORÇO\] /, '')
+      .trim();
+
+    if (!cleanTitle) return null;
+
+    // 1. Check in-memory topics first
+    let found = findMatchingTopic(cleanTitle, topics || [], manualTopicId);
+    if (found) return found;
+
+    // 2. Query Firestore by ID or exact clean title
+    try {
+      if (manualTopicId && typeof manualTopicId === 'string' && !manualTopicId.startsWith('local_')) {
+        const snap = await getDoc(doc(db, 'users', user.uid, 'topics', manualTopicId));
+        if (snap.exists()) {
+          const tData = { id: snap.id, ...snap.data() };
+          if (setTopics) setTopics(prev => prev.some(x => x.id === tData.id) ? prev : [...prev, tData]);
+          return tData;
+        }
+      }
+
+      const qTitle = query(collection(db, 'users', user.uid, 'topics'), where('title', '==', cleanTitle), limit(1));
+      const snapTitle = await getDocs(qTitle);
+      if (!snapTitle.empty) {
+        const tData = { id: snapTitle.docs[0].id, ...snapTitle.docs[0].data() };
+        if (setTopics) setTopics(prev => prev.some(x => x.id === tData.id) ? prev : [...prev, tData]);
+        return tData;
+      }
+    } catch (err) {
+      console.warn("Notice: lookup topic in Firestore:", err);
+    }
+
+    // 3. Find or create Subject in MedRevise
+    const targetSubjectName = subjectNameHint || 'Geral';
+    let foundSubject = (subjects || []).find(
+      s => s.name?.toLowerCase().trim() === targetSubjectName.toLowerCase().trim()
+    );
+
+    if (!foundSubject) {
+      try {
+        const subjectsRef = collection(db, 'users', user.uid, 'subjects');
+        const newSubjRef = await addDoc(subjectsRef, {
+          name: targetSubjectName,
+          semesterId: 'cronograma_sem',
+          icon: 'BookOpen',
+          color: 'bg-blue-100 text-[#0066cc]',
+          createdAt: new Date().toISOString()
+        });
+        foundSubject = {
+          id: newSubjRef.id,
+          name: targetSubjectName,
+          semesterId: 'cronograma_sem',
+          icon: 'BookOpen',
+          color: 'bg-blue-100 text-[#0066cc]'
+        };
+        if (setSubjects) setSubjects(prev => [...prev, foundSubject]);
+      } catch (err) {
+        console.warn("Notice creating subject in Firestore:", err);
+        foundSubject = { id: 'cronograma_subj', name: targetSubjectName };
+      }
+    }
+
+    // 4. Create Topic document in MedRevise users/{uid}/topics
+    try {
+      const topicsRef = collection(db, 'users', user.uid, 'topics');
+      const newTopicRef = await addDoc(topicsRef, {
+        title: cleanTitle,
+        name: cleanTitle,
+        subjectId: foundSubject.id,
+        semesterId: 'cronograma_sem',
+        references: "",
+        historicalIncidence: 15,
+        importanceDegree: 'medio',
+        completed: false,
+        createdAt: new Date().toISOString()
+      });
+
+      const createdTopic = {
+        id: newTopicRef.id,
+        title: cleanTitle,
+        name: cleanTitle,
+        subjectId: foundSubject.id,
+        semesterId: 'cronograma_sem',
+        references: "",
+        historicalIncidence: 15,
+        importanceDegree: 'medio',
+        completed: false
+      };
+
+      if (setTopics) setTopics(prev => [...prev, createdTopic]);
+      return createdTopic;
+    } catch (err) {
+      console.error("Error creating topic in MedRevise:", err);
+      return null;
+    }
+  };
+
   // Toggle completion of a specific topic in a specific day of a specific week
   const handleToggleTopic = async (weekIdx: number, dayName: string, topicIdx: number) => {
     if (!schedule) return;
@@ -1978,6 +2085,102 @@ export default function Cronograma({
       const progress = totalTopicsCount > 0 ? Math.round((completedCount / totalTopicsCount) * 100) : 0;
 
       const scheduleRef = doc(db, 'users', user.uid, 'schedules', schedule.id);
+
+      // Check if user wants automatic sync to MedRevise or MedInternato only
+      if (medReviseSyncMode === 'internato_only') {
+        const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
+          ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
+          : targetTopic.title;
+
+        showToast(
+          `Tópico "${canonicalTitle}" ${targetTopic.isCompleted ? 'concluído' : 'desmarcado'} no cronograma (Modo Apenas MedInternato).`,
+          "info"
+        );
+      } else {
+        // SYNC TO MEDREVISE (topics & studySessions collections)
+        const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
+          ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
+          : targetTopic.title;
+
+        let foundTopic = await ensureTopicInMedRevise(
+          canonicalTitle,
+          targetTopic.subjectName || 'Geral',
+          targetTopic.topicId
+        );
+
+        if (foundTopic) {
+          // Guarantee topicId is linked in the schedule topic
+          targetTopic.topicId = foundTopic.id;
+
+          if (targetTopic.isCompleted) {
+            // Calculate realistic estimated time for this topic session
+            const dayTopics = updatedWeeks[weekIdx]?.days[dayName] || [];
+            const dayTopicsCount = dayTopics.length || 3;
+            const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
+            const realisticMinutes = Math.max(15, Math.min(45, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
+
+            // Register study session in MedRevise database
+            await addDoc(collection(db, 'users', user.uid, 'studySessions'), {
+              topicId: foundTopic.id,
+              subjectId: foundTopic.subjectId,
+              date: new Date().toISOString(),
+              questionsCount: 0,
+              correctCount: 0,
+              studyTimeMinutes: realisticMinutes,
+              description: targetTopic.type === 'revisao'
+                ? 'Revisão concluída via Cronograma Inteligente (MedInternato)'
+                : 'Estudo concluído via Cronograma Inteligente (MedInternato)'
+            });
+
+            // Set topic SM-2 parameters for scheduled reviews
+            const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 0;
+            const nextReps = targetTopic.type === 'revisao' ? Math.max(2, currentReps + 1) : Math.max(1, currentReps + 1);
+
+            await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
+              repetitions: nextReps,
+              interval: 1,
+              easinessFactor: 2.5,
+              lastReviewDate: new Date().toISOString(),
+              nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              completed: true
+            });
+
+            showToast(`Tópico "${canonicalTitle}" concluído e sincronizado ao MedRevise (+${realisticMinutes} min).`, "success");
+          } else {
+            // Unmark topic
+            const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 1;
+            const newReps = targetTopic.type === 'revisao' ? Math.max(1, currentReps - 1) : 0;
+
+            await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
+              completed: newReps > 0,
+              repetitions: newReps
+            });
+
+            // Clean up auto-created study session from today when unmarking to avoid duplicate accumulation
+            try {
+              const todayStr = new Date().toISOString().split('T')[0];
+              const sessSnap = await getDocs(
+                query(
+                  collection(db, 'users', user.uid, 'studySessions'),
+                  where('topicId', '==', foundTopic.id)
+                )
+              );
+              const cronoSess = sessSnap.docs.filter(d => {
+                const data = d.data();
+                return (data.date || '').startsWith(todayStr) && (data.description || '').includes('via Cronograma Inteligente');
+              });
+              for (const docToDelete of cronoSess) {
+                await deleteDoc(doc(db, 'users', user.uid, 'studySessions', docToDelete.id));
+              }
+            } catch (delErr) {
+              console.warn('Notice removing study session on topic unmark:', delErr);
+            }
+
+            showToast('Tópico desmarcado. A sessão de estudo de hoje foi removida do histórico.', 'info');
+          }
+        }
+      }
+
       await updateDoc(scheduleRef, {
         weeks: updatedWeeks,
         progress
@@ -1988,82 +2191,6 @@ export default function Cronograma({
         weeks: updatedWeeks,
         progress
       });
-
-      // SYNC TO MEDREVISE (topics & studySessions collections)
-      const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
-        ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
-        : targetTopic.title;
-      const foundTopic = findMatchingTopic(canonicalTitle, topics, targetTopic.topicId);
-
-      if (foundTopic) {
-        if (targetTopic.isCompleted) {
-          // Calculate realistic estimated time for this topic session (e.g. 20-30 min)
-          // instead of incorrectly logging the entire day's quota (hoursPerDay * 60 = 240min)!
-          const dayTopics = updatedWeeks[weekIdx]?.days[dayName] || [];
-          const dayTopicsCount = dayTopics.length || 3;
-          const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
-          const realisticMinutes = Math.max(15, Math.min(45, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
-
-          // Register study session in MedRevise database
-          await addDoc(collection(db, 'users', user.uid, 'studySessions'), {
-            topicId: foundTopic.id,
-            subjectId: foundTopic.subjectId,
-            date: new Date().toISOString(),
-            questionsCount: 0,
-            correctCount: 0,
-            studyTimeMinutes: realisticMinutes,
-            description: targetTopic.type === 'revisao'
-              ? 'Revisão concluída via Cronograma Inteligente (MedInternato)'
-              : 'Estudo concluído via Cronograma Inteligente (MedInternato)'
-          });
-
-          // Set topic SM-2 parameters for scheduled reviews
-          const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 0;
-          const nextReps = targetTopic.type === 'revisao' ? Math.max(2, currentReps + 1) : Math.max(1, currentReps + 1);
-
-          await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
-            repetitions: nextReps,
-            interval: 1,
-            easinessFactor: 2.5,
-            lastReviewDate: new Date().toISOString(),
-            nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-            completed: true
-          });
-
-          showToast(`Tópico concluído! Registrados +${realisticMinutes} min de estudo no seu histórico e sincronizado ao MedRevise.`, "success");
-        } else {
-          // Unmark topic
-          const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 1;
-          const newReps = targetTopic.type === 'revisao' ? Math.max(1, currentReps - 1) : 0;
-
-          await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
-            completed: newReps > 0,
-            repetitions: newReps
-          });
-
-          // Clean up auto-created study session from today when unmarking to avoid duplicate accumulation
-          try {
-            const todayStr = new Date().toISOString().split('T')[0];
-            const sessSnap = await getDocs(
-              query(
-                collection(db, 'users', user.uid, 'studySessions'),
-                where('topicId', '==', foundTopic.id)
-              )
-            );
-            const cronoSess = sessSnap.docs.filter(d => {
-              const data = d.data();
-              return (data.date || '').startsWith(todayStr) && (data.description || '').includes('via Cronograma Inteligente');
-            });
-            for (const docToDelete of cronoSess) {
-              await deleteDoc(doc(db, 'users', user.uid, 'studySessions', docToDelete.id));
-            }
-          } catch (delErr) {
-            console.warn('Notice removing study session on topic unmark:', delErr);
-          }
-
-          showToast('Tópico desmarcado. A sessão de estudo de hoje foi removida do histórico.', 'info');
-        }
-      }
 
       // SYNC COMPLETION TO CALENDAR EVENTS IN FIRESTORE
       try {

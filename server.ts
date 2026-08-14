@@ -164,7 +164,12 @@ async function callGroqApi(apiKey: string, action: string, promptText: string, p
     ? "Você é um assistente e preceptor médico de internato de alto nível. Responda exclusivamente em formato JSON válido."
     : "Você é um assistente médico especialista e preceptor de internato de alto nível em medicina. Responda em Markdown claro e estruturado.";
 
-  const modelsToTry = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+  const modelsToTry = [
+    "llama-3.3-70b-versatile",
+    "llama-3.3-70b-specdec",
+    "qwen-2.5-32b",
+    "deepseek-r1-distill-llama-70b"
+  ];
   let lastErr: any = null;
 
   for (const modelName of modelsToTry) {
@@ -379,7 +384,7 @@ app.post("/api/admin/test-key-billing", async (req, res) => {
               "Authorization": `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-              model: "llama-3.1-8b-instant",
+              model: "llama-3.3-70b-versatile",
               messages: [{ role: "user", content: "OK" }],
               max_tokens: 5
             })

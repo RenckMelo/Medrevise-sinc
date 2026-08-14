@@ -86,7 +86,16 @@ export function useStudyData() {
     });
 
     const unsubSessions = onSnapshot(sessionQuery, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as StudySession));
+      const list = snap.docs.map(d => {
+        const raw = { id: d.id, ...d.data() } as StudySession;
+        // Auto-heal inflated sessions created by previous cronograma bug (e.g. 240min in 1min)
+        if (raw.studyTimeMinutes && raw.studyTimeMinutes >= 180 && (raw.description?.includes('via Cronograma Inteligente') || (raw.questionsCount === 0 && raw.studyTimeMinutes >= 240))) {
+          // Asynchronously update Firestore document to permanent realistic 25 min
+          updateDoc(doc(db, 'users', user.uid, 'studySessions', d.id), { studyTimeMinutes: 25 }).catch(() => {});
+          return { ...raw, studyTimeMinutes: 25 };
+        }
+        return raw;
+      });
       list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       setSessions(list);
     }, (error) => {

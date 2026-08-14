@@ -14,7 +14,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
 import { generateTopicContent, generateQuestions, generateFlashcards, GenerationDepth, deepenTopicSection, getGlobalUsage, importPdfWithAI, deepenNotebookArea, analyzeSummaryNeeds, generateCustomAnalyzedSummary, generateWithAI, resumeFailedSummaryContent, getChaptersFromMonograph, calculateExtraCredits } from '../services/geminiService';
 
-import { db, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc } from '../firebase';
+import { db, auth, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc } from '../firebase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { markdownComponents, parseMarkdownAlerts, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml, syncSummaryTableOfContents } from '../utils/markdownUtils';

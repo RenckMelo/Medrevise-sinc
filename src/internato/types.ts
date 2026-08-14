@@ -26,6 +26,7 @@ export interface Topic {
   content_master?: string;
   content_monograph?: string;
   content_custom_analyzed?: string;
+  content_resumo_expansao?: string;
   custom_analysis?: {
     cost: number;
     justification: string;
@@ -133,6 +134,9 @@ export interface UserProgress {
     nextReview: string;
     interval: number;
     easeFactor: number;
+    repetitions?: number;
+    lastRating?: string;
+    lastReviewed?: string;
   }>;
   aiUsage?: {
     date: string;

@@ -213,9 +213,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const q = query(collection(db, 'users', firebaseUser.uid, 'studySessions'));
         unsubStats = onSnapshot(q, (snap) => {
           console.log("Stats snapshot received. Count:", snap.size);
-          const sessions = snap.docs.map(d => d.data() as StudySession);
-          const totalQuestions = sessions.reduce((acc, s) => acc + s.questionsCount, 0);
-          const totalTime = sessions.reduce((acc, s) => acc + s.studyTimeMinutes, 0);
+          const sessions = snap.docs.map(d => {
+            const data = d.data() as StudySession;
+            let time = data.studyTimeMinutes || 0;
+            if (time >= 180 && (data.description?.includes('via Cronograma Inteligente') || (data.questionsCount === 0 && time >= 240))) {
+              time = 25;
+            }
+            return { ...data, studyTimeMinutes: time };
+          });
+          const totalQuestions = sessions.reduce((acc, s) => acc + (s.questionsCount || 0), 0);
+          const totalTime = sessions.reduce((acc, s) => acc + (s.studyTimeMinutes || 0), 0);
           setGlobalStats({ questions: totalQuestions, time: totalTime });
         }, (error) => {
           handleFirestoreError(error, OperationType.LIST, `users/${firebaseUser.uid}/studySessions`);

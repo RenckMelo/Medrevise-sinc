@@ -31,7 +31,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, collection, doc, addDoc, updateDoc, getDocs, getDoc, where, query, limit, deleteDoc } from '../firebase';
+import { db, collection, doc, addDoc, updateDoc, getDocs, getDoc, where, query, limit, deleteDoc, writeBatch } from '../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { accuracyToQuality, calculateNextReview } from '../../utils/srs';
 import { Button } from '@/components/ui/button';
@@ -160,7 +160,7 @@ interface CronogramaProps {
 interface StudySchedule {
   id: string;
   exam: string;
-  modality: '6meses' | '1ano' | '2anos' | 'extensivo' | 'intensivo' | 'dynamic' | 'pdf_imported';
+  modality: '6meses' | '1ano' | '2anos' | 'extensivo' | 'intensivo' | 'dynamic' | 'pdf_imported' | 'college_custom';
   studyDays: string[];
   hoursPerDay: number;
   weeks: StudyPlanWeek[];
@@ -1582,7 +1582,7 @@ export default function Cronograma({
       };
 
       setSchedule(updatedSchedule);
-      safeLocalStorageSet(`medinternato_schedule_${user?.uid || 'guest'}`, updatedSchedule);
+      safeLocalStorageSet(`medinternato_schedule_${user?.uid || 'guest'}`, JSON.stringify(updatedSchedule));
       showToast(`Cronograma estendido! Foram adicionadas +4 semanas contendo todas as revisões científicas Ebbinghaus (R2/R3). Total: ${updatedWeeks.length} semanas.`, "success");
     } catch (err) {
       console.error("Error extending revisions:", err);
@@ -1871,7 +1871,7 @@ export default function Cronograma({
         examName = examData.name;
         mappedWeeks = generatePlan(
           config.selectedExamId,
-          config.modality,
+          (config.modality === 'college_custom' ? 'dynamic' : config.modality) as any,
           config.studyDays,
           config.hoursPerDay,
           config.currentSemesterSubjects,
@@ -1997,6 +1997,13 @@ export default function Cronograma({
 
       if (foundTopic) {
         if (targetTopic.isCompleted) {
+          // Calculate realistic estimated time for this topic session (e.g. 20-30 min)
+          // instead of incorrectly logging the entire day's quota (hoursPerDay * 60 = 240min)!
+          const dayTopics = updatedWeeks[weekIdx]?.days[dayName] || [];
+          const dayTopicsCount = dayTopics.length || 3;
+          const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
+          const realisticMinutes = Math.max(15, Math.min(45, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
+
           // Register study session in MedRevise database
           await addDoc(collection(db, 'users', user.uid, 'studySessions'), {
             topicId: foundTopic.id,
@@ -2004,7 +2011,7 @@ export default function Cronograma({
             date: new Date().toISOString(),
             questionsCount: 0,
             correctCount: 0,
-            studyTimeMinutes: schedule.hoursPerDay * 60,
+            studyTimeMinutes: realisticMinutes,
             description: targetTopic.type === 'revisao'
               ? 'Revisão concluída via Cronograma Inteligente (MedInternato)'
               : 'Estudo concluído via Cronograma Inteligente (MedInternato)'
@@ -2022,6 +2029,8 @@ export default function Cronograma({
             nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
             completed: true
           });
+
+          showToast(`Tópico concluído! Registrados +${realisticMinutes} min de estudo no seu histórico e sincronizado ao MedRevise.`, "success");
         } else {
           // Unmark topic
           const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 1;
@@ -2031,6 +2040,28 @@ export default function Cronograma({
             completed: newReps > 0,
             repetitions: newReps
           });
+
+          // Clean up auto-created study session from today when unmarking to avoid duplicate accumulation
+          try {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const sessSnap = await getDocs(
+              query(
+                collection(db, 'users', user.uid, 'studySessions'),
+                where('topicId', '==', foundTopic.id)
+              )
+            );
+            const cronoSess = sessSnap.docs.filter(d => {
+              const data = d.data();
+              return (data.date || '').startsWith(todayStr) && (data.description || '').includes('via Cronograma Inteligente');
+            });
+            for (const docToDelete of cronoSess) {
+              await deleteDoc(doc(db, 'users', user.uid, 'studySessions', docToDelete.id));
+            }
+          } catch (delErr) {
+            console.warn('Notice removing study session on topic unmark:', delErr);
+          }
+
+          showToast('Tópico desmarcado. A sessão de estudo de hoje foi removida do histórico.', 'info');
         }
       }
 

@@ -31,7 +31,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, collection, doc, addDoc, updateDoc, getDocs, getDoc, where, query, limit, deleteDoc, writeBatch } from '../firebase';
+import { db, collection, doc, addDoc, updateDoc, getDocs, getDoc, where, query, limit, deleteDoc, writeBatch, onSnapshot } from '../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { accuracyToQuality, calculateNextReview } from '../../utils/srs';
 import { Button } from '@/components/ui/button';
@@ -215,6 +215,47 @@ const getOrderedDaysForWeek = (studyDaysArray: string[], startDateStr?: string):
     ...MAP_DAY_INDEX_TO_ABBR.slice(0, startIdx)
   ];
   return rotated.filter(day => daysArray.includes(day));
+};
+
+export const getTodayWeekAndDay = (schedule: StudySchedule): { weekIndex: number; dayTab: string } => {
+  if (!schedule || !schedule.weeks || schedule.weeks.length === 0) {
+    return { weekIndex: 0, dayTab: 'Seg' };
+  }
+
+  const startDateStr = (schedule as any).startDate || schedule.createdAt;
+  const dayMap = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const now = new Date();
+  const todayDayName = dayMap[now.getDay()];
+
+  if (startDateStr) {
+    const startDate = new Date(startDateStr.includes('T') ? startDateStr : startDateStr + 'T00:00:00');
+    if (!isNaN(startDate.getTime())) {
+      const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startZero = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+      const diffMs = todayZero.getTime() - startZero.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+      if (diffDays >= 0) {
+        let calculatedWeek = Math.floor(diffDays / 7);
+        if (calculatedWeek >= schedule.weeks.length) {
+          calculatedWeek = schedule.weeks.length - 1;
+        }
+
+        const week = schedule.weeks[calculatedWeek];
+        const orderedDays = getOrderedDaysForWeek(schedule.studyDays, startDateStr);
+
+        if (week && week.days && week.days[todayDayName]) {
+          return { weekIndex: calculatedWeek, dayTab: todayDayName };
+        } else if (orderedDays.length > 0) {
+          return { weekIndex: calculatedWeek, dayTab: orderedDays[0] };
+        }
+      }
+    }
+  }
+
+  const orderedDays = getOrderedDaysForWeek(schedule.studyDays, startDateStr);
+  const fallbackDay = orderedDays.find(d => d === todayDayName) || orderedDays[0] || 'Seg';
+  return { weekIndex: 0, dayTab: fallbackDay };
 };
 
 const findMatchingTopic = (title: string, userTopics: any[], manualTopicId?: string): any | null => {
@@ -1590,21 +1631,35 @@ export default function Cronograma({
     }
   };
 
+  const handleJumpToToday = () => {
+    if (!schedule) return;
+    const target = getTodayWeekAndDay(schedule);
+    setActiveWeekIndex(target.weekIndex);
+    setActiveDayTab(target.dayTab);
+    const targetMonth = Math.floor(target.weekIndex / 4) + 1;
+    setActiveMonthFilter(Math.min(totalMonths, targetMonth));
+    showToast(`Redirecionado para hoje: Semana ${target.weekIndex + 1} (${target.dayTab})`, "info");
+  };
+
   // Delay catch-up / restructuring modal states
   const [showRestructureModal, setShowRestructureModal] = useState(false);
   const [restructureMode, setRestructureMode] = useState<'postpone' | 'prioritize' | 'add_day'>('postpone');
   const [restructureSaving, setRestructureSaving] = useState(false);
 
-  // Load existing schedules
+  // Load existing schedules with real-time sync across devices
   useEffect(() => {
-    const fetchSchedules = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const q = query(
+      collection(db, 'users', user.uid, 'schedules')
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
       try {
-        setLoading(true);
-        if (!user) return;
-        const q = query(
-          collection(db, 'users', user.uid, 'schedules')
-        );
-        const snap = await getDocs(q);
         const fetchedSchedules: StudySchedule[] = [];
         snap.forEach(doc => {
           fetchedSchedules.push({ id: doc.id, ...doc.data() } as StudySchedule);
@@ -1619,31 +1674,41 @@ export default function Cronograma({
 
         if (fetchedSchedules.length > 0) {
           const savedActiveId = localStorage.getItem('active_schedule_id');
-          const found = fetchedSchedules.find(s => s.id === savedActiveId);
-          const active = found || fetchedSchedules[0];
-          setSchedule(active);
-          if ((active as any).startDate) {
-            setSyncStartDate((active as any).startDate);
-          }
-          localStorage.setItem('active_schedule_id', active.id);
-          setActiveWeekIndex(0);
-          if (active.weeks[0]?.days) {
-            const orderedDays = getOrderedDaysForWeek(active.studyDays, (active as any).startDate);
-            const firstDayName = orderedDays[0] || Object.keys(active.weeks[0].days)[0];
-            if (firstDayName) setActiveDayTab(firstDayName);
-          }
-          setActiveMonthFilter(1);
-          setActiveTab('plan');
+
+          setSchedule(prevSchedule => {
+            const currentActiveId = prevSchedule?.id || savedActiveId;
+            const found = fetchedSchedules.find(s => s.id === currentActiveId) || fetchedSchedules[0];
+            if (found && (found as any).startDate) {
+              setSyncStartDate((found as any).startDate);
+            }
+            if (found) {
+              localStorage.setItem('active_schedule_id', found.id);
+              if (!prevSchedule) {
+                const todayTarget = getTodayWeekAndDay(found);
+                setActiveWeekIndex(todayTarget.weekIndex);
+                setActiveDayTab(todayTarget.dayTab);
+                setActiveMonthFilter(Math.min(12, Math.floor(todayTarget.weekIndex / 4) + 1));
+              }
+            }
+            return found || null;
+          });
+
+          setActiveTab(prev => (prev === 'config' && fetchedSchedules.length > 0) ? 'plan' : prev);
         } else {
+          setSchedule(null);
           setActiveTab('config');
         }
       } catch (e) {
-        console.error("Erro ao carregar cronogramas:", e);
+        console.error("Erro ao sincronizar cronogramas em tempo real:", e);
       } finally {
         setLoading(false);
       }
-    };
-    fetchSchedules();
+    }, (error) => {
+      console.error("Erro no listener de cronogramas:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [user]);
 
   const handleSwitchSchedule = (scheduleId: string) => {
@@ -4143,93 +4208,103 @@ export default function Cronograma({
     }
   };
 
-  // Trigger Restructuring catching-up logic
+  // Trigger Restructuring catching-up logic ("Desatrasar Planejamento / Recuperar Atraso")
   const handleRestructureSubmit = async () => {
     if (!schedule) return;
 
     try {
       setRestructureSaving(true);
       const updatedWeeks = [...schedule.weeks];
+      const dayOrder = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+      const currentDayIdx = dayOrder.indexOf(activeDayTab);
 
-      // Gather all uncompleted topics from past weeks (before the activeWeekIndex)
+      // Gather ALL uncompleted topics from past weeks AND past days of the current week
       const uncompletedBacklog: StudyPlanTopic[] = [];
-      
-      for (let w = 0; w < activeWeekIndex; w++) {
+
+      for (let w = 0; w < updatedWeeks.length; w++) {
         const week = updatedWeeks[w];
-        Object.entries(week.days).forEach(([dayName, topicsArr]) => {
-          topicsArr.forEach(t => {
-            if (!isTopicDone(t)) {
-              uncompletedBacklog.push({ ...t });
-              // Archive old as finished in history to prevent duplicates
-              t.isCompleted = true;
-            }
-          });
-        });
-      }
+        const isPastWeek = w < activeWeekIndex;
+        const isCurrentWeek = w === activeWeekIndex;
 
-      if (restructureMode === 'postpone') {
-        // Redisseminate backlog across upcoming weeks
-        const upcomingWeeksCount = updatedWeeks.length - activeWeekIndex;
-        if (upcomingWeeksCount > 0 && uncompletedBacklog.length > 0) {
-          uncompletedBacklog.forEach((backlogTopic, index) => {
-            const targetWeekIdx = activeWeekIndex + (index % upcomingWeeksCount);
-            const targetWeek = updatedWeeks[targetWeekIdx];
-            const firstDay = Object.keys(targetWeek.days)[0];
-            if (firstDay) {
-              backlogTopic.isCompleted = false;
-              backlogTopic.isPriority = true; // Mark as priority because it's delayed!
-              targetWeek.days[firstDay].push(backlogTopic);
-            }
-          });
-        }
-      } else if (restructureMode === 'prioritize') {
-        // Compress: Strip non-priority topics in future weeks to make physical room for backlog
-        for (let w = activeWeekIndex; w < updatedWeeks.length; w++) {
-          const week = updatedWeeks[w];
+        if (isPastWeek || isCurrentWeek) {
           Object.entries(week.days).forEach(([dayName, topicsArr]) => {
-            week.days[dayName] = topicsArr.filter(t => t.isPriority || t.isCompleted);
-          });
-        }
-        
-        // Spread only backlog topics that are highly prioritized
-        const upcomingWeeksCount = updatedWeeks.length - activeWeekIndex;
-        const priorityBacklog = uncompletedBacklog.filter(t => t.isPriority);
-        if (upcomingWeeksCount > 0 && priorityBacklog.length > 0) {
-          priorityBacklog.forEach((backlogTopic, index) => {
-            const targetWeekIdx = activeWeekIndex + (index % upcomingWeeksCount);
-            const targetWeek = updatedWeeks[targetWeekIdx];
-            const firstDay = Object.keys(targetWeek.days)[0];
-            if (firstDay) {
-              backlogTopic.isCompleted = false;
-              targetWeek.days[firstDay].push(backlogTopic);
-            }
-          });
-        }
-      } else if (restructureMode === 'add_day') {
-        // Force addition of weekend study days in study schedule configuration to fit backlog
-        const hasSab = schedule.studyDays.includes('Sáb');
-        const hasDom = schedule.studyDays.includes('Dom');
-        const updatedDays = [...schedule.studyDays];
-        if (!hasSab) updatedDays.push('Sáb');
-        if (!hasDom && hasSab) updatedDays.push('Dom');
+            const dayIdxInWeek = dayOrder.indexOf(dayName);
+            const isPastDayInCurrentWeek = isCurrentWeek && dayIdxInWeek < currentDayIdx;
 
-        // Distribute backlog on these extra days
-        let backlogIdx = 0;
-        for (let w = activeWeekIndex; w < updatedWeeks.length; w++) {
-          const week = updatedWeeks[w];
-          if (!week.days['Sáb'] && updatedDays.includes('Sáb')) week.days['Sáb'] = [];
-          if (!week.days['Dom'] && updatedDays.includes('Dom')) week.days['Dom'] = [];
-          
-          if (backlogIdx < uncompletedBacklog.length) {
-            const backlogTopic = uncompletedBacklog[backlogIdx++];
-            backlogTopic.isCompleted = false;
-            backlogTopic.isPriority = true;
-            if (week.days['Sáb']) {
-              week.days['Sáb'].push(backlogTopic);
+            if (isPastWeek || isPastDayInCurrentWeek) {
+              const remainingTopics: StudyPlanTopic[] = [];
+              topicsArr.forEach(t => {
+                if (!isTopicDone(t)) {
+                  uncompletedBacklog.push({
+                    ...t,
+                    isCompleted: false,
+                    isPriority: true // Mark as priority because it's delayed!
+                  });
+                } else {
+                  remainingTopics.push(t);
+                }
+              });
+              // Keep only completed topics in past days so they don't show up as overdue duplicates
+              week.days[dayName] = remainingTopics;
             }
-          }
+          });
         }
       }
+
+      if (uncompletedBacklog.length === 0) {
+        showToast("Você não possui matérias pendentes/atrasadas anteriores a este dia!", "info");
+        setShowRestructureModal(false);
+        setRestructureSaving(false);
+        return;
+      }
+
+      // Collect study days list
+      let activeStudyDays = schedule.studyDays && schedule.studyDays.length > 0
+        ? schedule.studyDays
+        : ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
+
+      if (restructureMode === 'add_day') {
+        const hasSab = activeStudyDays.includes('Sáb');
+        const hasDom = activeStudyDays.includes('Dom');
+        if (!hasSab) activeStudyDays = [...activeStudyDays, 'Sáb'];
+        if (!hasDom && hasSab) activeStudyDays = [...activeStudyDays, 'Dom'];
+      }
+
+      // Distribute backlog evenly across upcoming study days starting from current week and day
+      let targetW = activeWeekIndex;
+      let startStudyDayIdx = activeStudyDays.indexOf(activeDayTab);
+      if (startStudyDayIdx < 0) startStudyDayIdx = 0;
+
+      let currentW = targetW;
+      let currentDayPos = startStudyDayIdx;
+
+      uncompletedBacklog.forEach((backlogTopic) => {
+        if (currentW >= updatedWeeks.length) {
+          const newWeekNum = updatedWeeks.length + 1;
+          const newWeekObj: StudyPlanWeek = {
+            weekNumber: newWeekNum,
+            priorityTitle: 'Recuperação & Consolidação de Atrasos',
+            days: {}
+          };
+          activeStudyDays.forEach(d => { newWeekObj.days[d] = []; });
+          updatedWeeks.push(newWeekObj);
+        }
+
+        const week = updatedWeeks[currentW];
+        const dayName = activeStudyDays[currentDayPos];
+
+        if (!week.days[dayName]) {
+          week.days[dayName] = [];
+        }
+
+        week.days[dayName].push(backlogTopic);
+
+        currentDayPos++;
+        if (currentDayPos >= activeStudyDays.length) {
+          currentDayPos = 0;
+          currentW++;
+        }
+      });
 
       // Recalculate progress
       let totalTopicsCount = 0;
@@ -4247,17 +4322,19 @@ export default function Cronograma({
       const scheduleRef = doc(db, 'users', user.uid, 'schedules', schedule.id);
       await updateDoc(scheduleRef, {
         weeks: updatedWeeks,
+        studyDays: activeStudyDays,
         progress
       });
 
       setSchedule({
         ...schedule,
         weeks: updatedWeeks,
+        studyDays: activeStudyDays,
         progress
       });
 
       setShowRestructureModal(false);
-      showToast("Seu cronograma foi reestruturado de forma inteligente!", "success");
+      showToast(`${uncompletedBacklog.length} tópicos em atraso foram redistribuídos com sucesso nas próximas semanas!`, "success");
     } catch (e) {
       console.error("Erro ao reestruturar cronograma:", e);
       showToast("Houve um erro ao reorganizar o plano.", "error");
@@ -5709,6 +5786,15 @@ export default function Cronograma({
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    size="xs"
+                    onClick={handleJumpToToday}
+                    className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-500/20 text-xs font-bold"
+                    title="Navegar imediatamente para a semana e dia de hoje"
+                  >
+                    <CalendarIcon className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                    Ir para Hoje
+                  </Button>
                   <Button
                     size="xs"
                     onClick={() => setShowRestructureModal(true)}

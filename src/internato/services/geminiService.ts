@@ -1,6 +1,7 @@
 
 import { db, doc, getDoc, updateDoc, increment, setDoc, auth } from '../firebase';
 import { safeLocalStorageGet } from '../utils/storageUtils';
+import { cleanAndFixMarkdownTables } from '../utils/markdownUtils';
 
 export const AI_LIMIT_PER_DAY = 3000; // Shared admin pool is 3000, other plans have custom limits
 
@@ -1994,7 +1995,8 @@ export function extractPreviousContentSignatures(contentSoFar: string): string {
 export function deduplicateTablesAndAlerts(content: string): string {
   if (!content) return content;
 
-  const lines = content.split('\n');
+  const contentFixed = cleanAndFixMarkdownTables(content);
+  const lines = contentFixed.split('\n');
   const resultLines: string[] = [];
   
   const seenAlertSignatures = new Set<string>();
@@ -2181,6 +2183,11 @@ function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate',
 - É TERMINANTEMENTE PROIBIDO REPETIR A MESMA TABELA COMPARATIVA OU O MESMO QUADRO EM MÚLTIPLOS CAPÍTULOS OU SEÇÕES.
 - Se uma comparação entre X e Y ou uma tabela comparativa já foi apresentada anteriormente, NÃO A RECRIE, NÃO FAÇA VARIAÇÕES DELA E NÃO A REPITA. No máximo, faça uma breve menção direta no texto.
 - Toda tabela inserida deve trazer conteúdo inédito e exclusivo daquele trecho do resumo.
+\n`;
+
+  instructions += `REGRA DE TABELAS FORA DE CAIXAS DE ALERTA:
+- É ESTRITAMENTE PROIBIDO colocar tabelas Markdown dentro de caixas de citação/alerta (linhas iniciando com '>').
+- Todas as tabelas e quadros comparativos devem obrigatoriamente ser escritos no nível raiz do Markdown, fora de qualquer citação ou bloco '>', com linhas iniciadas por '|' e finalizadas por '|', para garantir que a estrutura de linhas e colunas seja renderizada perfeitamente pelo navegador.
 \n`;
 
   instructions += `REGRA DE SUMÁRIO DE NAVEGAÇÃO:

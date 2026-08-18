@@ -1720,10 +1720,62 @@ function hastToHtml(node: any): string {
   return '';
 }
 
+export function cleanAndFixMarkdownTables(text: string): string {
+  if (!text) return text;
+
+  let cleaned = text;
+
+  // 1. Decode double-escaped or stray HTML entities for angle brackets
+  cleaned = cleaned
+    .replace(/&amp;gt;/gi, '>')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;lt;/gi, '<')
+    .replace(/&lt;/gi, '<');
+
+  // 2. Un-concat single-line or corrupted table blocks containing pipes '|'
+  if (cleaned.includes('|') && (cleaned.includes('| > |') || cleaned.includes('| |') || cleaned.includes('| ---') || cleaned.includes('| :---'))) {
+    cleaned = cleaned
+      .replace(/\|\s*>\s*\|/g, '|\n|')
+      .replace(/\|\s*>\s*/g, '|\n')
+      .replace(/\|\s*\|\s*/g, '|\n|');
+
+    cleaned = cleaned.replace(/([^\n|])\s*(\|(?:(?:\s*:?-+:?\s*)\|)+)/g, '$1\n$2');
+  }
+
+  // 3. Extract tables that were placed inside blockquotes (lines starting with '>')
+  const lines = cleaned.split('\n');
+  const resultLines: string[] = [];
+  let insideBlockquoteTable = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    const trimmed = line.trim();
+
+    if (/^>\s*\|/.test(trimmed)) {
+      line = line.replace(/^>\s*/, '');
+      if (!insideBlockquoteTable) {
+        resultLines.push('');
+        insideBlockquoteTable = true;
+      }
+    } else if (insideBlockquoteTable && !trimmed.startsWith('|')) {
+      insideBlockquoteTable = false;
+      resultLines.push('');
+    }
+
+    if (line.includes('|')) {
+      line = line.replace(/\|\s*>\s*\|/g, '|');
+    }
+
+    resultLines.push(line);
+  }
+
+  return resultLines.join('\n');
+}
+
 export function parseMarkdownAlerts(text: string): string {
   if (!text) return text;
   
-  let processed = text;
+  let processed = cleanAndFixMarkdownTables(text);
   
   // 1. Unescape AI-escaped markdown links e.g. \[text\](#anchor) or \[text\]\(#anchor\)
   processed = processed

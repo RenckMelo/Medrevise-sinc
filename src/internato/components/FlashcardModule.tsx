@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Subject, Topic, Flashcard, UserProgress } from '../types';
+import ReactMarkdown from 'react-markdown';
+import { Subject, Topic, Flashcard, UserProgress, FlashcardDeepDive, FlashcardSessionHistory, FlashcardSessionScore } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,17 +33,26 @@ import {
   Clock,
   BookOpen,
   Zap,
-  Award
+  Award,
+  Trash2,
+  Search,
+  FileText,
+  X,
+  ExternalLink,
+  Copy
 } from 'lucide-react';
 
-import { db, collection, query, getDocs, doc, updateDoc, setDoc, where, addDoc, limit } from '../firebase';
+import { db, collection, query, getDocs, doc, updateDoc, setDoc, where, addDoc, limit, deleteDoc } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   generateFlashcards, 
   generateFlashcardDiagnosticReport, 
   calculateFlashcardCreditCost, 
   analyzeTopicFlashcardPotential, 
-  FlashcardPotentialAnalysis 
+  FlashcardPotentialAnalysis,
+  generateFlashcardDeepDive,
+  analyzeFlashcardSessionForSummary,
+  generateCustomAnalyzedSummary
 } from '../services/geminiService';
 import { cn } from '@/lib/utils';
 
@@ -148,7 +158,7 @@ export default function FlashcardModule({
   setAvailableCredits
 }: FlashcardModuleProps) {
   // Main modes
-  const [activeTab, setActiveTab] = useState<'srs' | 'deck' | 'diagnostic' | 'create'>('srs');
+  const [activeTab, setActiveTab] = useState<'srs' | 'deck' | 'diagnostic' | 'history' | 'deepdives' | 'create'>('srs');
 
   // Decks & Cards
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
@@ -173,6 +183,31 @@ export default function FlashcardModule({
   // Session Tracking & Stats
   const [sessionRatings, setSessionRatings] = useState<Record<string, ReviewRating>>({});
   const [sessionCompleted, setSessionCompleted] = useState(false);
+  const [currentSessionScores, setCurrentSessionScores] = useState<FlashcardSessionScore[]>([]);
+
+  // Deep Dives State ("Cards Aprofundados")
+  const [deepDives, setDeepDives] = useState<FlashcardDeepDive[]>([]);
+  const [loadingDeepDives, setLoadingDeepDives] = useState(false);
+  const [selectedDeepDive, setSelectedDeepDive] = useState<FlashcardDeepDive | null>(null);
+  const [isGeneratingDeepDive, setIsGeneratingDeepDive] = useState(false);
+  const [deepDiveSearch, setDeepDiveSearch] = useState('');
+
+  // Session History State ("Histórico de Sessões")
+  const [sessionHistoryList, setSessionHistoryList] = useState<FlashcardSessionHistory[]>([]);
+  const [loadingSessionHistory, setLoadingSessionHistory] = useState(false);
+  const [selectedSessionHistory, setSelectedSessionHistory] = useState<FlashcardSessionHistory | null>(null);
+  const [isAnalyzingSessionForSummary, setIsAnalyzingSessionForSummary] = useState(false);
+  const [sessionSummaryAnalysis, setSessionSummaryAnalysis] = useState<{
+    diagnosis: string;
+    chapters: string[];
+    clinicalHighlights: string[];
+    recommendedCredits: number;
+  } | null>(null);
+  const [isGeneratingSessionSummary, setIsGeneratingSessionSummary] = useState(false);
+  const [generatedSessionSummaryResult, setGeneratedSessionSummaryResult] = useState<{
+    title: string;
+    content: string;
+  } | null>(null);
 
   // Diagnostic Mode states
   const [diagnosticScores, setDiagnosticScores] = useState<{
@@ -190,6 +225,7 @@ export default function FlashcardModule({
   const [manualTopicId, setManualTopicId] = useState(topics[0]?.id || '');
   const [isSavingManual, setIsSavingManual] = useState(false);
 
+
   // Local state for SRS reviews map
   const srsReviewsMap = useMemo(() => {
     return userProgress?.flashcardReviews || {};
@@ -200,6 +236,7 @@ export default function FlashcardModule({
     setLoading(true);
     setSessionCompleted(false);
     setSessionRatings({});
+    setCurrentSessionScores([]);
     setDiagnosticScores([]);
     setDiagnosticResult(null);
 
@@ -255,6 +292,235 @@ export default function FlashcardModule({
       fetchFlashcards('srs');
     }
   }, []);
+
+  // Fetch Deep Dives ("Cards Aprofundados")
+  const fetchDeepDives = useCallback(async () => {
+    if (!userId) return;
+    setLoadingDeepDives(true);
+    try {
+      const q = query(collection(db, 'users', userId, 'flashcardDeepDives'), limit(60));
+      const snap = await getDocs(q);
+      const list: FlashcardDeepDive[] = snap.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...(docSnap.data() as any)
+      }));
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setDeepDives(list);
+    } catch (err) {
+      console.error('Error fetching deep dives:', err);
+    } finally {
+      setLoadingDeepDives(false);
+    }
+  }, [userId]);
+
+  const handleDeleteDeepDive = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!userId || !id) return;
+    if (!confirm('Deseja excluir este aprofundamento salvo?')) return;
+    try {
+      await deleteDoc(doc(db, 'users', userId, 'flashcardDeepDives', id));
+      setDeepDives(prev => prev.filter(item => item.id !== id));
+      if (selectedDeepDive?.id === id) {
+        setSelectedDeepDive(null);
+      }
+    } catch (err: any) {
+      alert(`Erro ao excluir aprofundamento: ${err.message}`);
+    }
+  };
+
+  // Fetch Session History ("Histórico de Sessões")
+  const fetchSessionHistory = useCallback(async () => {
+    if (!userId) return;
+    setLoadingSessionHistory(true);
+    try {
+      const q = query(collection(db, 'users', userId, 'flashcardSessions'), limit(60));
+      const snap = await getDocs(q);
+      const list: FlashcardSessionHistory[] = snap.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...(docSnap.data() as any)
+      }));
+      list.sort((a, b) => new Date(b.dateISO).getTime() - new Date(a.dateISO).getTime());
+      setSessionHistoryList(list);
+    } catch (err) {
+      console.error('Error fetching session history:', err);
+    } finally {
+      setLoadingSessionHistory(false);
+    }
+  }, [userId]);
+
+  // Save Completed Session to Firestore
+  const saveSessionToFirestore = async (
+    sessionScoresList: FlashcardSessionScore[],
+    sessionMode: string
+  ) => {
+    if (!userId || sessionScoresList.length === 0) return;
+    try {
+      const topicTitlesSet = new Set<string>();
+      sessionScoresList.forEach(s => {
+        const topObj = topics.find(t => t.id === s.topicId);
+        if (topObj) topicTitlesSet.add(topObj.title);
+        else if (s.concept) topicTitlesSet.add(s.concept);
+      });
+
+      const mastered = sessionScoresList.filter(s => s.rating === 'bom' || s.rating === 'facil').length;
+      const hard = sessionScoresList.filter(s => s.rating === 'dificil').length;
+      const erred = sessionScoresList.filter(s => s.rating === 'errei').length;
+
+      const sessionDoc = {
+        userId,
+        mode: sessionMode,
+        dateISO: new Date().toISOString(),
+        totalCards: sessionScoresList.length,
+        masteredCount: mastered,
+        hardCount: hard,
+        erredCount: erred,
+        topicTitles: Array.from(topicTitlesSet),
+        scores: sessionScoresList
+      };
+
+      const docRef = await addDoc(collection(db, 'users', userId, 'flashcardSessions'), sessionDoc);
+      const createdSession: FlashcardSessionHistory = {
+        id: docRef.id,
+        ...sessionDoc
+      };
+
+      setSessionHistoryList(prev => [createdSession, ...prev]);
+    } catch (err) {
+      console.error('Error saving flashcard session to Firestore:', err);
+    }
+  };
+
+  // Generate Deep Dive for specific card
+  const handleGenerateDeepDive = async (card: Flashcard) => {
+    if (!card) return;
+    setIsGeneratingDeepDive(true);
+    try {
+      const cardTopic = topics.find(t => t.id === card.topicId);
+      const topicTitle = cardTopic ? cardTopic.title : (card.concept || 'Geral');
+
+      const analysis = await generateFlashcardDeepDive(
+        card.front,
+        card.back,
+        card.concept || card.front,
+        topicTitle
+      );
+
+      const newDeepDiveData = {
+        userId,
+        cardId: card.id,
+        front: card.front,
+        back: card.back,
+        concept: card.concept || card.front,
+        topicTitle,
+        expandedAnalysis: analysis,
+        createdAt: new Date().toISOString()
+      };
+
+      const docRef = await addDoc(collection(db, 'users', userId, 'flashcardDeepDives'), newDeepDiveData);
+
+      const createdObj: FlashcardDeepDive = {
+        id: docRef.id,
+        ...newDeepDiveData
+      };
+
+      setDeepDives(prev => [createdObj, ...prev]);
+      setSelectedDeepDive(createdObj);
+    } catch (err: any) {
+      alert(`Erro ao aprofundar card com IA: ${err.message || 'Tente novamente.'}`);
+    } finally {
+      setIsGeneratingDeepDive(false);
+    }
+  };
+
+  // Analyze Session Errors & Propose Summary
+  const handleAnalyzeSessionForSummary = async (session: FlashcardSessionHistory) => {
+    setSelectedSessionHistory(session);
+    setIsAnalyzingSessionForSummary(true);
+    setSessionSummaryAnalysis(null);
+    setGeneratedSessionSummaryResult(null);
+
+    try {
+      const analysis = await analyzeFlashcardSessionForSummary(session.scores, session.topicTitles);
+      setSessionSummaryAnalysis(analysis);
+    } catch (err: any) {
+      alert(`Erro ao analisar erros da sessão: ${err.message || 'Tente novamente.'}`);
+    } finally {
+      setIsAnalyzingSessionForSummary(false);
+    }
+  };
+
+  // Confirm & Generate Session Summary
+  const handleConfirmGenerateSessionSummary = async () => {
+    if (!selectedSessionHistory || !sessionSummaryAnalysis) return;
+
+    const cost = sessionSummaryAnalysis.recommendedCredits || 5;
+    if (availableCredits !== undefined && availableCredits < cost) {
+      alert(`Créditos insuficientes (${availableCredits} disponíveis). A geração deste Resumo Adaptado exige ${cost} créditos.`);
+      return;
+    }
+
+    setIsGeneratingSessionSummary(true);
+    try {
+      const mainTitle = `Resumo Adaptado de Lacunas: ${selectedSessionHistory.topicTitles.join(', ') || 'Revisão de Flashcards'}`;
+      const mainArea = 'Relatório e Ajuste de Desempenho em Flashcards';
+
+      const fullContent = await generateCustomAnalyzedSummary(
+        mainTitle,
+        mainArea,
+        {
+          cost,
+          chapters: sessionSummaryAnalysis.chapters,
+          clinicalHighlights: sessionSummaryAnalysis.clinicalHighlights
+        },
+        `Inspirado nos erros da sessão de flashcards do dia ${new Date(selectedSessionHistory.dateISO).toLocaleDateString('pt-BR')}`,
+        userId
+      );
+
+      if (setAvailableCredits) {
+        setAvailableCredits(prev => Math.max(0, prev - cost));
+      }
+
+      // Update session document in Firestore
+      if (selectedSessionHistory.id && userId) {
+        try {
+          const sessRef = doc(db, 'users', userId, 'flashcardSessions', selectedSessionHistory.id);
+          await updateDoc(sessRef, {
+            generatedSummaryTitle: mainTitle,
+            generatedSummaryContent: fullContent
+          });
+        } catch (e) {
+          console.error('Error updating session doc with generated summary:', e);
+        }
+      }
+
+      setGeneratedSessionSummaryResult({
+        title: mainTitle,
+        content: fullContent
+      });
+
+      // Update in state list
+      setSessionHistoryList(prev => prev.map(s => s.id === selectedSessionHistory.id ? {
+        ...s,
+        generatedSummaryTitle: mainTitle,
+        generatedSummaryContent: fullContent
+      } : s));
+
+    } catch (err: any) {
+      alert(`Erro ao gerar resumo adaptado: ${err.message || 'Tente novamente.'}`);
+    } finally {
+      setIsGeneratingSessionSummary(false);
+    }
+  };
+
+  // Auto-fetch history / deepdives when tabs switch
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchSessionHistory();
+    } else if (activeTab === 'deepdives') {
+      fetchDeepDives();
+    }
+  }, [activeTab, fetchSessionHistory, fetchDeepDives]);
+
 
   const toggleSubject = (sid: string) => {
     setSelectedSubjectIds(prev =>
@@ -520,6 +786,17 @@ export default function FlashcardModule({
     // Save rating to current session
     setSessionRatings(prev => ({ ...prev, [currentCard.id]: rating }));
 
+    const scoreEntry: FlashcardSessionScore = {
+      cardId: currentCard.id,
+      cardFront: currentCard.front,
+      cardBack: currentCard.back,
+      concept: currentCard.concept || currentCard.front,
+      rating,
+      topicId: currentCard.topicId
+    };
+    const updatedSessionScores = [...currentSessionScores, scoreEntry];
+    setCurrentSessionScores(updatedSessionScores);
+
     // In Diagnostic Mode, record score
     if (activeTab === 'diagnostic') {
       setDiagnosticScores(prev => [...prev, { card: currentCard, rating }]);
@@ -533,6 +810,7 @@ export default function FlashcardModule({
       }, 150);
     } else {
       // Finished deck
+      saveSessionToFirestore(updatedSessionScores, activeTab);
       if (activeTab === 'diagnostic') {
         finishDiagnosticSession([...diagnosticScores, { card: currentCard, rating }]);
       } else {
@@ -762,7 +1040,7 @@ export default function FlashcardModule({
         </div>
 
         {/* TABS SELECTOR */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#F5F4F0] p-1.5 rounded-2xl">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 bg-[#F5F4F0] p-1.5 rounded-2xl">
           <button
             onClick={() => {
               setActiveTab('srs');
@@ -770,13 +1048,13 @@ export default function FlashcardModule({
               fetchFlashcards('srs');
             }}
             className={cn(
-              'flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
               activeTab === 'srs'
                 ? 'bg-white text-primary shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
             )}
           >
-            <Clock className="w-4 h-4 text-primary" />
+            <Clock className="w-3.5 h-3.5 text-primary" />
             Devidos Hoje
           </button>
 
@@ -786,13 +1064,13 @@ export default function FlashcardModule({
               setIsSelecting(true);
             }}
             className={cn(
-              'flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
               activeTab === 'deck'
                 ? 'bg-white text-primary shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
             )}
           >
-            <BookOpen className="w-4 h-4" />
+            <BookOpen className="w-3.5 h-3.5" />
             Por Matéria
           </button>
 
@@ -802,26 +1080,58 @@ export default function FlashcardModule({
               setIsSelecting(true);
             }}
             className={cn(
-              'flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
               activeTab === 'diagnostic'
                 ? 'bg-white text-emerald-700 shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
             )}
           >
-            <BarChart2 className="w-4 h-4 text-emerald-600" />
+            <BarChart2 className="w-3.5 h-3.5 text-emerald-600" />
             Diagnóstico
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('history');
+              fetchSessionHistory();
+            }}
+            className={cn(
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              activeTab === 'history'
+                ? 'bg-white text-amber-700 shadow-xs font-black'
+                : 'text-[#8E8A82] hover:text-[#1A1A1A]'
+            )}
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            Histórico
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('deepdives');
+              fetchDeepDives();
+            }}
+            className={cn(
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              activeTab === 'deepdives'
+                ? 'bg-white text-purple-700 shadow-xs font-black'
+                : 'text-[#8E8A82] hover:text-[#1A1A1A]'
+            )}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+            Aprofundados
           </button>
 
           <button
             onClick={() => setActiveTab('create')}
             className={cn(
-              'flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
               activeTab === 'create'
                 ? 'bg-white text-indigo-700 shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
             )}
           >
-            <Plus className="w-4 h-4 text-indigo-600" />
+            <Plus className="w-3.5 h-3.5 text-indigo-600" />
             Novo Card
           </button>
         </div>
@@ -905,8 +1215,437 @@ export default function FlashcardModule({
         </Card>
       )}
 
+      {/* DEEP DIVES TAB ("CARDS APROFUNDADOS") */}
+      {activeTab === 'deepdives' && (
+        <div className="space-y-6 animate-in fade-in zoom-in-95">
+          <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-lg space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-300">
+                  <Sparkles className="w-4 h-4" />
+                  Biblioteca de Aprofundamentos em Flashcards
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-display font-black">Cards Aprofundados</h2>
+                <p className="text-xs text-purple-200/80">
+                  Espaço exclusivo para revisão clínica detalhada dos conceitos onde você solicitou aprofundamento.
+                </p>
+              </div>
+
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-3.5 text-white/50" />
+                <input
+                  type="text"
+                  placeholder="Buscar aprofundamento..."
+                  value={deepDiveSearch}
+                  onChange={e => setDeepDiveSearch(e.target.value)}
+                  className="w-full h-10 pl-9 pr-4 rounded-xl bg-white/10 border border-white/20 text-xs font-semibold text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+              </div>
+            </div>
+          </div>
+
+          {loadingDeepDives ? (
+            <div className="flex flex-col items-center justify-center py-20 space-y-3">
+              <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
+              <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Carregando seus aprofundamentos...</p>
+            </div>
+          ) : deepDives.length === 0 ? (
+            <Card className="border-[#E2E0D9] p-12 text-center rounded-3xl space-y-4 bg-white">
+              <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mx-auto">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-[#1A1A1A]">Nenhum card aprofundado ainda</h3>
+                <p className="text-xs text-[#8E8A82] max-w-md mx-auto">
+                  Ao estudar seus flashcards, clique no botão "Aprofundar Este Card com IA" para gerar explicações fisiopatológicas, propudêuticas e farmacológicas e salvá-las neste espaço.
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {deepDives
+                .filter(item => {
+                  if (!deepDiveSearch) return true;
+                  const term = deepDiveSearch.toLowerCase();
+                  return (
+                    (item.concept && item.concept.toLowerCase().includes(term)) ||
+                    (item.front && item.front.toLowerCase().includes(term)) ||
+                    (item.topicTitle && item.topicTitle.toLowerCase().includes(term))
+                  );
+                })
+                .map(item => (
+                  <Card
+                    key={item.id}
+                    onClick={() => setSelectedDeepDive(item)}
+                    className="border-[#E2E0D9] hover:border-purple-300 shadow-2xs hover:shadow-md transition-all rounded-2xl p-5 bg-white cursor-pointer space-y-4 group relative flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2 border-b border-stone-100 pb-3">
+                        <Badge className="bg-purple-100 text-purple-900 font-bold text-[10px] uppercase tracking-wider border-none">
+                          {item.topicTitle || item.concept}
+                        </Badge>
+                        <span className="text-[10px] font-bold text-stone-400">
+                          {new Date(item.createdAt).toLocaleDateString('pt-BR')}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-display font-black text-[#1A1A1A] group-hover:text-purple-700 transition-colors">
+                          {item.concept}
+                        </h4>
+                        <p className="text-xs text-stone-600 line-clamp-2 font-medium">
+                          {item.front}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-stone-100 flex items-center justify-between text-xs font-bold text-purple-700">
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-3.5 h-3.5" /> Ver Aprofundamento Completo
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => handleDeleteDeepDive(item.id, e)}
+                        className="h-8 w-8 p-0 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+            </div>
+          )}
+
+          {/* MODAL VIEW DEEP DIVE */}
+          {selectedDeepDive && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+              <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-stone-200 p-6 sm:p-8 space-y-6">
+                <div className="flex items-start justify-between gap-4 border-b border-stone-200 pb-4">
+                  <div className="space-y-1">
+                    <Badge className="bg-purple-100 text-purple-900 text-[10px] font-bold uppercase tracking-wider">
+                      {selectedDeepDive.topicTitle}
+                    </Badge>
+                    <h2 className="text-2xl font-display font-black text-[#1A1A1A]">
+                      {selectedDeepDive.concept}
+                    </h2>
+                    <p className="text-xs text-stone-500 font-semibold">
+                      Aprofundado em {new Date(selectedDeepDive.createdAt).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedDeepDive(null)}
+                    className="rounded-full h-9 w-9 p-0 text-stone-400 hover:text-stone-900"
+                  >
+                    <X className="w-5 h-5" />
+                  </Button>
+                </div>
+
+                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-2">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Pergunta do Flashcard</div>
+                  <p className="text-sm font-bold text-stone-900">{selectedDeepDive.front}</p>
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500 pt-2 border-t border-stone-200/60">Resposta do Flashcard</div>
+                  <p className="text-xs font-semibold text-stone-700 italic">{selectedDeepDive.back}</p>
+                </div>
+
+                <div className="prose prose-sm max-w-none text-stone-800 space-y-4 pt-2">
+                  <ReactMarkdown>{selectedDeepDive.expandedAnalysis}</ReactMarkdown>
+                </div>
+
+                <div className="pt-4 border-t border-stone-200 flex justify-end gap-3">
+                  <Button
+                    onClick={() => setSelectedDeepDive(null)}
+                    className="bg-[#1A1A1A] hover:bg-black text-white font-bold text-xs uppercase tracking-wider px-6 h-11 rounded-xl"
+                  >
+                    Fechar
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SESSION HISTORY TAB ("HISTÓRICO DE SESSÕES") */}
+      {activeTab === 'history' && (
+        <div className="space-y-6 animate-in fade-in zoom-in-95">
+          <div className="bg-gradient-to-r from-amber-900 via-orange-950 to-stone-900 text-white p-6 sm:p-8 rounded-3xl shadow-lg space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-amber-300">
+              <Clock className="w-4 h-4" />
+              Registro de Desempenho & Relatórios de Erros
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-display font-black">Histórico de Sessões</h2>
+            <p className="text-xs text-amber-200/80">
+              Acompanhe seu rendimento em cada bloco de flashcards e gere resumos adaptados focados exatamente nas suas dúvidas.
+            </p>
+          </div>
+
+          {loadingSessionHistory ? (
+            <div className="flex flex-col items-center justify-center py-20 space-y-3">
+              <Loader2 className="w-8 h-8 text-amber-600 animate-spin" />
+              <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Carregando histórico de sessões...</p>
+            </div>
+          ) : sessionHistoryList.length === 0 ? (
+            <Card className="border-[#E2E0D9] p-12 text-center rounded-3xl space-y-4 bg-white">
+              <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-[#1A1A1A]">Nenhuma sessão concluída ainda</h3>
+                <p className="text-xs text-[#8E8A82] max-w-md mx-auto">
+                  Pratique flashcards no modo Devidos Hoje, Por Matéria ou Diagnóstico. Cada sessão finalizada gerará um relatório agrupado aqui.
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {sessionHistoryList.map(session => {
+                const total = session.totalCards || session.scores?.length || 1;
+                const mastered = session.masteredCount || 0;
+                const hard = session.hardCount || 0;
+                const erred = session.erredCount || 0;
+                const percent = Math.round(((mastered + hard * 0.5) / total) * 100);
+
+                return (
+                  <Card key={session.id} className="border-[#E2E0D9] shadow-2xs rounded-2xl p-6 bg-white space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider border-amber-200 bg-amber-50 text-amber-800">
+                            Sessão {session.mode === 'srs' ? 'Devidos Hoje' : session.mode === 'diagnostic' ? 'Diagnóstico' : 'Por Matéria'}
+                          </Badge>
+                          <span className="text-xs font-bold text-stone-500">
+                            {new Date(session.dateISO).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-display font-black text-[#1A1A1A]">
+                          {session.topicTitles?.join(' • ') || 'Revisão Médica'}
+                        </h4>
+                      </div>
+
+                      <div className="flex items-center gap-2 bg-stone-50 p-2.5 rounded-xl border border-stone-200/60">
+                        <span className="text-xs font-black text-stone-700">Rendimento:</span>
+                        <span className={cn(
+                          'text-sm font-black px-2 py-0.5 rounded-lg border',
+                          percent >= 75 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                          percent >= 50 ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                          'bg-rose-50 border-rose-200 text-rose-700'
+                        )}>
+                          {percent}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                      <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-100">
+                        <div className="text-stone-400 font-extrabold text-[9px] uppercase">Total Cards</div>
+                        <div className="font-display font-black text-stone-900 text-sm">{total}</div>
+                      </div>
+                      <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100">
+                        <div className="text-emerald-700 font-extrabold text-[9px] uppercase">Acertos</div>
+                        <div className="font-display font-black text-emerald-800 text-sm">{mastered}</div>
+                      </div>
+                      <div className="bg-amber-50/60 p-2.5 rounded-xl border border-amber-100">
+                        <div className="text-amber-700 font-extrabold text-[9px] uppercase">Difícil</div>
+                        <div className="font-display font-black text-amber-800 text-sm">{hard}</div>
+                      </div>
+                      <div className="bg-rose-50/60 p-2.5 rounded-xl border border-rose-100">
+                        <div className="text-rose-700 font-extrabold text-[9px] uppercase">Erros</div>
+                        <div className="font-display font-black text-rose-800 text-sm">{erred}</div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      {session.generatedSummaryContent ? (
+                        <Button
+                          onClick={() => {
+                            setSelectedSessionHistory(session);
+                            setGeneratedSessionSummaryResult({
+                              title: session.generatedSummaryTitle || 'Resumo Adaptado da Sessão',
+                              content: session.generatedSummaryContent
+                            });
+                          }}
+                          className="w-full sm:w-auto bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs uppercase tracking-wider h-10 rounded-xl gap-2 shadow-2xs"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> Ver Resumo Adaptado de Erros Gerado
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => handleAnalyzeSessionForSummary(session)}
+                          className="w-full sm:w-auto bg-stone-900 hover:bg-black text-white font-bold text-xs uppercase tracking-wider h-10 rounded-xl gap-2 shadow-2xs"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          Gerar Relatório de Erros & Resumo Adaptado
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* MODAL FOR ANALYSIS & CONFIRMING SUMMARY GENERATION */}
+          {selectedSessionHistory && !generatedSessionSummaryResult && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+              <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-stone-200 p-6 sm:p-8 space-y-6">
+                <div className="flex items-start justify-between border-b border-stone-200 pb-4">
+                  <div>
+                    <Badge className="bg-amber-100 text-amber-900 text-[10px] font-bold uppercase tracking-wider">
+                      Análise Pedagógica da Sessão
+                    </Badge>
+                    <h3 className="text-xl font-display font-black text-[#1A1A1A] mt-1">
+                      Relatório de Lacunas e Criação de Resumo Adaptado
+                    </h3>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedSessionHistory(null);
+                      setSessionSummaryAnalysis(null);
+                    }}
+                    className="rounded-full h-8 w-8 p-0 text-stone-400"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {isAnalyzingSessionForSummary ? (
+                  <div className="flex flex-col items-center justify-center py-12 space-y-3 text-center">
+                    <Loader2 className="w-8 h-8 text-amber-600 animate-spin" />
+                    <p className="text-xs font-bold text-stone-700 uppercase tracking-wider">
+                      Mapeando seus erros e estruturando esquema de resumo adaptado...
+                    </p>
+                  </div>
+                ) : sessionSummaryAnalysis ? (
+                  <div className="space-y-6">
+                    <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2">
+                      <h4 className="text-xs font-extrabold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        Diagnóstico Geral de Falhas
+                      </h4>
+                      <p className="text-xs text-stone-700 leading-relaxed font-medium">
+                        {sessionSummaryAnalysis.diagnosis}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-extrabold uppercase tracking-wider text-stone-600">
+                        Capítulos do Resumo Adaptado Proposto:
+                      </h4>
+                      <div className="space-y-2">
+                        {sessionSummaryAnalysis.chapters.map((chap, idx) => (
+                          <div key={idx} className="p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-800 flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center text-[10px] shrink-0">{idx + 1}</span>
+                            <span>{chap}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-stone-900 text-white rounded-2xl flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Custo do Resumo Adaptado</span>
+                        <div className="text-sm font-black text-amber-400">
+                          {sessionSummaryAnalysis.recommendedCredits} Créditos Médicos
+                        </div>
+                      </div>
+                      <span className="text-xs text-stone-300 font-bold">
+                        Saldo: {availableCredits ?? 0} créditos
+                      </span>
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedSessionHistory(null);
+                          setSessionSummaryAnalysis(null);
+                        }}
+                        className="flex-1 h-12 border-stone-200 text-xs font-bold uppercase tracking-wider rounded-xl"
+                      >
+                        Cancelar
+                      </Button>
+
+                      <Button
+                        disabled={isGeneratingSessionSummary}
+                        onClick={handleConfirmGenerateSessionSummary}
+                        className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider h-12 rounded-xl gap-2 shadow-md shadow-amber-600/20"
+                      >
+                        {isGeneratingSessionSummary ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Gerando Resumo...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            <span>Confirmar & Gerar Resumo ({sessionSummaryAnalysis.recommendedCredits} cr)</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {/* MODAL VIEW GENERATED SESSION SUMMARY RESULT */}
+          {generatedSessionSummaryResult && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+              <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-stone-200 p-6 sm:p-8 space-y-6">
+                <div className="flex items-start justify-between border-b border-stone-200 pb-4">
+                  <div className="space-y-1">
+                    <Badge className="bg-purple-100 text-purple-900 text-[10px] font-bold uppercase tracking-wider">
+                      Resumo Adaptado de Lacunas
+                    </Badge>
+                    <h2 className="text-2xl font-display font-black text-[#1A1A1A]">
+                      {generatedSessionSummaryResult.title}
+                    </h2>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setGeneratedSessionSummaryResult(null);
+                      setSelectedSessionHistory(null);
+                    }}
+                    className="rounded-full h-9 w-9 p-0 text-stone-400 hover:text-stone-900"
+                  >
+                    <X className="w-5 h-5" />
+                  </Button>
+                </div>
+
+                <div className="prose prose-sm max-w-none text-stone-800 space-y-4">
+                  <ReactMarkdown>{generatedSessionSummaryResult.content}</ReactMarkdown>
+                </div>
+
+                <div className="pt-4 border-t border-stone-200 flex justify-end">
+                  <Button
+                    onClick={() => {
+                      setGeneratedSessionSummaryResult(null);
+                      setSelectedSessionHistory(null);
+                    }}
+                    className="bg-[#1A1A1A] hover:bg-black text-white font-bold text-xs uppercase tracking-wider px-6 h-11 rounded-xl"
+                  >
+                    Fechar Leitor
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* SELECTION / FILTER DRAWER */}
-      {isSelecting && activeTab !== 'create' && (
+      {isSelecting && activeTab !== 'create' && activeTab !== 'deepdives' && activeTab !== 'history' && (
         <Card className="border-[#E2E0D9] p-8 rounded-3xl bg-[#FBFBFA] space-y-8">
           <div className="space-y-2">
             <h2 className="text-lg font-display font-black text-[#1A1A1A] flex items-center gap-2">
@@ -1348,7 +2087,7 @@ export default function FlashcardModule({
       )}
 
       {/* FLASHCARD STUDY CANVAS */}
-      {!isSelecting && activeTab !== 'create' && !sessionCompleted && flashcards.length > 0 && currentCard && (
+      {!isSelecting && activeTab !== 'create' && activeTab !== 'deepdives' && activeTab !== 'history' && !sessionCompleted && flashcards.length > 0 && currentCard && (
         <div className="space-y-8">
           {/* PROGRESS BAR & INDEX */}
           <div className="flex items-center justify-between text-xs font-bold text-[#8E8A82] uppercase tracking-widest px-2">
@@ -1490,6 +2229,31 @@ export default function FlashcardModule({
                 <ArrowRight className="w-4 h-4" />
               </Button>
             )}
+
+            {/* APROFUNDAR CARD BUTTON */}
+            <div className="flex items-center justify-center pt-2">
+              <Button
+                variant="outline"
+                disabled={isGeneratingDeepDive}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleGenerateDeepDive(currentCard);
+                }}
+                className="bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 text-purple-900 hover:from-purple-100 hover:to-indigo-100 font-bold text-xs uppercase tracking-wider h-11 rounded-xl gap-2 px-6 shadow-2xs transition-all"
+              >
+                {isGeneratingDeepDive ? (
+                  <>
+                    <Loader2 className="w-4 h-4 text-purple-600 animate-spin" />
+                    <span>Aprofundando Conceito com IA...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    <span>Aprofundar Este Card com IA</span>
+                  </>
+                )}
+              </Button>
+            </div>
 
             {/* NAV PREV / NEXT / SHUFFLE */}
             <div className="flex items-center justify-between gap-4 pt-2">

@@ -155,7 +155,7 @@ async function callGemini(action: 'generateContent' | 'generateJson', prompt: st
   });
 }
 
-export async function checkUsageLimit() {
+export async function checkUsageLimit(creditsNeeded: number = 1) {
   const currentUser = auth.currentUser;
   if (!currentUser) return; // Allow bypass if not logged in (e.g. during initialization or demo)
 
@@ -169,9 +169,12 @@ export async function checkUsageLimit() {
     const userData = userSnap.data();
     const isPremium = !!userData?.isPremium;
     const premiumPlan = userData?.premiumPlan || 'med_revise_pro';
+    const customLimit = userData?.customLimit || userData?.creditLimit || userData?.dailyLimit;
     
     let limit = 10; // Default Free limit & MedRevise Pro limit
-    if (isSpecialUser) {
+    if (customLimit && typeof customLimit === 'number' && customLimit > 0) {
+      limit = customLimit;
+    } else if (isSpecialUser) {
       limit = 1000;
     } else if (isPremium) {
       if (premiumPlan === 'combo_ouro') {
@@ -179,13 +182,16 @@ export async function checkUsageLimit() {
       } else if (premiumPlan === 'med_internato_premium') {
         limit = 200;
       } else {
-        limit = 10; // med_revise_pro: 10 créditos diários (mesmo do plano Gratuito)
+        limit = 10; // med_revise_pro: 10 créditos diários
       }
     }
 
     const usage = userData?.aiUsage;
-    if (usage && usage.date === today && usage.count >= limit) {
-      throw new Error(`Limite diário de IA atingido (${usage.count}/${limit} créditos). Considere fazer um upgrade ou aguarde o reset de amanhã.`);
+    const currentCount = (usage && usage.date === today) ? (usage.count || 0) : 0;
+    const available = Math.max(0, limit - currentCount);
+
+    if (creditsNeeded > available) {
+      throw new Error(`Créditos diários insuficientes para esta operação (${available} cr disponíveis, necessário ${creditsNeeded} cr). Seus créditos renovam diariamente.`);
     }
   }
 }
@@ -204,9 +210,12 @@ export async function getGlobalUsage() {
     const userData = userSnap.data();
     const isPremium = !!userData?.isPremium;
     const premiumPlan = userData?.premiumPlan || 'med_revise_pro';
+    const customLimit = userData?.customLimit || userData?.creditLimit || userData?.dailyLimit;
     
     let limit = 10; // Default Free limit & MedRevise Pro limit
-    if (isSpecialUser) {
+    if (customLimit && typeof customLimit === 'number' && customLimit > 0) {
+      limit = customLimit;
+    } else if (isSpecialUser) {
       limit = 1000;
     } else if (isPremium) {
       if (premiumPlan === 'combo_ouro') {
@@ -214,14 +223,14 @@ export async function getGlobalUsage() {
       } else if (premiumPlan === 'med_internato_premium') {
         limit = 200;
       } else {
-        limit = 10; // med_revise_pro: 10 créditos diários (mesmo do plano Gratuito)
+        limit = 10; // med_revise_pro: 10 créditos diários
       }
     }
 
     const usage = userData?.aiUsage;
     if (usage && usage.date === today) {
       return {
-        count: usage.count || 0,
+        count: Math.min(limit, usage.count || 0),
         limit: limit
       };
     }
@@ -317,20 +326,20 @@ async function generateMasterSummary(title: string, area: string, reference?: st
   const model = "gemini-3.1-flash-lite";
   
   try {
-    await checkUsageLimit();
-    console.log(`[Resumo Master 50cr] Iniciando geração aprofundada por capítulos dinâmicos para: ${title}`);
-    
-    const { residencyFocus, isCustom } = await getUserFocusSettings(userId);
-    const focusTarget = isCustom ? residencyFocus : "GOIÁS (SES-GO, UFG, PSU-GO) e DISTRITO FEDERAL (SES-DF, UnB, ENARE DF, PSU-DF)";
-    const regionalShort = isCustom ? residencyFocus : "GO/DF";
-    
-    // Process extra credits difference based on preferences (baseline is moderate)
     let extra = 0;
     if (illustrationLevel === 'minimum') extra -= 3;
     else if (illustrationLevel === 'maximum') extra += 10;
     
     if (alertBoxLevel === 'minimum') extra -= 2;
     else if (alertBoxLevel === 'maximum') extra += 5;
+
+    const totalCost = Math.max(1, 50 + extra);
+    await checkUsageLimit(totalCost);
+    console.log(`[Resumo Master 50cr] Iniciando geração aprofundada por capítulos dinâmicos para: ${title}`);
+    
+    const { residencyFocus, isCustom } = await getUserFocusSettings(userId);
+    const focusTarget = isCustom ? residencyFocus : "GOIÁS (SES-GO, UFG, PSU-GO) e DISTRITO FEDERAL (SES-DF, UnB, ENARE DF, PSU-DF)";
+    const regionalShort = isCustom ? residencyFocus : "GO/DF";
     
     if (extra !== 0) {
       await recordUsage(extra);
@@ -651,16 +660,16 @@ async function generateMonograph(title: string, area: string, reference?: string
   const model = "gemini-3.1-flash-lite";
   
   try {
-    await checkUsageLimit();
-    console.log(`[Monografia] Iniciando geração exaustiva para: ${title}`);
-    
-    // Process extra credits difference based on preferences (baseline is moderate)
     let extra = 0;
     if (illustrationLevel === 'minimum') extra -= 3;
     else if (illustrationLevel === 'maximum') extra += 10;
     
     if (alertBoxLevel === 'minimum') extra -= 2;
     else if (alertBoxLevel === 'maximum') extra += 5;
+
+    const totalCost = Math.max(1, 100 + extra);
+    await checkUsageLimit(totalCost);
+    console.log(`[Monografia] Iniciando geração exaustiva para: ${title}`);
     
     if (extra !== 0) {
       await recordUsage(extra);
@@ -780,7 +789,6 @@ async function generateMonograph(title: string, area: string, reference?: string
       if (chapterContent && chapterContent.trim().length > 0) {
         const cleanedChapterContent = cleanLeadingChapterTitle(chapterContent, chapterTitle);
         fullMonograph += `## ${chapterTitle}\n\n${cleanedChapterContent}\n\n---\n\n`;
-        await recordUsage(10);
       } else {
         fullMonograph += `\n\n## ${chapterTitle}\n\n*Nota: Conteúdo resumido para este capítulo por instabilidade temporária do servidor de IA. Utilize o botão 'Aprofundar Capítulo' para expandir.*\n\n---\n\n`;
       }
@@ -793,6 +801,7 @@ async function generateMonograph(title: string, area: string, reference?: string
     }
 
     onProgress?.({ current: 11, total: 11, message: "Monografia concluída!" });
+    await recordUsage(100);
     return removeDuplicateSumarios(fullMonograph);
   } catch (error) {
     console.error('Error generating monograph:', error);
@@ -1374,6 +1383,93 @@ Formato de Resposta (JSON estrito):
   }
 }
 
+export async function generateFlashcardDeepDive(
+  cardFront: string,
+  cardBack: string,
+  concept: string,
+  topicTitle?: string
+) {
+  const prompt = `Você é o COORDENADOR-PRECEPTOR do MedInternato. O aluno solicitou um APROFUNDAMENTO MÉDICO EXAUSTIVO E DE ALTA PERFORMANCE para este flashcard/conceito específico:
+
+Foco / Conceito: "${concept || 'Conceito Médico'}"
+${topicTitle ? `Tema Geral: "${topicTitle}"` : ''}
+Pergunta (Frente): "${cardFront}"
+Resposta (Verso): "${cardBack}"
+
+CRIE UM APROFUNDAMENTO TÉCNICO COMPLETO EM MARKDOWN COM A SEGUINTE ESTRUTURA VISUAL E ACADÊMICA:
+
+# 🔬 APROFUNDAMENTO CLÍNICO: ${concept || cardFront}
+
+---
+
+## 1. 🧠 MECANISMO FISIOLÓGICO E FISIOPATOLÓGICO CELULAR
+- Explique o PORQUÊ desse achado ou conduta passo a passo.
+- Detalhe a fisiopatologia molecular/celular, cascatas de sinalização, hemorrágicas, metabólicas ou mecânicas envolvidas.
+
+## 2. 📋 DIAGNÓSTICO, EXAMES & ESCORES ASSOCIADOS
+- Descreva a propedêutica de 1ª linha e padrão-ouro.
+- Se houver escore de risco, critérios ou escala associada (ex: Wells, CURB-65, CHADS-VASc, NIHSS, Ranson, Child-Pugh, MELD, etc.), apresente a **TABELA COMPLETA** com critérios, pontos e condutas.
+
+## 3. 💊 TRATAMENTO, CONDUTA E POSOLOGIA COMPLETA
+- Farmacologia detalhada com Doses exatas (mg/kg), vias, posologias, duração do tratamento e ajustes em falência renal ou hepática.
+- Algoritmo de conduta passo a passo (1ª e 2ª linhas de tratamento).
+
+## 4. 🎯 PÉROLA DE PROVA & DICA DO PRECEPTOR
+> [!IMPORTANT]
+> **HIGHLIGHT DE ALTO RENDIMENTO PARA PROVAS (ENARE / UFG / SES-GO / SES-DF):**
+> [Dica cirúrgica sobre como as bancas cobram essa pegadinha ou exceção na prova]
+
+Escreva de forma extremamente densa, rica, didática e profissional em Markdown. Evite redundâncias vazias.`;
+
+  try {
+    await checkUsageLimit();
+    const result = await callGemini('generateContent', prompt, "gemini-3.1-flash-lite");
+    await recordUsage(1);
+    return removeDuplicateSumarios(result);
+  } catch (err) {
+    console.error('Error generating flashcard deep dive:', err);
+    throw err;
+  }
+}
+
+export async function analyzeFlashcardSessionForSummary(
+  scores: { cardFront: string; cardBack: string; concept: string; rating: string; topicId?: string }[],
+  topicTitles: string[]
+) {
+  const failedCards = scores.filter(s => s.rating === 'errei' || s.rating === 'dificil');
+  const failedList = failedCards.map(s => `- Conceito: ${s.concept || 'Geral'} | Q: ${s.cardFront} | R: ${s.cardBack}`).join('\n');
+
+  const prompt = `Você é o Coordenador-Preceptor do MedInternato. Analise os erros e dificuldades cometidos pelo aluno nesta sessão de flashcards:
+
+Temas Envolvidos: ${topicTitles.join(', ') || 'Geral'}
+Total de Cards Errados/Com Dificuldade: ${failedCards.length}
+Lista de Erros Identificados:
+${failedList || 'O aluno revisou todos os cards sem erros graves.'}
+
+Forneça uma pré-análise em JSON estrito planejando um RESUMO ADAPTADO DE LACUNAS focado em sanar todos esses erros específicos:
+1. "diagnosis": Análise de 2 a 3 frases explicando as principais lacunas identificadas nos erros do aluno.
+2. "chapters": Array com 4 a 6 títulos de capítulos encadeados para montar um Resumo Adaptado Completo focado nesses erros.
+3. "clinicalHighlights": Array com 3 a 5 alertas de prova específicos sobre os erros cometidos.
+4. "recommendedCredits": Custo fixo em créditos para a geração desse resumo adaptado (ex: 5).
+
+Formato JSON estrito:
+{
+  "diagnosis": "...",
+  "chapters": ["Capítulo 1: ...", "Capítulo 2: ...", "Capítulo 3: ...", "Capítulo 4: ..."],
+  "clinicalHighlights": ["...", "..."],
+  "recommendedCredits": 5
+}`;
+
+  try {
+    await checkUsageLimit();
+    const result = await callGemini('generateJson', prompt);
+    return result as { diagnosis: string; chapters: string[]; clinicalHighlights: string[]; recommendedCredits: number };
+  } catch (err) {
+    console.error('Error analyzing flashcard session for summary:', err);
+    throw err;
+  }
+}
+
 export async function explainQuestion(questionText: string, options: string[], correctIndex: number, userId?: string) {
   const prompt = `Você é um professor de medicina comentando uma questão de prova.
   Questão: ${questionText}
@@ -1708,8 +1804,6 @@ export async function generateCustomAnalyzedSummary(
   depth: GenerationDepth = 'custom_analyzed'
 ) {
   try {
-    await checkUsageLimit();
-    
     let chapters = [...(analysis?.chapters || [])];
     
     // Se já houver conteúdo existente, verifica se o sumário contém os capítulos originais planejados
@@ -1720,6 +1814,25 @@ export async function generateCustomAnalyzedSummary(
         chapters = extractedChapters;
       }
     }
+
+    let finalCost = analysis.cost;
+    if (depth === 'standard') {
+      finalCost = 1;
+    } else if (depth === 'deep') {
+      finalCost = 5;
+    } else if (depth === 'elite') {
+      finalCost = 10;
+    } else if (depth === 'master') {
+      finalCost = 50;
+    } else if (depth === 'monograph') {
+      finalCost = 100;
+    } else {
+      finalCost = Math.max(10, chapters.length * 10);
+    }
+    const extraCost = calculateExtraCredits(illustrationLevel, alertBoxLevel);
+    finalCost = Math.max(1, finalCost + extraCost);
+
+    await checkUsageLimit(finalCost);
 
     const totalChapters = chapters.length;
     let fullContent = "";
@@ -1932,23 +2045,7 @@ Escreva o capítulo "${chapterTitle}" de forma exaustiva, 100% aprofundada, sem 
       onProgress({ current: totalChapters, total: totalChapters, message: 'Concluindo e estruturando o tratado personalizado...', partialContent: fullContent });
     }
 
-    // Grava o uso dos créditos cobrados estritamente pela quantidade de capítulos (10 créditos por capítulo)
-    let finalCost = analysis.cost;
-    if (depth === 'standard') {
-      finalCost = 1;
-    } else if (depth === 'deep') {
-      finalCost = 5;
-    } else if (depth === 'elite') {
-      finalCost = 10;
-    } else if (depth === 'master') {
-      finalCost = 50;
-    } else if (depth === 'monograph') {
-      finalCost = 100;
-    } else {
-      finalCost = Math.max(10, chapters.length * 10);
-    }
-    const extraCost = calculateExtraCredits(illustrationLevel, alertBoxLevel);
-    finalCost = Math.max(1, finalCost + extraCost);
+    // Grava o uso dos créditos calculados na entrada
     await recordUsage(finalCost);
 
     return removeDuplicateSumarios(fullContent);

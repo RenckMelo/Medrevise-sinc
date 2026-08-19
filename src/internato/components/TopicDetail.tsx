@@ -395,8 +395,16 @@ const SummaryDossierHeader = ({
 };
 
 const normalizePipeTables = (content: string): string => {
-  if (!content.includes('|')) return content;
-  const lines = content.split('\n');
+  if (!content || !content.includes('|')) return content;
+
+  // Pre-pass: Split collapsed table lines where rows are separated by '| |' or '||'
+  // Or where a GFM callout tag like '[!IMPORTANT]' or header/bullet is attached directly after '|'
+  let prepared = content
+    .replace(/\|\s*\|(?=[^|\n]*\|)/g, '|\n|')
+    .replace(/\|\s*(\[!IMPORTANT\]|\[!NOTE\]|\[!WARNING\]|\[!TIP\]|\[!CAUTION\])/gi, '|\n\n$1')
+    .replace(/\|\s*(#{1,6}\s+|>\s+|\*|\-|\d+\.)/g, '|\n\n$1');
+
+  const lines = prepared.split('\n');
   const result: string[] = [];
   let tableBlock: string[] = [];
   let inCodeBlock = false;
@@ -427,6 +435,10 @@ const normalizePipeTables = (content: string): string => {
       result.push(...tableBlock);
       tableBlock = [];
       return;
+    }
+
+    if (result.length > 0 && result[result.length - 1].trim() !== '') {
+      result.push('');
     }
 
     const hasSep = tableBlock.some(isSeparatorRow);

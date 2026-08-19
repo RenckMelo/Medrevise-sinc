@@ -157,4 +157,40 @@ export interface UserProgress {
   }>;
 }
 
+export interface FlashcardDeepDive {
+  id: string;
+  userId?: string;
+  cardId?: string;
+  front: string;
+  back: string;
+  concept: string;
+  topicTitle?: string;
+  expandedAnalysis: string;
+  createdAt: string;
+}
+
+export interface FlashcardSessionScore {
+  cardId?: string;
+  cardFront: string;
+  cardBack: string;
+  concept: string;
+  rating: 'errei' | 'dificil' | 'bom' | 'facil';
+  topicId?: string;
+}
+
+export interface FlashcardSessionHistory {
+  id: string;
+  userId: string;
+  mode: 'srs' | 'deck' | 'diagnostic' | string;
+  dateISO: string;
+  totalCards: number;
+  masteredCount: number;
+  hardCount: number;
+  erredCount: number;
+  topicTitles: string[];
+  scores: FlashcardSessionScore[];
+  generatedSummaryTitle?: string;
+  generatedSummaryContent?: string;
+}
+
 export type ViewState = 'home' | 'subject' | 'topic' | 'questions' | 'flashcards' | 'admin' | 'search' | 'simulado' | 'review-question' | 'cronograma';

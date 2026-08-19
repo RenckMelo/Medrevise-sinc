@@ -1733,11 +1733,14 @@ export function cleanAndFixMarkdownTables(text: string): string {
     .replace(/&lt;/gi, '<');
 
   // 2. Un-concat single-line or corrupted table blocks containing pipes '|'
-  if (cleaned.includes('|') && (cleaned.includes('| > |') || cleaned.includes('| |') || cleaned.includes('| ---') || cleaned.includes('| :---'))) {
+  if (cleaned.includes('|')) {
     cleaned = cleaned
       .replace(/\|\s*>\s*\|/g, '|\n|')
       .replace(/\|\s*>\s*/g, '|\n')
-      .replace(/\|\s*\|\s*/g, '|\n|');
+      .replace(/\|\s*\|\s*/g, '|\n|')
+      .replace(/\|\s*\|(?=[^|\n]*\|)/g, '|\n|')
+      .replace(/\|\s*(\[!IMPORTANT\]|\[!NOTE\]|\[!WARNING\]|\[!TIP\]|\[!CAUTION\])/gi, '|\n\n$1')
+      .replace(/\|\s*(#{1,6}\s+|>\s+|\*|\-|\d+\.)/g, '|\n\n$1');
 
     cleaned = cleaned.replace(/([^\n|])\s*(\|(?:(?:\s*:?-+:?\s*)\|)+)/g, '$1\n$2');
   }

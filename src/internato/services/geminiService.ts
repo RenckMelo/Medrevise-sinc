@@ -2287,6 +2287,13 @@ function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate',
 - Todas as tabelas e quadros comparativos devem obrigatoriamente ser escritos no nível raiz do Markdown, fora de qualquer citação ou bloco '>', com linhas iniciadas por '|' e finalizadas por '|', para garantir que a estrutura de linhas e colunas seja renderizada perfeitamente pelo navegador.
 \n`;
 
+  instructions += `REGRA DE SINTAXE E LIMPEZA DE TABELAS MARKDOWN:
+- Toda tabela Markdown DEVE ter exatamente 1 linha de cabeçalho (ex: | Coluna 1 | Coluna 2 |), 1 linha de separador (ex: | --- | --- |) e N linhas de dados (ex: | Dado 1 | Dado 2 |).
+- NUNCA repita ou acumule linhas de separadores (| --- | --- |) em sequência.
+- NUNCA insira pipes vazios ou colunas duplas sem texto (ex: ||, || ||, | | |).
+- NUNCA quebre a linha dentro da mesma célula de tabela. CADA linha da tabela DEVE ser emitida inteira em uma única linha física com quebra de linha (\\n) no final.
+\n`;
+
   instructions += `REGRA DE SUMÁRIO DE NAVEGAÇÃO:
 - NUNCA crie nem insira nenhuma seção "## SUMÁRIO DE NAVEGAÇÃO", "## SUMÁRIO" ou "## ÍNDICE" dentro de capítulos individuais. O sumário de navegação geral do documento é gerado exclusivamente no topo do documento.
 - CASO O SISTEMA SOLICITE UM SUMÁRIO NO TOPO DO DOCUMENTO: Cada item DEVE usar a sintaxe Markdown completa com colchetes: \`1. [Título do Capítulo](#ancora-do-capitulo)\`.

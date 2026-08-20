@@ -17,7 +17,7 @@ import { generateTopicContent, generateQuestions, generateFlashcards, Generation
 import { db, auth, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc } from '../firebase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { markdownComponents, parseMarkdownAlerts, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml, syncSummaryTableOfContents } from '../utils/markdownUtils';
+import { markdownComponents, parseMarkdownAlerts, cleanAndFixMarkdownTables, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml, syncSummaryTableOfContents } from '../utils/markdownUtils';
 import { safeLocalStorageGet, safeLocalStorageSet, safeLocalStorageRemove } from '../utils/storageUtils';
 import { calculateNextReview } from '../../utils/srs';
 import SummaryGenerationWizard from './SummaryGenerationWizard';
@@ -394,105 +394,12 @@ const SummaryDossierHeader = ({
   );
 };
 
-const normalizePipeTables = (content: string): string => {
-  if (!content || !content.includes('|')) return content;
 
-  // Pre-pass: Split collapsed table lines where rows are separated by '| |' or '||'
-  // Or where a GFM callout tag like '[!IMPORTANT]' or header/bullet is attached directly after '|'
-  let prepared = content
-    .replace(/\|\s*\|(?=[^|\n]*\|)/g, '|\n|')
-    .replace(/\|\s*(\[!IMPORTANT\]|\[!NOTE\]|\[!WARNING\]|\[!TIP\]|\[!CAUTION\])/gi, '|\n\n$1')
-    .replace(/\|\s*(#{1,6}\s+|>\s+|\*|\-|\d+\.)/g, '|\n\n$1');
-
-  const lines = prepared.split('\n');
-  const result: string[] = [];
-  let tableBlock: string[] = [];
-  let inCodeBlock = false;
-
-  const isFlowchartOrDrawing = (line: string) => {
-    const t = line.trim();
-    return t.includes('▼') || t.includes('▲') || t.includes('→') || t.includes('➔') || t.includes('⇒') || t.includes('↓') || t.includes('(Falha)') || t.includes('(Sucesso)') || /[┴┬┌┐└┘░█■┼├┤]/.test(t);
-  };
-
-  const isSeparatorRow = (line: string) => {
-    const trimmed = line.trim();
-    return /^\|?\s*:?-+:?\s*(\|?\s*:?-+:?\s*)+\|?$/.test(trimmed);
-  };
-
-  const isPipeRow = (line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('```') || trimmed.startsWith('#')) return false;
-    if (isFlowchartOrDrawing(line)) return false;
-    const cols = trimmed.split('|').map(c => c.trim()).filter(Boolean);
-    return cols.length >= 2 || isSeparatorRow(trimmed);
-  };
-
-  const flushTable = () => {
-    if (tableBlock.length === 0) return;
-    
-    // Check if any row in tableBlock has flowchart elements
-    if (tableBlock.some(isFlowchartOrDrawing)) {
-      result.push(...tableBlock);
-      tableBlock = [];
-      return;
-    }
-
-    if (result.length > 0 && result[result.length - 1].trim() !== '') {
-      result.push('');
-    }
-
-    const hasSep = tableBlock.some(isSeparatorRow);
-    const normalizedRows = tableBlock.map(l => {
-      const trimmed = l.trim();
-      if (isSeparatorRow(trimmed)) return trimmed;
-      const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
-      return `| ${cells.join(' | ')} |`;
-    });
-
-    if (!hasSep && normalizedRows.length > 0) {
-      const firstRowCells = tableBlock[0].split('|').map(c => c.trim()).filter(Boolean);
-      const colCount = Math.max(1, firstRowCells.length);
-      const sepRow = `| ${Array(colCount).fill('---').join(' | ')} |`;
-      result.push(normalizedRows[0]);
-      result.push(sepRow);
-      for (let i = 1; i < normalizedRows.length; i++) {
-        result.push(normalizedRows[i]);
-      }
-    } else {
-      result.push(...normalizedRows);
-    }
-    tableBlock = [];
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trim().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      flushTable();
-      result.push(line);
-      continue;
-    }
-    if (inCodeBlock) {
-      result.push(line);
-      continue;
-    }
-
-    if (isPipeRow(line)) {
-      tableBlock.push(line);
-    } else {
-      flushTable();
-      result.push(line);
-    }
-  }
-  flushTable();
-
-  return result.join('\n');
-};
 
 const sanitizeMarkdown = (content: string) => {
   if (!content) return '';
   
-  let processed = normalizePipeTables(content);
+  let processed = cleanAndFixMarkdownTables(content);
 
   // Unescape AI-escaped markdown links e.g. \[text\](#anchor) or \[text\]\(#anchor\)
   processed = processed

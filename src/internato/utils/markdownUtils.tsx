@@ -1723,56 +1723,171 @@ function hastToHtml(node: any): string {
 export function cleanAndFixMarkdownTables(text: string): string {
   if (!text) return text;
 
-  let cleaned = text;
-
-  // 1. Decode double-escaped or stray HTML entities for angle brackets
-  cleaned = cleaned
+  let cleaned = text
     .replace(/&amp;gt;/gi, '>')
     .replace(/&gt;/gi, '>')
     .replace(/&amp;lt;/gi, '<')
     .replace(/&lt;/gi, '<');
 
-  // 2. Un-concat single-line or corrupted table blocks containing pipes '|'
-  if (cleaned.includes('|')) {
-    cleaned = cleaned
-      .replace(/\|\s*>\s*\|/g, '|\n|')
-      .replace(/\|\s*>\s*/g, '|\n')
-      .replace(/\|\s*\|\s*/g, '|\n|')
-      .replace(/\|\s*\|(?=[^|\n]*\|)/g, '|\n|')
-      .replace(/\|\s*(\[!IMPORTANT\]|\[!NOTE\]|\[!WARNING\]|\[!TIP\]|\[!CAUTION\])/gi, '|\n\n$1')
-      .replace(/\|\s*(#{1,6}\s+|>\s+|\*|\-|\d+\.)/g, '|\n\n$1');
+  // Ensure callout tags like [!NOTE] at start of line have the blockquote '>' prefix
+  cleaned = cleaned.replace(/^(\s*)(\[! (?:NOTE|IMPORTANT|WARNING|TIP|CAUTION) \])/gim, '$1> $2');
 
-    cleaned = cleaned.replace(/([^\n|])\s*(\|(?:(?:\s*:?-+:?\s*)\|)+)/g, '$1\n$2');
-  }
+  if (!cleaned.includes('|')) return cleaned;
 
-  // 3. Extract tables that were placed inside blockquotes (lines starting with '>')
-  const lines = cleaned.split('\n');
-  const resultLines: string[] = [];
-  let insideBlockquoteTable = false;
+  // Pre-process lines: strip blockquote prefixes from table lines so table syntax is uniform
+  const rawLines = cleaned.split('\n').map(l => {
+    let t = l.trim();
+    if (t.startsWith('>') && t.includes('|')) {
+      return t.replace(/^>\s*/, '');
+    }
+    return l;
+  });
 
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-    const trimmed = line.trim();
+  const result: string[] = [];
+  let tableBlock: string[] = [];
+  let inCodeBlock = false;
 
-    if (/^>\s*\|/.test(trimmed)) {
-      line = line.replace(/^>\s*/, '');
-      if (!insideBlockquoteTable) {
-        resultLines.push('');
-        insideBlockquoteTable = true;
+  const isFlowchartOrDrawing = (line: string) => {
+    const t = line.trim().replace(/^>\s*/, '');
+    return t.includes('▼') || t.includes('▲') || t.includes('→') || t.includes('➔') || t.includes('⇒') || t.includes('↓') || t.includes('(Falha)') || t.includes('(Sucesso)') || /[┴┬┌┐└┘░█■┼├┤]/.test(t);
+  };
+
+  const isPureNoiseOrSeparator = (line: string) => {
+    const t = line.trim().replace(/^>\s*/, '');
+    if (!t) return false;
+    // Line containing only pipes, spaces, dashes, colons, or combinations like "| | | --- | |"
+    if (t.includes('|')) {
+      return /^\|?[\s|\-:.:]*\|?$/.test(t);
+    }
+    return false;
+  };
+
+  const isPipeRow = (line: string) => {
+    const trimmed = line.trim().replace(/^>\s*/, '');
+    if (!trimmed || trimmed.startsWith('```') || trimmed.startsWith('#') || trimmed.startsWith('![') || trimmed.startsWith('[!')) return false;
+    if (isFlowchartOrDrawing(line)) return false;
+    return trimmed.includes('|');
+  };
+
+  const flushTable = () => {
+    if (tableBlock.length === 0) return;
+
+    if (tableBlock.some(isFlowchartOrDrawing)) {
+      result.push(...tableBlock);
+      tableBlock = [];
+      return;
+    }
+
+    const contentRows: string[][] = [];
+
+    for (const rawLine of tableBlock) {
+      if (isPureNoiseOrSeparator(rawLine)) continue;
+
+      let trimmed = rawLine.trim().replace(/^>\s*/, '');
+      if (!trimmed.startsWith('|')) trimmed = `| ${trimmed}`;
+      if (!trimmed.endsWith('|')) trimmed = `${trimmed} |`;
+
+      let cells = trimmed.split('|').map(c => c.trim());
+      if (cells.length > 0 && cells[0] === '') cells.shift();
+      if (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
+
+      // Filter out pure separator cells or empty trailing noise
+      const validCells = cells.map(c => /^:?-+:?$/.test(c) ? '' : c);
+      const hasContent = validCells.some(c => c !== '');
+
+      if (hasContent) {
+        contentRows.push(cells.map(c => /^:?-+:?$/.test(c) ? '-' : (c || '-')));
       }
-    } else if (insideBlockquoteTable && !trimmed.startsWith('|')) {
-      insideBlockquoteTable = false;
-      resultLines.push('');
     }
 
-    if (line.includes('|')) {
-      line = line.replace(/\|\s*>\s*\|/g, '|');
+    if (contentRows.length > 0) {
+      if (result.length > 0 && result[result.length - 1].trim() !== '') {
+        result.push('');
+      }
+
+      let maxCols = 1;
+      for (const row of contentRows) {
+        if (row.length > maxCols) maxCols = row.length;
+      }
+
+      const header = contentRows[0];
+      while (header.length < maxCols) header.push('-');
+      result.push(`| ${header.join(' | ')} |`);
+
+      result.push(`| ${Array(maxCols).fill('---').join(' | ')} |`);
+
+      for (let i = 1; i < contentRows.length; i++) {
+        const row = contentRows[i];
+        while (row.length < maxCols) row.push('-');
+        result.push(`| ${row.slice(0, maxCols).join(' | ')} |`);
+      }
+
+      result.push('');
+    } else {
+      for (const line of tableBlock) {
+        if (!isPureNoiseOrSeparator(line)) {
+          result.push(line);
+        }
+      }
     }
 
-    resultLines.push(line);
+    tableBlock = [];
+  };
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    const trimmed = line.trim().replace(/^>\s*/, '');
+
+    if (trimmed.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      flushTable();
+      result.push(line);
+      continue;
+    }
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    if (isPipeRow(line)) {
+      tableBlock.push(line);
+    } else if (tableBlock.length > 0) {
+      let nextIsPipe = false;
+      for (let j = i + 1; j < Math.min(rawLines.length, i + 10); j++) {
+        const nextLine = rawLines[j];
+        const nextTrimmed = nextLine.trim().replace(/^>\s*/, '');
+        if (!nextTrimmed) continue;
+        if (isPureNoiseOrSeparator(nextLine)) continue;
+        if (isPipeRow(nextLine)) {
+          nextIsPipe = true;
+        }
+        break;
+      }
+
+      if (nextIsPipe) {
+        if (!isPureNoiseOrSeparator(line) && line.trim() !== '') {
+          tableBlock.push(line);
+        }
+      } else {
+        flushTable();
+        if (!isPureNoiseOrSeparator(line) && line.trim() !== '') {
+          result.push(line);
+        } else if (line.trim() === '' && result.length > 0 && result[result.length - 1] !== '') {
+          result.push('');
+        }
+      }
+    } else {
+      if (!isPureNoiseOrSeparator(line) && line.trim() !== '') {
+        result.push(line);
+      } else if (line.trim() === '' && result.length > 0 && result[result.length - 1] !== '') {
+        result.push('');
+      }
+    }
   }
 
-  return resultLines.join('\n');
+  flushTable();
+
+  return result.join('\n');
 }
 
 export function parseMarkdownAlerts(text: string): string {
@@ -1797,20 +1912,24 @@ export function parseMarkdownAlerts(text: string): string {
     .replace(/&gt\b/gi, '>')
     .replace(/&lt\b/gi, '<');
 
-  // Replace GFM blockquote alerts (e.g. "> [!NOTE]") with elegant colored headings
-  processed = processed.replace(/^>\s*\[!NOTE\]\s*(?:>\s*)?(?:\r?\n|(\s+))?/gim, (match, spaces) => {
+  // Ensure callout tags or callout titles on standalone non-table lines are separated by double newlines
+  processed = processed.replace(/([^\n|])\n*(?:>\s*)?\[!(NOTE|TIP|IMPORTANT|CAUTION|WARNING|CLINICAL_CASE|CHECKLIST|SUMMARY|FLOWCHART)\]/gi, '$1\n\n> [!$2]');
+  processed = processed.replace(/([^\n|])\n*(?:>\s*)(?=\*\*?(?:NOTA|IMPORTANTE|ATENÇÃO|CUIDADO|PEGADINHA|DICA|MACETE|MNEMÔNICO|CASO CLÍNICO|CONDUTA|QUADRO DE DESTAQUE)\*\*?:?)/gi, '$1\n\n> ');
+
+  // Replace GFM blockquote alerts (e.g. "> [!NOTE]" or "[!NOTE]") with elegant colored headings
+  processed = processed.replace(/^(?:>\s*)?\[!NOTE\]\s*(?:>\s*)?(?:\r?\n|(\s+))?/gim, (match, spaces) => {
     return `> <span class="text-blue-600 font-extrabold font-sans text-xs uppercase tracking-wider block mb-1 select-none">📝 NOTA</span> ${spaces ? spaces : ''}`;
   });
   
-  processed = processed.replace(/^>\s*\[!TIP\]\s*(?:>\s*)?(?:\r?\n|(\s+))?/gim, (match, spaces) => {
+  processed = processed.replace(/^(?:>\s*)?\[!TIP\]\s*(?:>\s*)?(?:\r?\n|(\s+))?/gim, (match, spaces) => {
     return `> <span class="text-emerald-600 font-extrabold font-sans text-xs uppercase tracking-wider block mb-1 select-none">💡 DICA / MACETE</span> ${spaces ? spaces : ''}`;
   });
 
-  processed = processed.replace(/^>\s*\[!IMPORTANT\]\s*(?:>\s*)?(?:\r?\n|(\s+))?/gim, (match, spaces) => {
+  processed = processed.replace(/^(?:>\s*)?\[!IMPORTANT\]\s*(?:>\s*)?(?:\r?\n|(\s+))?/gim, (match, spaces) => {
     return `> <span class="text-amber-600 font-extrabold font-sans text-xs uppercase tracking-wider block mb-1 select-none">✨ IMPORTANTE</span> ${spaces ? spaces : ''}`;
   });
 
-  processed = processed.replace(/^>\s*\[!CAUTION\]\s*(?:>\s*)?(?:\r?\n|(\s+))?/gim, (match, spaces) => {
+  processed = processed.replace(/^(?:>\s*)?\[!CAUTION\]\s*(?:>\s*)?(?:\r?\n|(\s+))?/gim, (match, spaces) => {
     return `> <span class="text-rose-600 font-extrabold font-sans text-xs uppercase tracking-wider block mb-1 select-none">⚠️ ATENÇÃO / CUIDADO</span> ${spaces ? spaces : ''}`;
   });
 
@@ -5202,7 +5321,29 @@ export const markdownComponents: any = {
       );
     }
 
-    if (text.toLowerCase().includes('caso clínico') || text.toLowerCase().includes('caso clinico') || text.toLowerCase().includes('paciente')) {
+    if (text.includes('📋 CONDUTA') || text.includes('CHECKLIST')) {
+      return (
+        <div className="my-5 p-4 bg-indigo-50/90 border-l-4 border-indigo-500 border-y border-r border-indigo-200/80 rounded-r-2xl shadow-2xs text-indigo-950 leading-relaxed text-sm sm:text-base font-medium">
+          {children}
+        </div>
+      );
+    }
+    if (text.includes('📌 QUADRO DE DESTAQUE') || text.includes('QUADRO DE DESTAQUE')) {
+      return (
+        <div className="my-5 p-4 bg-orange-50/90 border-l-4 border-orange-500 border-y border-r border-orange-200/80 rounded-r-2xl shadow-2xs text-orange-950 leading-relaxed text-sm sm:text-base font-medium">
+          {children}
+        </div>
+      );
+    }
+    if (text.includes('🔄 ALGORITMO') || text.includes('FLUXOGRAMA')) {
+      return (
+        <div className="my-5 p-4 bg-teal-50/90 border-l-4 border-teal-500 border-y border-r border-teal-200/80 rounded-r-2xl shadow-2xs text-teal-950 leading-relaxed text-sm sm:text-base font-medium">
+          {children}
+        </div>
+      );
+    }
+
+    if (text.toLowerCase().includes('caso clínico') || text.toLowerCase().includes('caso clinico')) {
       return (
         <div className="my-5 p-4 sm:p-5 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-amber-500/5 border-l-4 border-amber-500 border-y border-r border-amber-200/80 rounded-r-2xl shadow-xs">
           <div className="flex items-center gap-2 text-amber-900 text-[10px] font-extrabold uppercase tracking-wider mb-2">

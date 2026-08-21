@@ -159,7 +159,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
   // Listen to user progress
   useEffect(() => {
     if (!userId) return;
-    const progressRef = doc(db, 'users', userId, 'progress', 'main');
+    const progressRef = doc(db, 'userProgress', userId);
     const unsub = onSnapshot(progressRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data() || {};
@@ -197,7 +197,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
   const loadUserProgress = async () => {
     if (!userId) return;
     try {
-      const progressRef = doc(db, 'users', userId, 'progress', 'main');
+      const progressRef = doc(db, 'userProgress', userId);
       const snapshot = await getDoc(progressRef);
       if (snapshot.exists()) {
         const data = snapshot.data() || {};

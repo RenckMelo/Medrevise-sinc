@@ -1069,22 +1069,13 @@ export default function QuestionModule({
           }
 
           fetched = cachedQuestions;
-          
-          if (filterUnanswered && userProgress) {
-            const answeredIds = userProgress.answeredQuestionIds || [];
-            fetched = fetched.filter(q => !answeredIds.includes(q.id));
-          }
-          if (filterOnlyErrors && userProgress?.attempts) {
-            fetched = fetched.filter(q => {
-              const attempt = userProgress.attempts?.[q.id];
-              return attempt && !attempt.isCorrect;
-            });
-          }
           fetched = fetched.sort(() => Math.random() - 0.5);
 
           // Redirect to custom topic preparation screen with the existing pool
           setTopicPrepQuestions(fetched);
           setIsTopicPreparing(true);
+          setFilterUnanswered(false);
+          setFilterOnlyErrors(false);
           setSelectedCountFromExisting(Math.min(10, fetched.length > 0 ? fetched.length : 10));
           setIsSelecting(true);
         } catch (err) {
@@ -1520,6 +1511,27 @@ export default function QuestionModule({
     }
   }, [selectedTopicIds, userProgress]);
 
+  useEffect(() => {
+    if (isTopicPreparing) {
+      let filteredCount = topicPrepQuestions.length;
+      if (filterUnanswered && userProgress) {
+        const answeredIds = userProgress.answeredQuestionIds || [];
+        filteredCount = topicPrepQuestions.filter(q => !answeredIds.includes(q.id)).length;
+      }
+      if (filterOnlyErrors && userProgress?.attempts) {
+        filteredCount = topicPrepQuestions.filter(q => {
+          const attempt = userProgress.attempts?.[q.id];
+          return attempt && !attempt.isCorrect;
+        }).length;
+      }
+      if (selectedCountFromExisting > filteredCount && filteredCount > 0) {
+        setSelectedCountFromExisting(filteredCount);
+      } else if (selectedCountFromExisting === 0 && filteredCount > 0) {
+        setSelectedCountFromExisting(Math.min(10, filteredCount));
+      }
+    }
+  }, [filterUnanswered, filterOnlyErrors, topicPrepQuestions, isTopicPreparing, userProgress, selectedCountFromExisting]);
+
   const handleGenerateTopicQuestions = async (countToGen: number, isAddingMore: boolean = false) => {
     const uniqueTids = Array.from(new Set(selectedTopicIds)).filter(Boolean);
     if (uniqueTids.length === 0) return;
@@ -1642,8 +1654,20 @@ export default function QuestionModule({
   };
 
   const handleStartWithExisting = (countToUse: number) => {
-    // Take a random or slice of existing questions
-    const shuffled = [...topicPrepQuestions].sort(() => Math.random() - 0.5);
+    // Apply filters to topicPrepQuestions to get the actual list to slice
+    let filteredList = [...topicPrepQuestions];
+    if (filterUnanswered && userProgress) {
+      const answeredIds = userProgress.answeredQuestionIds || [];
+      filteredList = filteredList.filter(q => !answeredIds.includes(q.id));
+    }
+    if (filterOnlyErrors && userProgress?.attempts) {
+      filteredList = filteredList.filter(q => {
+        const attempt = userProgress.attempts?.[q.id];
+        return attempt && !attempt.isCorrect;
+      });
+    }
+
+    const shuffled = filteredList.sort(() => Math.random() - 0.5);
     const finalSelection = shuffled.slice(0, countToUse);
 
     setQuestions(finalSelection);
@@ -1850,7 +1874,19 @@ export default function QuestionModule({
     const activeTid = selectedTopicIds[0];
     const topicObj = topics.find(t => t.id === activeTid);
     const subjectObj = subjects.find(s => s.id === topicObj?.subjectId);
-    const existingCount = topicPrepQuestions.length;
+    
+    let filteredList = [...topicPrepQuestions];
+    if (filterUnanswered && userProgress) {
+      const answeredIds = userProgress.answeredQuestionIds || [];
+      filteredList = filteredList.filter(q => !answeredIds.includes(q.id));
+    }
+    if (filterOnlyErrors && userProgress?.attempts) {
+      filteredList = filteredList.filter(q => {
+        const attempt = userProgress.attempts?.[q.id];
+        return attempt && !attempt.isCorrect;
+      });
+    }
+    const existingCount = filteredList.length;
 
     return (
       <div className="max-w-3xl mx-auto py-10 px-4">
@@ -2011,27 +2047,74 @@ export default function QuestionModule({
                       </div>
 
                       <div className="space-y-4 pt-4 border-t border-[#E2E0D9]/60">
-                        <div className="space-y-2">
-                          <label className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
-                            Quantas deseja resolver:
-                          </label>
-                          <select 
-                            value={selectedCountFromExisting}
-                            onChange={(e) => setSelectedCountFromExisting(Number(e.target.value))}
-                            className="w-full bg-white border border-[#E2E0D9] rounded-xl px-3 py-2 text-xs font-bold text-[#1A1A1A] outline-none focus:border-primary"
-                          >
-                            {[5, 10, 15, 20].filter(qty => qty <= existingCount).map(qty => (
-                              <option key={`existing-qty-${qty}`} value={qty}>{qty} questões</option>
-                            ))}
-                            <option value={existingCount}>Todas as {existingCount} questões</option>
-                          </select>
+                        {/* Custom visual filter toggles for Screen 2 */}
+                        <div className="space-y-3 pb-3 border-b border-[#E2E0D9]/40">
+                          <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Filtros Rápidos</span>
+                          <div className="flex flex-col gap-3">
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                              <div 
+                                onClick={() => setFilterUnanswered(!filterUnanswered)}
+                                className={cn(
+                                  "w-8 h-5 rounded-full transition-colors relative shrink-0",
+                                  filterUnanswered ? "bg-primary" : "bg-[#E2E0D9]"
+                                )}
+                              >
+                                <div className={cn(
+                                  "absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform",
+                                  filterUnanswered ? "translate-x-3" : ""
+                                )} />
+                              </div>
+                              <span className="text-[10px] uppercase tracking-widest font-bold text-stone-600 group-hover:text-primary transition-colors">Apenas não respondidas</span>
+                            </label>
+
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                              <div 
+                                onClick={() => setFilterOnlyErrors(!filterOnlyErrors)}
+                                className={cn(
+                                  "w-8 h-5 rounded-full transition-colors relative shrink-0",
+                                  filterOnlyErrors ? "bg-primary" : "bg-[#E2E0D9]"
+                                )}
+                              >
+                                <div className={cn(
+                                  "absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform",
+                                  filterOnlyErrors ? "translate-x-3" : ""
+                                )} />
+                              </div>
+                              <span className="text-[10px] uppercase tracking-widest font-bold text-stone-600 group-hover:text-primary transition-colors">Apenas erros anteriores</span>
+                            </label>
+                          </div>
                         </div>
+
+                        {existingCount > 0 ? (
+                          <div className="space-y-2">
+                            <label className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
+                              Quantas deseja resolver:
+                            </label>
+                            <select 
+                              value={selectedCountFromExisting}
+                              onChange={(e) => setSelectedCountFromExisting(Number(e.target.value))}
+                              className="w-full bg-white border border-[#E2E0D9] rounded-xl px-3 py-2 text-xs font-bold text-[#1A1A1A] outline-none focus:border-primary"
+                            >
+                              {[5, 10, 15, 20].filter(qty => qty <= existingCount).map(qty => (
+                                <option key={`existing-qty-${qty}`} value={qty}>{qty} questões</option>
+                              ))}
+                              <option value={existingCount}>Todas as {existingCount} questões</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-amber-50/60 border border-amber-200/50 rounded-xl text-center">
+                            <p className="text-[11px] text-amber-700 font-semibold leading-normal">
+                              Nenhuma questão atende aos filtros atuais. Desative-os ou gere mais com a IA ao lado!
+                            </p>
+                          </div>
+                        )}
 
                         <Button 
                           onClick={() => handleStartWithExisting(selectedCountFromExisting)}
+                          disabled={existingCount === 0}
                           className="w-full bg-stone-900 text-white text-[10px] uppercase tracking-widest font-black h-11 rounded-xl"
                         >
-                          Iniciar com {selectedCountFromExisting} Existentes
+                          Iniciar com {existingCount > 0 ? selectedCountFromExisting : 0} Existentes
                         </Button>
                       </div>
                     </div>

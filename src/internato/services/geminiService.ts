@@ -1508,7 +1508,7 @@ DIRETRIZES DE MÁXIMA DENSIDADE E COMPLETUDE TÉCNICA:
 1. DENSIDADE TÉCNICA E APROFUNDAMENTO MÁXIMO: É proibido gerar resumos curtos, comprimidos ou superficiais. Redija parágrafos densos e explicativos detalhando a fisiopatologia celular/molecular, mecanismos de ação de drogas, posologias exatas (ataque e manutenção em mg/kg ou mg/dia, vias de administração, intervalos, e ajustes em insuficiência renal/hepática).
 2. TABELAS COMPLETAS DE ESCORES E CRITÉRIOS DIAGNÓSTICOS: Apresente obrigatoriamente de forma exaustiva e em tabelas Markdown estruturadas todas as escalas médicas, escores de risco e classificações oficiais (ex: Wells, CURB-65, CHA2DS2-VASc, HAS-BLED, NIHSS, qSOFA, Child-Pugh, MELD, Alvarado, Ranson, Mallampati, Cormack-Lehane, etc.), contendo critérios, pontuação individual, estratificação e condutas por faixa de pontuação.
 3. FLUXOGRAMAS E QUADROS DE DIFERENCIAÇÃO CLÍNICA: Inclua tabelas comparativas para diagnósticos diferenciais e fluxogramas terapêuticos/diagnósticos em passo a passo numerado e estruturado.
-4. CAIXAS DE DESTAQUE E ALERTAS DE PROVA: Abunde o resumo com caixas de alerta no padrão GFM (`> [!IMPORTANT]`, `> [!CAUTION]`, `> [!TIP]`), identificando "DICA DO PRECEPTOR", "PEGADINHA DE BANCA" e "ANALOGIA CLÍNICA".
+4. CAIXAS DE DESTAQUE E ALERTAS DE PROVA: Abunde o resumo com caixas de alerta no padrão GFM (\`> [!IMPORTANT]\`, \`> [!CAUTION]\`, \`> [!TIP]\`), identificando "DICA DO PRECEPTOR", "PEGADINHA DE BANCA" e "ANALOGIA CLÍNICA".
 5. ILUSTRAÇÕES E DIAGRAMAS DO ANEXO: Descreva, explique e integre na medida do possível quaisquer diagramas ou imagens de fluxo clínicos que apareçam no anexo. Utilize notação LaTeX para termos médicos/notações ($ \rightarrow $, $ \alpha $, $ \text{HCO}_3^- $).
 
 Ao final do documento, crie obrigatoriamente a seção intitulada:
@@ -1974,7 +1974,7 @@ DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO E NÃO REPETIÇÃO:
    - É ESTRITAMENTE PROIBIDO fazer resumos superficiais, esquemas comprimidos ou tópicos genéricos curtos.
    - Redija parágrafos completos, ricos e encadeados com profundidade de livro-texto (nível Harrison / UpToDate / Tratados de Especialidade).
    - Traga dados exatos: mecanismos fisiopatológicos celulares/moleculares, farmacologia minuciosa com dosagens de medicamentos (ataque, manutenção, mg/kg, via, intervalos, ajuste renal/hepático), condutas em falha terapêutica, e diretrizes oficiais atualizadas (2025/2026).
-   - Inclua tabelas comparativas ricas, escores completos com pontuações e condutas por faixa de risco, e caixas de destaque clínico (`> [!IMPORTANT]`, `> [!CAUTION]`, `> [!TIP]`).
+   - Inclua tabelas comparativas ricas, escores completos com pontuações e condutas por faixa de risco, e caixas de destaque clínico (\`> [!IMPORTANT]\`, \`> [!CAUTION]\`, \`> [!TIP]\`).
 
 7. HIGHLIGHTS E ALERTAS (NÃO REPETITIVOS):
    - Se este capítulo for o local ideal para abordar algum dos destaques solicitados na análise prévia (${analysis.clinicalHighlights.join('; ')}), inclua-o AQUI (APENAS SE AINDA NÃO FOI TRATADO EM CAPÍTULOS ANTERIORES).

@@ -217,7 +217,9 @@ export async function getDocs(queryOrColl: any): Promise<any> {
       docs = docs.filter(doc => {
         let docVal = doc[fieldPath];
         
-        if (fieldPath.includes('.')) {
+        if (fieldPath === '__name__') {
+          docVal = doc.id;
+        } else if (fieldPath.includes('.')) {
           const parts = fieldPath.split('.');
           docVal = doc;
           for (const part of parts) {
@@ -242,8 +244,8 @@ export async function getDocs(queryOrColl: any): Promise<any> {
     } else if (constraint.type === 'orderBy') {
       const { fieldPath, directionStr } = constraint;
       docs.sort((a, b) => {
-        const valA = a[fieldPath];
-        const valB = b[fieldPath];
+        const valA = fieldPath === '__name__' ? a.id : a[fieldPath];
+        const valB = fieldPath === '__name__' ? b.id : b[fieldPath];
         if (valA === undefined) return 1;
         if (valB === undefined) return -1;
         if (valA < valB) return directionStr === 'desc' ? 1 : -1;

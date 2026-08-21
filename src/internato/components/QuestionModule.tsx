@@ -577,7 +577,23 @@ export default function QuestionModule({
             limit(20) // Otimização: limitar histórico para economizar unidades de leitura
           );
           const snapshot = await getDocs(q);
-          setQuizHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as QuizAttempt)));
+          const dbAttempts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as QuizAttempt));
+          
+          const progressHistory = userProgress?.quizHistory || [];
+          const allAttemptsMap = new Map<string, QuizAttempt>();
+          
+          progressHistory.forEach(att => {
+            if (att && att.id) allAttemptsMap.set(att.id, att);
+          });
+          dbAttempts.forEach(att => {
+            if (att && att.id) allAttemptsMap.set(att.id, att);
+          });
+          
+          const sortedHistory = Array.from(allAttemptsMap.values()).sort((a, b) => {
+            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+          });
+          
+          setQuizHistory(sortedHistory);
         } catch (err) {
           console.error('Error fetching history:', err);
         } finally {
@@ -586,7 +602,7 @@ export default function QuestionModule({
       };
       fetchHistory();
     }
-  }, [showHistory, userId]);
+  }, [showHistory, userId, userProgress?.quizHistory]);
 
   const answeredQuestionsRef = useRef<Question[]>([]);
 

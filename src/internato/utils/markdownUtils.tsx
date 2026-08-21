@@ -1720,6 +1720,41 @@ function hastToHtml(node: any): string {
   return '';
 }
 
+export function mergeAdjacentMarkdownTables(content: string): string {
+  if (!content || !content.includes('|')) return content;
+
+  const lines = content.split('\n');
+  const result: string[] = [];
+  let inCodeBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      result.push(line);
+      continue;
+    }
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    // Deduplicate identical adjacent table header lines
+    if (result.length > 0) {
+      const prevLine = result[result.length - 1].trim();
+      if (prevLine.startsWith('|') && trimmed.startsWith('|') && prevLine === trimmed && !/^\|?[\s|\-:.:]*\|?$/.test(trimmed)) {
+        continue;
+      }
+    }
+
+    result.push(line);
+  }
+
+  return result.join('\n');
+}
+
 export function cleanAndFixMarkdownTables(text: string): string {
   if (!text) return text;
 
@@ -1732,44 +1767,86 @@ export function cleanAndFixMarkdownTables(text: string): string {
   // Ensure callout tags like [!NOTE] at start of line have the blockquote '>' prefix
   cleaned = cleaned.replace(/^(\s*)(\[! (?:NOTE|IMPORTANT|WARNING|TIP|CAUTION) \])/gim, '$1> $2');
 
-  if (!cleaned.includes('|')) return cleaned;
-
-  // Pre-process lines: strip blockquote prefixes from table lines so table syntax is uniform
-  const rawLines = cleaned.split('\n').map(l => {
-    let t = l.trim();
-    if (t.startsWith('>') && t.includes('|')) {
-      return t.replace(/^>\s*/, '');
-    }
-    return l;
-  });
-
-  const result: string[] = [];
-  let tableBlock: string[] = [];
+  const rawLines = cleaned.split('\n');
+  const processedLines: string[] = [];
   let inCodeBlock = false;
+
+  // 1. Convert TSV (tab-separated) lines or multi-space tabbed lines into pipe table lines
+  for (let idx = 0; idx < rawLines.length; idx++) {
+    const line = rawLines[idx];
+    const trimmed = line.trim().replace(/^>\s*/, '');
+
+    if (trimmed.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      processedLines.push(line);
+      continue;
+    }
+    if (inCodeBlock) {
+      processedLines.push(line);
+      continue;
+    }
+
+    // Check if line contains tab characters or multi-spaces separating columns
+    if (!trimmed.startsWith('#') && !trimmed.startsWith('!') && !trimmed.startsWith('>')) {
+      const bqMatch = line.match(/^(\s*>\s*)*/);
+      const prefix = bqMatch ? bqMatch[0] : '';
+      const tClean = trimmed.replace(/^[•\-\*\d+\.\)]\s*/, '');
+
+      if (tClean.includes('\t')) {
+        const parts = tClean.split(/[\t]+/).map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+          processedLines.push(`${prefix}| ${parts.join(' | ')} |`);
+          continue;
+        }
+      } else if (/\S\s{2,}\S/.test(tClean) && !trimmed.includes('|') && !/^[•\-\*\d+\.\)]\s*/.test(trimmed)) {
+        // Check if next or previous line also has multi-space separation (forming a multi-space table)
+        const nextLine = idx < rawLines.length - 1 ? rawLines[idx + 1].trim().replace(/^>\s*/, '') : '';
+        const prevLine = idx > 0 ? rawLines[idx - 1].trim().replace(/^>\s*/, '') : '';
+        const isMultiSpaceTable = /\S\s{2,}\S/.test(nextLine) || /\S\s{2,}\S/.test(prevLine) || nextLine.includes('|') || prevLine.includes('|');
+
+        if (isMultiSpaceTable) {
+          const parts = tClean.split(/\s{2,}/).map(p => p.trim()).filter(Boolean);
+          if (parts.length >= 2) {
+            processedLines.push(`${prefix}| ${parts.join(' | ')} |`);
+            continue;
+          }
+        }
+      }
+    }
+
+    processedLines.push(line);
+  }
+
+  const textWithPipes = processedLines.join('\n');
+  if (!textWithPipes.includes('|')) return textWithPipes;
+
+  // 2. Process Pipe Tables
+  const pipeLines = textWithPipes.split('\n');
+  const result: string[] = [];
+  inCodeBlock = false;
 
   const isFlowchartOrDrawing = (line: string) => {
     const t = line.trim().replace(/^>\s*/, '');
     return t.includes('▼') || t.includes('▲') || t.includes('→') || t.includes('➔') || t.includes('⇒') || t.includes('↓') || t.includes('(Falha)') || t.includes('(Sucesso)') || /[┴┬┌┐└┘░█■┼├┤]/.test(t);
   };
 
-  const isPureNoiseOrSeparator = (line: string) => {
-    const t = line.trim().replace(/^>\s*/, '');
-    if (!t) return false;
-    // Line containing only pipes, spaces, dashes, colons, or combinations like "| | | --- | |"
-    if (t.includes('|')) {
-      return /^\|?[\s|\-:.:]*\|?$/.test(t);
-    }
-    return false;
-  };
-
-  const isPipeRow = (line: string) => {
+  const isPipeLine = (line: string) => {
     const trimmed = line.trim().replace(/^>\s*/, '');
     if (!trimmed || trimmed.startsWith('```') || trimmed.startsWith('#') || trimmed.startsWith('![') || trimmed.startsWith('[!')) return false;
     if (isFlowchartOrDrawing(line)) return false;
     return trimmed.includes('|');
   };
 
-  const flushTable = () => {
+  const isGarbageOrEmptyLine = (line: string) => {
+    const trimmed = line.trim().replace(/^>\s*/, '');
+    if (!trimmed) return true;
+    if (isFlowchartOrDrawing(line)) return false;
+    return /^\|?[\s|\-:.:]*\|?$/.test(trimmed);
+  };
+
+  let tableBlock: string[] = [];
+
+  const flushTableBlock = () => {
     if (tableBlock.length === 0) return;
 
     if (tableBlock.some(isFlowchartOrDrawing)) {
@@ -1778,122 +1855,236 @@ export function cleanAndFixMarkdownTables(text: string): string {
       return;
     }
 
-    const contentRows: string[][] = [];
+    const rows: string[][] = [];
 
-    for (const rawLine of tableBlock) {
-      if (isPureNoiseOrSeparator(rawLine)) continue;
-
+    for (let idx = 0; idx < tableBlock.length; idx++) {
+      const rawLine = tableBlock[idx];
       let trimmed = rawLine.trim().replace(/^>\s*/, '');
+
       if (!trimmed.startsWith('|')) trimmed = `| ${trimmed}`;
       if (!trimmed.endsWith('|')) trimmed = `${trimmed} |`;
 
-      let cells = trimmed.split('|').map(c => c.trim());
-      if (cells.length > 0 && cells[0] === '') cells.shift();
-      if (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
+      let rawCells = trimmed.split('|').map(c => c.trim());
+      if (rawCells.length > 0 && rawCells[0] === '') rawCells.shift();
+      if (rawCells.length > 0 && rawCells[rawCells.length - 1] === '') rawCells.pop();
 
-      // Filter out pure separator cells or empty trailing noise
-      const validCells = cells.map(c => /^:?-+:?$/.test(c) ? '' : c);
-      const hasContent = validCells.some(c => c !== '');
+      // Check if this line has at least ONE cell with real content (not just '---' or empty)
+      const hasRealContent = rawCells.some(c => c !== '' && !/^:?-+:?$/.test(c));
 
-      if (hasContent) {
-        contentRows.push(cells.map(c => /^:?-+:?$/.test(c) ? '-' : (c || '-')));
+      if (hasRealContent) {
+        const cleanedCells = rawCells.map(c => /^:?-+:?$/.test(c) ? '' : c);
+        rows.push(cleanedCells);
       }
     }
 
-    if (contentRows.length > 0) {
-      if (result.length > 0 && result[result.length - 1].trim() !== '') {
-        result.push('');
-      }
+    if (rows.length === 0) {
+      tableBlock = [];
+      return;
+    }
 
-      let maxCols = 1;
-      for (const row of contentRows) {
-        if (row.length > maxCols) maxCols = row.length;
-      }
+    let maxCols = 1;
+    for (const r of rows) {
+      if (r.length > maxCols) maxCols = r.length;
+    }
 
-      const header = contentRows[0];
-      while (header.length < maxCols) header.push('-');
-      result.push(`| ${header.join(' | ')} |`);
-
-      result.push(`| ${Array(maxCols).fill('---').join(' | ')} |`);
-
-      for (let i = 1; i < contentRows.length; i++) {
-        const row = contentRows[i];
-        while (row.length < maxCols) row.push('-');
-        result.push(`| ${row.slice(0, maxCols).join(' | ')} |`);
-      }
-
+    if (result.length > 0 && result[result.length - 1].trim() !== '') {
       result.push('');
-    } else {
-      for (const line of tableBlock) {
-        if (!isPureNoiseOrSeparator(line)) {
-          result.push(line);
-        }
-      }
     }
 
+    // Header (Row 0)
+    const header = rows[0];
+    while (header.length < maxCols) header.push('');
+    result.push(`| ${header.map(c => c || ' ').join(' | ')} |`);
+
+    // Separator line
+    result.push(`| ${Array(maxCols).fill('---').join(' | ')} |`);
+
+    // Data rows (Row 1..N)
+    for (let rIdx = 1; rIdx < rows.length; rIdx++) {
+      const row = rows[rIdx];
+      while (row.length < maxCols) row.push('');
+      result.push(`| ${row.slice(0, maxCols).map(c => c || ' ').join(' | ')} |`);
+    }
+
+    result.push('');
     tableBlock = [];
   };
 
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i];
+  let i = 0;
+  while (i < pipeLines.length) {
+    const line = pipeLines[i];
     const trimmed = line.trim().replace(/^>\s*/, '');
 
     if (trimmed.startsWith('```')) {
       inCodeBlock = !inCodeBlock;
-      flushTable();
+      flushTableBlock();
       result.push(line);
+      i++;
       continue;
     }
     if (inCodeBlock) {
       result.push(line);
+      i++;
       continue;
     }
 
-    if (isPipeRow(line)) {
+    if (isPipeLine(line)) {
       tableBlock.push(line);
     } else if (tableBlock.length > 0) {
-      let nextIsPipe = false;
-      for (let j = i + 1; j < Math.min(rawLines.length, i + 10); j++) {
-        const nextLine = rawLines[j];
+      // If we are currently in a table block and hit an empty/garbage line,
+      // look ahead up to 4 lines to see if there is another valid table row!
+      let hasUpcomingPipeRow = false;
+      for (let lookahead = i + 1; lookahead < Math.min(pipeLines.length, i + 5); lookahead++) {
+        const nextLine = pipeLines[lookahead];
         const nextTrimmed = nextLine.trim().replace(/^>\s*/, '');
         if (!nextTrimmed) continue;
-        if (isPureNoiseOrSeparator(nextLine)) continue;
-        if (isPipeRow(nextLine)) {
-          nextIsPipe = true;
+        if (nextTrimmed.startsWith('#') || nextTrimmed.startsWith('```') || nextTrimmed.startsWith('> [!')) {
+          break;
         }
-        break;
+        if (isPipeLine(nextLine) && !isGarbageOrEmptyLine(nextLine)) {
+          hasUpcomingPipeRow = true;
+          break;
+        }
       }
 
-      if (nextIsPipe) {
-        if (!isPureNoiseOrSeparator(line) && line.trim() !== '') {
-          tableBlock.push(line);
-        }
+      if (hasUpcomingPipeRow) {
+        tableBlock.push(line);
       } else {
-        flushTable();
-        if (!isPureNoiseOrSeparator(line) && line.trim() !== '') {
+        flushTableBlock();
+        if (trimmed) {
           result.push(line);
-        } else if (line.trim() === '' && result.length > 0 && result[result.length - 1] !== '') {
-          result.push('');
         }
       }
     } else {
-      if (!isPureNoiseOrSeparator(line) && line.trim() !== '') {
-        result.push(line);
-      } else if (line.trim() === '' && result.length > 0 && result[result.length - 1] !== '') {
-        result.push('');
+      result.push(line);
+    }
+    i++;
+  }
+
+  flushTableBlock();
+
+  const formatted = result.join('\n');
+  return mergeAdjacentMarkdownTables(formatted);
+}
+
+export function formatMarkdownBullets(text: string): string {
+  if (!text) return text;
+
+  const lines = text.split('\n');
+  const resultLines: string[] = [];
+  let inCodeBlock = false;
+
+  for (let line of lines) {
+    const rawTrimmed = line.trim();
+
+    if (rawTrimmed.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      resultLines.push(line);
+      continue;
+    }
+    if (inCodeBlock) {
+      resultLines.push(line);
+      continue;
+    }
+
+    // Never alter table rows
+    if (line.includes('|')) {
+      resultLines.push(line);
+      continue;
+    }
+
+    // Extract blockquote prefix (e.g. "> " or "> > ") if present
+    const bqMatch = line.match(/^(\s*>\s*)*/);
+    const bqPrefix = bqMatch ? bqMatch[0] : '';
+    const content = line.substring(bqPrefix.length);
+
+    if (!content.trim()) {
+      resultLines.push(line);
+      continue;
+    }
+
+    let processedContent = content;
+
+    // Normalize dots, dashes, or bullet characters at start of line:
+    // e.g. ". Dinâmica", ".  Dinâmica", ".\tDinâmica", "• Dinâmica", "▪ Dinâmica", "▸ Dinâmica"
+    if (/^\s*[\.•⁃▪▫▸]\s+/.test(processedContent)) {
+      processedContent = processedContent.replace(/^\s*[\.•⁃▪▫▸]\s+/, '- ');
+    } else if (/^\s*[\*\-]\s{2,}/.test(processedContent)) {
+      processedContent = processedContent.replace(/^\s*[\*\-]\s{2,}/, '- ');
+    }
+
+    // 1. Separate inline numbered list items: e.g. "1. Item um. 2. Item dois. 3. Item três."
+    if (/\b\d+[\.\)]\s+[A-Z*#]/.test(processedContent)) {
+      processedContent = processedContent.replace(/([.!?:]|\*\*)\s+(\d+[\.\)])\s+([A-Z0-9*#])/g, `$1\n${bqPrefix}$2 $3`);
+    }
+
+    // 2. Separate inline asterisks, dashes, or dots used as bullets: e.g. "Texto. * Item 1: ... * Item 2: ..."
+    if (/([.!?:]|\*\*)\s+[\-\*\.•⁃▪▫▸]\s+([A-Z0-9*#][^:\n]{1,40}:|\*\*[^*]+\*\*)/.test(processedContent)) {
+      processedContent = processedContent.replace(/([.!?:]|\*\*)\s+[\-\*\.•⁃▪▫▸]\s+([A-Z0-9*#][^:\n]{1,40}:|\*\*[^*]+\*\*)/g, `$1\n${bqPrefix}- $2`);
+    }
+
+    // 3. Handle bullet characters: •, ⁃, ▪, ▫, ▸
+    if (/[•⁃▪▫▸]/.test(processedContent)) {
+      // Normalize different bullet symbols to '•'
+      const normalized = processedContent.replace(/[⁃▪▫▸]/g, '•');
+
+      // Check if line contains '•'
+      const parts = normalized.split(/\s*•\s+/);
+
+      if (parts.length > 1) {
+        // It's a bullet list if:
+        // - line originally starts with '•'
+        // - or any part contains a colon (:), bold text (** or __), or is longer than 28 characters
+        const startsWithBullet = normalized.trim().startsWith('•');
+        const isBulletList = startsWithBullet || parts.some(p => p.includes(':') || p.includes('**') || p.includes('__') || p.length > 28);
+
+        if (isBulletList) {
+          const listLines: string[] = [];
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i].trim();
+            if (!part) continue;
+
+            if (i === 0 && !startsWithBullet) {
+              // Intro text preceding the first bullet item
+              listLines.push(`${bqPrefix}${part}`);
+            } else {
+              listLines.push(`${bqPrefix}- ${part}`);
+            }
+          }
+          resultLines.push(listLines.join('\n'));
+          continue;
+        }
+      } else if (normalized.trim().startsWith('•')) {
+        // Single bullet item at start of line
+        const cleanedPart = normalized.trim().replace(/^•\s*/, '');
+        resultLines.push(`${bqPrefix}- ${cleanedPart}`);
+        continue;
       }
+    }
+
+    // If processedContent changed via regex replacements
+    if (processedContent !== content) {
+      const splitProcessed = processedContent.split('\n');
+      for (const pLine of splitProcessed) {
+        if (pLine.startsWith(bqPrefix)) {
+          resultLines.push(pLine);
+        } else {
+          resultLines.push(`${bqPrefix}${pLine}`);
+        }
+      }
+    } else {
+      resultLines.push(line);
     }
   }
 
-  flushTable();
-
-  return result.join('\n');
+  return resultLines.join('\n');
 }
 
 export function parseMarkdownAlerts(text: string): string {
   if (!text) return text;
   
   let processed = cleanAndFixMarkdownTables(text);
+  processed = formatMarkdownBullets(processed);
   
   // 1. Unescape AI-escaped markdown links e.g. \[text\](#anchor) or \[text\]\(#anchor\)
   processed = processed
@@ -5437,6 +5628,16 @@ export const markdownComponents: any = {
     }
 
     const codeContent = String(children || '').trim();
+
+    // 0. Pipe Table handling: If code block contains Markdown pipe table structure, render as table!
+    if (codeContent.includes('|') && codeContent.split('\n').some(l => l.trim().startsWith('|'))) {
+      const parsedTable = cleanAndFixMarkdownTables(codeContent);
+      return (
+        <ReactMarkdown components={markdownComponents as any}>
+          {parsedTable}
+        </ReactMarkdown>
+      );
+    }
     
     // 1. Graphviz DOT algorithms
     const isGraphviz = codeContent.includes('digraph') || codeContent.includes('graph {') || codeContent.includes('subgraph');
@@ -5479,7 +5680,7 @@ export const markdownComponents: any = {
     }
 
     // 6a. ECG Waveforms & Vector Drawings
-    const isEcgWaveform = (
+    const isEcgWaveform = !codeContent.includes('|') && (
       codeContent.includes('\\_/') ||
       codeContent.includes('Pseudo r\'') ||
       codeContent.includes('Infradesnivelamento') ||
@@ -5493,7 +5694,7 @@ export const markdownComponents: any = {
     }
 
     // 6b. Spirometry & Pulmonary Function Test (BEFORE Radiology so it takes priority!)
-    const isSpirometry = (
+    const isSpirometry = !codeContent.includes('|') && (
       /espirometria|vef1|fev1|cvf|fvc|tiffeneau|broncodilatador|prova de fun[çc][ãa]o pulmonar/i.test(codeContent) ||
       (className && /espirometria|spirometry/i.test(String(className)))
     ) && (codeContent.includes('VEF1') || codeContent.includes('VEF₁') || codeContent.includes('CVF') || codeContent.includes('Tiffeneau') || /espirometria|broncodilatador/i.test(codeContent));
@@ -5503,7 +5704,7 @@ export const markdownComponents: any = {
     }
 
     // 6c. Urinalysis / EAS / Urina 1
-    const isUrine = (
+    const isUrine = !codeContent.includes('|') && (
       /sum[áa]rio de urina|eas|urina|sedimentoscopia|leucocit[úu]ria|pi[úu]ria|nitrito|esterase|pi[óo]citos|densidade|urol[óo]gic|fita reativa/i.test(codeContent) ||
       (className && /eas|urina|urinalysis|urine/i.test(String(className)))
     ) && (
@@ -5522,15 +5723,19 @@ export const markdownComponents: any = {
     }
 
     // 6d. Arterial Gasometry & Acid-Base Balance
-    const isGasometry = (
-      /gasometria|gaso|pco2|hco3|pao2|fio2|base excess|davenport|dist[úu]rbio acidob[áa]sico|acidose|alcalose/i.test(codeContent) ||
-      (className && /gaso|gasometria|acidbase/i.test(String(className)))
-    ) && (
-      codeContent.includes('pCO2') || 
-      codeContent.includes('PCO2') || 
-      codeContent.includes('HCO3') || 
-      codeContent.includes('PaO2') || 
-      /gasometria|gaso/i.test(codeContent)
+    const isGasometry = !codeContent.includes('|') && (
+      /gasometria|gaso|acidbase/i.test(String(className)) ||
+      /^```\s*(?:gaso|gasometria)/i.test(codeContent) ||
+      (
+        /gasometria|gaso|dist[úu]rbio acidob[áa]sico/i.test(codeContent) &&
+        (codeContent.includes('pH') || codeContent.includes('ph')) &&
+        (codeContent.includes('pCO2') || codeContent.includes('PCO2'))
+      ) ||
+      (
+        (codeContent.includes('pH') || codeContent.includes('ph=')) &&
+        (codeContent.includes('pCO2') || codeContent.includes('PCO2')) &&
+        (codeContent.includes('HCO3') || codeContent.includes('hco3') || codeContent.includes('BE'))
+      )
     );
 
     if (isGasometry) {
@@ -5538,7 +5743,7 @@ export const markdownComponents: any = {
     }
 
     // 6e. Complete Hemogram & Differential Leukocytes
-    const isHemogram = (
+    const isHemogram = !codeContent.includes('|') && (
       /hemograma|hem[áa]cias|hemoglobina|hemat[óo]crito|vcm|hcm|rdw|leuc[óo]citos|bastoes|bast[õo]es|segmentados|linf[óo]citos|plaquetas/i.test(codeContent) ||
       (className && /hemogram|hemo|leucogram/i.test(String(className)))
     ) && (codeContent.includes('Hb') || codeContent.includes('Hemoglobina') || codeContent.includes('Leucócitos') || codeContent.includes('Plaquetas'));
@@ -5548,7 +5753,7 @@ export const markdownComponents: any = {
     }
 
     // 6f. LCR / Liquor Analysis & Meningitis
-    const isLcr = (
+    const isLcr = !codeContent.includes('|') && (
       /liquor|lcr|l[íi]quido cefalorraquidian|proteinorrac|glicorrac|pleocitose|pun[çc][ãa]o lombar|xantocr/i.test(codeContent) ||
       (className && /lcr|liquor/i.test(String(className)))
     ) && (codeContent.includes('Células') || codeContent.includes('Proteína') || codeContent.includes('Glicose') || codeContent.includes('LCR'));
@@ -5558,7 +5763,7 @@ export const markdownComponents: any = {
     }
 
     // 6g. Radiology & Imaging Reports (Raio-X, TC, RM, Ultrassom, Ecocardiograma)
-    const isRadiologyReport = (
+    const isRadiologyReport = !codeContent.includes('|') && (
       /raio-?x|rx|tomografia|tc|resson[aâ]ncia|rm|radiolog|laudo|pacs|ultrassom|usg|ecocardiogram|incid[êe]ncia|par[êe]nquima|mediastino|costofr[êe]nico|pleura|opacidade|condensa[çc][ãa]o|pneumot[óo]rax|derrame|infiltrado/i.test(codeContent) ||
       (className && /rx|raio-?x|laudo|tc|radiology|imaging|radiografia/i.test(String(className)))
     ) && (

@@ -1502,11 +1502,18 @@ export async function importPdfWithAI(fileData: string, mimeType: string, filena
             mimeType,
             promptText: `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite (Foco acadêmico do aluno: ${residencyFocus}). Analise detidamente este documento anexado chamado "${filename}" (que pode ser um arquivo contendo textos, resumos, anotações de aula, diretrizes, esquemas ou diagramas e imagens integradas). 
  
-Escreva um resumo médico extremamente completo, didático, estruturado e formatado em Markdown com base no anexo, aplicando a perspectiva e exigências da residência (${residencyFocus}). Utilize caixas de texto com "DICA DO PRECEPTOR" e "ANALOGIA CLÍNICA". Descreva, explique e integre na medida do possível quaisquer diagramas ou imagens de fluxo clínicos que apareçam no anexo. Utilize notação LaTeX para termos médicos/notações ($ \\rightarrow $, $ \\alpha $, $ \\text{HCO}_3^- $).
+Escreva um RESUMO MÉDICO ADAPTADO de altíssima densidade, exaustivo, altamente didático e rico em detalhes científicos e práticos, formatado em Markdown com base no anexo e nas exigências da residência (${residencyFocus}).
+
+DIRETRIZES DE MÁXIMA DENSIDADE E COMPLETUDE TÉCNICA:
+1. DENSIDADE TÉCNICA E APROFUNDAMENTO MÁXIMO: É proibido gerar resumos curtos, comprimidos ou superficiais. Redija parágrafos densos e explicativos detalhando a fisiopatologia celular/molecular, mecanismos de ação de drogas, posologias exatas (ataque e manutenção em mg/kg ou mg/dia, vias de administração, intervalos, e ajustes em insuficiência renal/hepática).
+2. TABELAS COMPLETAS DE ESCORES E CRITÉRIOS DIAGNÓSTICOS: Apresente obrigatoriamente de forma exaustiva e em tabelas Markdown estruturadas todas as escalas médicas, escores de risco e classificações oficiais (ex: Wells, CURB-65, CHA2DS2-VASc, HAS-BLED, NIHSS, qSOFA, Child-Pugh, MELD, Alvarado, Ranson, Mallampati, Cormack-Lehane, etc.), contendo critérios, pontuação individual, estratificação e condutas por faixa de pontuação.
+3. FLUXOGRAMAS E QUADROS DE DIFERENCIAÇÃO CLÍNICA: Inclua tabelas comparativas para diagnósticos diferenciais e fluxogramas terapêuticos/diagnósticos em passo a passo numerado e estruturado.
+4. CAIXAS DE DESTAQUE E ALERTAS DE PROVA: Abunde o resumo com caixas de alerta no padrão GFM (`> [!IMPORTANT]`, `> [!CAUTION]`, `> [!TIP]`), identificando "DICA DO PRECEPTOR", "PEGADINHA DE BANCA" e "ANALOGIA CLÍNICA".
+5. ILUSTRAÇÕES E DIAGRAMAS DO ANEXO: Descreva, explique e integre na medida do possível quaisquer diagramas ou imagens de fluxo clínicos que apareçam no anexo. Utilize notação LaTeX para termos médicos/notações ($ \rightarrow $, $ \alpha $, $ \text{HCO}_3^- $).
 
 Ao final do documento, crie obrigatoriamente a seção intitulada:
 "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS"
-Liste e descreva detalhadamente (de 3 a 5 fontes) com nome e breves explicações de 1 a 2 frases para cada referência citada (ex: UpToDate, Diretrizes da Sociedade Brasileira, Ministério da Saúde, FEBRASGO, SBP, Harrison's, etc.).`,
+Liste e descreva detalhadamente (de 3 a 5 fontes) com nome e breves explicações de 1 a 2 frases para cada referência citada (ex: UpToDate 2025/2026, Diretrizes da Sociedade Brasileira, Ministério da Saúde, FEBRASGO, SBP, Harrison's, etc.).`,
             preferredProvider: safeLocalStorageGet('user_preferred_ai_provider') || 'auto'
           }
         })
@@ -1963,8 +1970,11 @@ DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO E NÃO REPETIÇÃO:
      f) Confirmação, monitorização, metas terapêuticas e ajustes pós-procedimento;
      g) Manejo imediato de intercorrências e plano de resgate de falhas (ex: algoritmo 'Não Intubo, Não Oxigeno', cricotireoidostomia de urgência, via aérea difícil).
 
-6. EXTENSÃO E DENSIDADE TÉCNICA (SEJA DETALHADO E COMPLETO):
-   - Não faça resumos superficiais ou tópicos genéricos. Traga dados exatos: mecanismos fisiopatológicos celulares/moleculares, dosagens de medicamentos (ataque, manutenção, via, frequência, ajuste renal/hepático), conduta em falha terapêutica, diretrizes brasileiras e internacionais atualizadas (2024/2025).
+6. EXTENSÃO E DENSIDADE TÉCNICA MAXIMIZADA (EXAUSTIVO, RICO E DENSO):
+   - É ESTRITAMENTE PROIBIDO fazer resumos superficiais, esquemas comprimidos ou tópicos genéricos curtos.
+   - Redija parágrafos completos, ricos e encadeados com profundidade de livro-texto (nível Harrison / UpToDate / Tratados de Especialidade).
+   - Traga dados exatos: mecanismos fisiopatológicos celulares/moleculares, farmacologia minuciosa com dosagens de medicamentos (ataque, manutenção, mg/kg, via, intervalos, ajuste renal/hepático), condutas em falha terapêutica, e diretrizes oficiais atualizadas (2025/2026).
+   - Inclua tabelas comparativas ricas, escores completos com pontuações e condutas por faixa de risco, e caixas de destaque clínico (`> [!IMPORTANT]`, `> [!CAUTION]`, `> [!TIP]`).
 
 7. HIGHLIGHTS E ALERTAS (NÃO REPETITIVOS):
    - Se este capítulo for o local ideal para abordar algum dos destaques solicitados na análise prévia (${analysis.clinicalHighlights.join('; ')}), inclua-o AQUI (APENAS SE AINDA NÃO FOI TRATADO EM CAPÍTULOS ANTERIORES).
@@ -2272,7 +2282,7 @@ function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate',
 - Toda comparação, resumo de sinais/sintomas ou classificação DEVE ser formatada EXCLUSIVAMENTE em:
   1. Tabelas Markdown oficiais com cabeçalhos (\`| Parâmetro | Sinal de Pega | Sinal de Posicionamento |\`).
   2. Caixas de destaque GFM (\`> [!IMPORTANT]\`, \`> [!TIP]\`, \`> [!NOTE]\`, \`> [!CAUTION]\`).
-  3. Listas elegantes estruturadas com negrito e setas limpas (\`• **Barreira Intestinal**: ... → ...\`).
+  3. Listas elegantes estruturadas com CADA ITEM EM UMA LINHA SEPARADA PRÓPRIA (\`- **Item**: ... → ...\`). NUNCA agrupe múltiplos itens com marcadores (\`•\` ou \`-\`) na mesma linha de texto.
 \n`;
 
   instructions += `REGRA INVIOLÁVEL ANTI-DUPLICAÇÃO E TABELAS COMPARATIVAS ÚNICAS:

@@ -8,11 +8,13 @@ export interface StudyPlanTopic {
   historicalIncidence: number;
   isPriority: boolean;
   isCompleted: boolean;
+  isPreCompleted?: boolean;
   review24h: boolean;
   review7d: boolean;
   review30d: boolean;
   type: 'estudo' | 'revisao';
   importanceDegree: 'baixo' | 'medio' | 'alto' | 'extremo';
+  isRescheduled?: boolean;
 }
 
 export interface StudyPlanWeek {

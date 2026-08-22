@@ -34,6 +34,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { db, collection, doc, addDoc, updateDoc, getDocs, getDoc, where, query, limit, deleteDoc, writeBatch, onSnapshot } from '../firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useStudyData } from '../../hooks/useStudyData';
 import { accuracyToQuality, calculateNextReview } from '../../utils/srs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -228,7 +229,7 @@ const getOrderedDaysForWeek = (studyDaysArray: string[], startDateStr?: string):
   if (!startDateStr) {
     return standardOrder.filter(isDayInStudyDays);
   }
-  const d = new Date(startDateStr + 'T00:00:00');
+  const d = new Date(startDateStr.includes('T') ? startDateStr : startDateStr + 'T00:00:00');
   if (isNaN(d.getTime())) {
     return standardOrder.filter(isDayInStudyDays);
   }
@@ -239,6 +240,24 @@ const getOrderedDaysForWeek = (studyDaysArray: string[], startDateStr?: string):
     ...MAP_DAY_INDEX_TO_ABBR.slice(0, startIdx)
   ];
   return rotated.filter(isDayInStudyDays);
+};
+
+export const getChronologicalWeekDays = (startDateStr?: string): string[] => {
+  const MAP_DAY_INDEX_TO_ABBR = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const standardOrder = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+
+  if (!startDateStr) return standardOrder;
+  const d = new Date(startDateStr.includes('T') ? startDateStr : startDateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return standardOrder;
+
+  const startAbbr = MAP_DAY_INDEX_TO_ABBR[d.getDay()];
+  const startIdx = MAP_DAY_INDEX_TO_ABBR.indexOf(startAbbr);
+  if (startIdx === -1) return standardOrder;
+
+  return [
+    ...MAP_DAY_INDEX_TO_ABBR.slice(startIdx),
+    ...MAP_DAY_INDEX_TO_ABBR.slice(0, startIdx)
+  ];
 };
 
 export const getTodayWeekAndDay = (schedule: StudySchedule): { weekIndex: number; dayTab: string } => {
@@ -425,11 +444,13 @@ const findMatchingTopic = (title: string, userTopics: any[], manualTopicId?: str
 };
 
 const calculateEstimatedRetention = (topic: any): number | null => {
-  if (!topic || !topic.lastReviewDate) return null;
+  if (!topic) return null;
+  const rawDate = topic.lastReviewDate || topic.createdAt || topic.updatedAt;
+  const lastReview = rawDate ? new Date(rawDate).getTime() : new Date().getTime();
+  if (isNaN(lastReview)) return 85;
 
-  const lastReview = new Date(topic.lastReviewDate).getTime();
   const now = new Date().getTime();
-  const elapsedDays = (now - lastReview) / (1000 * 60 * 60 * 24);
+  const elapsedDays = Math.max(0, (now - lastReview) / (1000 * 60 * 60 * 24));
 
   // interval is in days
   const interval = topic.interval || 1;
@@ -457,6 +478,7 @@ export default function Cronograma({
   setTopics
 }: CronogramaProps) {
   const { profile } = useAuth();
+  const { sessions } = useStudyData();
   
   const [schedule, setSchedule] = useState<StudySchedule | null>(null);
   const [schedules, setSchedules] = useState<StudySchedule[]>([]);
@@ -1065,44 +1087,137 @@ export default function Cronograma({
     return null;
   };
 
-  // Helper to dynamically check if a topic from the study plan is completed in database
-  const isTopicDone = (planTopic: StudyPlanTopic) => {
+  // Helper to check if a topic in the schedule is completed (manually or via MedRevise history)
+  const isTopicDone = (planTopic: StudyPlanTopic, customSchedule?: StudySchedule | null) => {
     if (!planTopic) return false;
     
-    // Explicit completion flags checked in schedule (handle boolean and string-boolean formats)
-    const isCompletedVal = planTopic.isCompleted === true || planTopic.isCompleted === 'true';
-    const isPreCompletedVal = planTopic.isPreCompleted === true || planTopic.isPreCompleted === 'true';
-    if (isCompletedVal || isPreCompletedVal) return true;
+    // If explicitly uncompleted by the user, respect their manual choice!
+    if (planTopic.isExplicitlyUncompleted === true || planTopic.isExplicitlyUncompleted === 'true') {
+      return false;
+    }
 
+    const targetSched = customSchedule || schedule;
+    const schedDateStr = (targetSched as any)?.startDate || targetSched?.createdAt;
+    let schedStartOfDay: number | null = null;
+    if (schedDateStr) {
+      const schedDate = new Date(schedDateStr);
+      if (!isNaN(schedDate.getTime())) {
+        // Get start of creation day (00:00:00.000)
+        schedStartOfDay = new Date(schedDate.getFullYear(), schedDate.getMonth(), schedDate.getDate()).getTime();
+      }
+    }
+
+    // Check if topic was studied in MedRevise database
     const found = getMatchedDbTopic(planTopic.title, planTopic.topicId, planTopic.type);
-
+    
+    // Check if there is a recorded study in MedRevise
+    let studyTime: number | null = null;
     if (found) {
-      // Must ONLY be marked as done if actual study or review activity was recorded in MedRevise.
-      // Existence of the topic record alone in MedRevise does NOT imply it was studied.
       const hasRecordedStudy = !!(
         found.completed === true ||
         found.completed === 'true' ||
         (typeof found.repetitions === 'number' && found.repetitions > 0) ||
         (found.lastReviewDate && typeof found.lastReviewDate === 'string' && found.lastReviewDate.trim().length > 0)
       );
+      if (hasRecordedStudy) {
+        const studyDateRaw = found.lastReviewDate || found.updatedAt || found.completedAt || found.createdAt;
+        if (studyDateRaw) {
+          const studyDate = new Date(studyDateRaw);
+          if (!isNaN(studyDate.getTime())) {
+            studyTime = studyDate.getTime();
+          }
+        }
+      }
+    }
 
-      if (!hasRecordedStudy) {
+    // Determine if the study in MedRevise occurred BEFORE schedule creation date
+    const studyOccurredBeforeSchedule = !!(
+      studyTime !== null && 
+      schedStartOfDay !== null && 
+      studyTime < schedStartOfDay
+    );
+
+    const isCompletedVal = planTopic.isCompleted === true || planTopic.isCompleted === 'true';
+
+    // If studied BEFORE schedule creation:
+    if (studyOccurredBeforeSchedule) {
+      // It is ONLY completed if the user manually toggled it in this schedule after schedule creation date
+      if (isCompletedVal && planTopic.completedAt) {
+        const completedAtTime = new Date(planTopic.completedAt).getTime();
+        if (!isNaN(completedAtTime) && schedStartOfDay !== null && completedAtTime >= schedStartOfDay) {
+          return true;
+        }
+      }
+      // Prior study before schedule creation does NOT auto-complete topic in new schedule
+      return false;
+    }
+
+    // Standard explicit completion flag (manual checkmark in schedule)
+    if (isCompletedVal) return true;
+
+    // Check if studied in MedRevise on or after schedule creation date
+    if (found && studyTime !== null) {
+      if (schedStartOfDay !== null && studyTime < schedStartOfDay) {
         return false;
       }
 
-      // Distinguish Initial Study (estudo) vs Scheduled Revisions (revisao):
-      // For a 'revisao' slot in the schedule:
-      // Initial study (repetitions === 1) completes the 'estudo' session.
-      // A revision session requires at least 2 repetitions (or explicit planTopic.isCompleted).
-      if (planTopic.type === 'revisao') {
-        return (typeof found.repetitions === 'number' && found.repetitions >= 2) || isCompletedVal || isPreCompletedVal;
+      // Find all chronological occurrences of this topic inside the schedule
+      let occurrenceIndex = -1;
+      const occurrences: any[] = [];
+      
+      if (targetSched && Array.isArray(targetSched.weeks)) {
+        const orderedDays = getOrderedDaysForWeek(targetSched.studyDays, (targetSched as any).startDate);
+        targetSched.weeks.forEach(w => {
+          orderedDays.forEach(dayName => {
+            const arr = w.days[dayName];
+            if (Array.isArray(arr)) {
+              arr.forEach(t => {
+                const isMatch = getCleanTopicTitle(t.title) === getCleanTopicTitle(planTopic.title) || 
+                                (t.topicId && planTopic.topicId && t.topicId === planTopic.topicId);
+                if (isMatch) {
+                  occurrences.push(t);
+                }
+              });
+            }
+          });
+        });
+      }
+      
+      occurrenceIndex = occurrences.findIndex(occ => occ === planTopic);
+
+      // If we could not find the exact occurrence referentially, fallback to checking if the card is manually checked
+      if (occurrenceIndex === -1) {
+        return isCompletedVal;
       }
 
-      return true;
+      // Calculate total study sessions for this topic registered in MedRevise since schedule start
+      let sessionsCountAfterSchedule = 0;
+      const hasSessionsData = Array.isArray(sessions);
+      if (hasSessionsData && schedStartOfDay !== null) {
+        sessionsCountAfterSchedule = (sessions as any[]).filter(s => {
+          if (s.topicId !== found.id) return false;
+          if (!s.date) return false;
+          const sessionTime = new Date(s.date).getTime();
+          return !isNaN(sessionTime) && sessionTime >= schedStartOfDay;
+        }).length;
+      }
+
+      // Calculate the cumulative sessions needed to complete all occurrences up to this occurrenceIndex
+      let cumulativeRequired = 0;
+      for (let i = 0; i <= occurrenceIndex; i++) {
+        const occ = occurrences[i];
+        if (isRevisionTopic(occ)) {
+          cumulativeRequired += 2;
+        } else {
+          cumulativeRequired += 1;
+        }
+      }
+
+      // This specific occurrence is completed if the number of actual sessions is enough to cover the cumulative requirement
+      return sessionsCountAfterSchedule >= cumulativeRequired || isCompletedVal;
     }
 
-    // Fallback for custom topics not linked/found in MedRevise catalog
-    return isCompletedVal || isPreCompletedVal;
+    return false;
   };
 
   // Helper to dynamically calculate schedule completion progress based on isTopicDone
@@ -1738,16 +1853,23 @@ export default function Cronograma({
   const uncompletedBacklogList = useMemo(() => {
     if (!schedule) return [];
     const backlog: StudyPlanTopic[] = [];
-    const currentDayIdx = getDayIndexInOrder(activeDayTab);
+    const startDateStr = (schedule as any)?.startDate || schedule?.createdAt;
+    const chronologicalWeekDays = getChronologicalWeekDays(startDateStr);
+
+    // ALWAYS calculate backlog up to TODAY, independent of which tab/week is currently viewed
+    const todayTarget = getTodayWeekAndDay(schedule);
+    const todayWeekIdx = todayTarget.weekIndex;
+    const todayDayTab = todayTarget.dayTab;
+    const todayDayPos = chronologicalWeekDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(todayDayTab));
 
     schedule.weeks.forEach((week, wIdx) => {
-      const isPastWeek = wIdx < activeWeekIndex;
-      const isCurrentWeek = wIdx === activeWeekIndex;
+      const isPastWeek = wIdx < todayWeekIdx;
+      const isCurrentWeek = wIdx === todayWeekIdx;
 
       if (isPastWeek || isCurrentWeek) {
         Object.entries(week.days || {}).forEach(([dayName, topicsArr]) => {
-          const dayIdxInWeek = getDayIndexInOrder(dayName);
-          const isPastDayInCurrentWeek = isCurrentWeek && currentDayIdx !== -1 && dayIdxInWeek !== -1 && dayIdxInWeek < currentDayIdx;
+          const dayPos = chronologicalWeekDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(dayName));
+          const isPastDayInCurrentWeek = isCurrentWeek && todayDayPos !== -1 && dayPos !== -1 && dayPos < todayDayPos;
 
           if ((isPastWeek || isPastDayInCurrentWeek) && Array.isArray(topicsArr)) {
             topicsArr.forEach(t => {
@@ -1770,7 +1892,7 @@ export default function Cronograma({
       }
     });
     return backlog;
-  }, [schedule, activeWeekIndex, activeDayTab, topics, matchedTopicsMap]);
+  }, [schedule, topics, matchedTopicsMap]);
 
   const getRestructurePreview = () => {
     if (!schedule) return [];
@@ -1779,9 +1901,13 @@ export default function Cronograma({
       ? schedule.studyDays
       : ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
 
-    let startIdx = activeStudyDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(activeDayTab));
+    // Start distribution preview from TODAY
+    const todayTarget = getTodayWeekAndDay(schedule);
+    const targetDayTab = todayTarget.dayTab;
+
+    let startIdx = activeStudyDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(targetDayTab));
     if (startIdx < 0) {
-      const activeChronologicalIdx = getDayIndexInOrder(activeDayTab);
+      const activeChronologicalIdx = getDayIndexInOrder(targetDayTab);
       const upcomingStudyDays = activeStudyDays
         .map(d => ({ name: d, idx: getDayIndexInOrder(d) }))
         .sort((a, b) => a.idx - b.idx);
@@ -1982,30 +2108,15 @@ export default function Cronograma({
       const examData = MEDICAL_EXAMS_DB.find(e => e.id === selectedExamId) || MEDICAL_EXAMS_DB[0];
       const generatedWeeks = generatePlan(selectedExamId, modality, studyDays, hoursPerDay, currentSemesterSubjects, examDate, syncStartDate, onlyCurrentSemester);
 
-      // Map generated weeks to pre-mark topics already completed in database
+      // Map generated weeks ensuring topics are initialized cleanly for user study tracking
       const mappedWeeks = generatedWeeks.map(w => {
         const updatedDays = { ...w.days };
         Object.keys(updatedDays).forEach(day => {
           updatedDays[day] = updatedDays[day].map(t => {
-            const titleStr = t?.title || '';
-            const canonicalTitle = t?.type === 'revisao' && titleStr.startsWith('Revisão Ativa + Flashcards: ')
-              ? titleStr.replace('Revisão Ativa + Flashcards: ', '')
-              : titleStr;
-            const found = findMatchingTopic(canonicalTitle, topics);
-            const hasRecordedStudy = found ? !!(
-              found.completed === true ||
-              (typeof found.repetitions === 'number' && found.repetitions > 0) ||
-              (found.lastReviewDate && typeof found.lastReviewDate === 'string' && found.lastReviewDate.trim().length > 0)
-            ) : false;
-
-            const done = t?.type === 'revisao'
-              ? (found ? (typeof found.repetitions === 'number' && found.repetitions >= 2) : false)
-              : hasRecordedStudy;
-
             return {
               ...t,
-              isCompleted: done,
-              isPreCompleted: done
+              isCompleted: false,
+              isPreCompleted: false
             };
           });
         });
@@ -2118,25 +2229,10 @@ export default function Cronograma({
         const updatedDays = { ...w.days };
         Object.keys(updatedDays).forEach(day => {
           updatedDays[day] = updatedDays[day].map(t => {
-            const titleStr = t?.title || '';
-            const canonicalTitle = t?.type === 'revisao' && titleStr.startsWith('Revisão Ativa + Flashcards: ')
-              ? titleStr.replace('Revisão Ativa + Flashcards: ', '')
-              : titleStr;
-            const found = findMatchingTopic(canonicalTitle, topics);
-            const hasRecordedStudy = found ? !!(
-              found.completed === true ||
-              (typeof found.repetitions === 'number' && found.repetitions > 0) ||
-              (found.lastReviewDate && typeof found.lastReviewDate === 'string' && found.lastReviewDate.trim().length > 0)
-            ) : false;
-
-            const done = t?.type === 'revisao'
-              ? (found ? (typeof found.repetitions === 'number' && found.repetitions >= 2) : false)
-              : hasRecordedStudy;
-
             return {
               ...t,
-              isCompleted: done,
-              isPreCompleted: done
+              isCompleted: false,
+              isPreCompleted: false
             };
           });
         });
@@ -2303,7 +2399,20 @@ export default function Cronograma({
     try {
       const updatedWeeks = [...schedule.weeks];
       const targetTopic = updatedWeeks[weekIdx].days[dayName][topicIdx];
-      targetTopic.isCompleted = !targetTopic.isCompleted;
+      
+      // Determine new completed state based on current effective isTopicDone status
+      const currentlyDone = isTopicDone(targetTopic);
+      const newCompleted = !currentlyDone;
+      
+      targetTopic.isCompleted = newCompleted;
+      if (newCompleted) {
+        targetTopic.completedAt = new Date().toISOString();
+        delete targetTopic.isExplicitlyUncompleted;
+      } else {
+        delete targetTopic.completedAt;
+        targetTopic.isPreCompleted = false;
+        targetTopic.isExplicitlyUncompleted = true;
+      }
 
       // Recalculate total progress
       let totalTopicsCount = 0;
@@ -2327,7 +2436,7 @@ export default function Cronograma({
           : targetTopic.title;
 
         showToast(
-          `Tópico "${canonicalTitle}" ${targetTopic.isCompleted ? 'concluído' : 'desmarcado'} no cronograma (Modo Apenas MedInternato).`,
+          `Tópico "${canonicalTitle}" ${newCompleted ? 'concluído' : 'desmarcado'} no cronograma (Modo Apenas MedInternato).`,
           "info"
         );
       } else {
@@ -2346,38 +2455,58 @@ export default function Cronograma({
           // Guarantee topicId is linked in the schedule topic
           targetTopic.topicId = foundTopic.id;
 
-          if (targetTopic.isCompleted) {
+          if (newCompleted) {
             // Calculate realistic estimated time for this topic session
             const dayTopics = updatedWeeks[weekIdx]?.days[dayName] || [];
             const dayTopicsCount = dayTopics.length || 3;
             const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
             const realisticMinutes = Math.max(15, Math.min(45, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
 
-            // Register study session in MedRevise database
-            await addDoc(collection(db, 'users', user.uid, 'studySessions'), {
-              topicId: foundTopic.id,
-              subjectId: foundTopic.subjectId,
-              date: new Date().toISOString(),
-              questionsCount: 0,
-              correctCount: 0,
-              studyTimeMinutes: realisticMinutes,
-              description: targetTopic.type === 'revisao'
-                ? 'Revisão concluída via Cronograma Inteligente (MedInternato)'
-                : 'Estudo concluído via Cronograma Inteligente (MedInternato)'
-            });
+            // Avoid duplicate session creation if there's already a session for this topic today
+            let alreadyHasSessionToday = false;
+            if (Array.isArray(sessions)) {
+              const todayStr = new Date().toISOString().split('T')[0];
+              alreadyHasSessionToday = sessions.some(s => 
+                s.topicId === foundTopic.id && 
+                (s.date || '').startsWith(todayStr)
+              );
+            }
 
-            // Set topic SM-2 parameters for scheduled reviews
-            const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 0;
-            const nextReps = targetTopic.type === 'revisao' ? Math.max(2, currentReps + 1) : Math.max(1, currentReps + 1);
+            if (!alreadyHasSessionToday) {
+              // Register study session in MedRevise database
+              await addDoc(collection(db, 'users', user.uid, 'studySessions'), {
+                topicId: foundTopic.id,
+                subjectId: foundTopic.subjectId,
+                date: new Date().toISOString(),
+                questionsCount: 0,
+                correctCount: 0,
+                studyTimeMinutes: realisticMinutes,
+                description: targetTopic.type === 'revisao'
+                  ? 'Revisão concluída via Cronograma Inteligente (MedInternato)'
+                  : 'Estudo concluído via Cronograma Inteligente (MedInternato)'
+              });
 
-            await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
-              repetitions: nextReps,
-              interval: 1,
-              easinessFactor: 2.5,
-              lastReviewDate: new Date().toISOString(),
-              nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-              completed: true
-            });
+              // Set topic SM-2 parameters for scheduled reviews
+              const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 0;
+              
+              // Only increment repetitions if we're actually progressing the SM-2 repetitions
+              let nextReps = currentReps;
+              if (targetTopic.type === 'revisao') {
+                nextReps = Math.max(2, currentReps + 1);
+              } else {
+                // If it's theory study, it should be at least 1, but we don't increment past 1 just for theory checkoff
+                nextReps = Math.max(1, currentReps === 0 ? 1 : currentReps);
+              }
+
+              await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
+                repetitions: nextReps,
+                interval: 1,
+                easinessFactor: 2.5,
+                lastReviewDate: new Date().toISOString(),
+                nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                completed: true
+              });
+            }
 
             showToast(`Tópico "${canonicalTitle}" concluído e sincronizado ao MedRevise (+${realisticMinutes} min).`, "success");
           } else {
@@ -3715,8 +3844,8 @@ export default function Cronograma({
             if (hasTheoryDone) matchedTheoryCount++;
             return {
               ...t,
-              isCompleted: hasTheoryDone,
-              isPreCompleted: hasTheoryDone
+              isCompleted: false,
+              isPreCompleted: false
             };
           });
         }
@@ -3726,7 +3855,7 @@ export default function Cronograma({
 
     setPreviewSchedule({ ...previewSchedule, weeks: updatedWeeks });
     if (matchedTheoryCount > 0) {
-      showToast(`${matchedTheoryCount} tópicos de teoria anteriores marcados como concluídos! Semanas de revisão e exercícios mantidas ativas.`, "success");
+      showToast(`${matchedTheoryCount} tópicos com histórico no MedRevise sinalizados com o selo de estudo prévio no cronograma!`, "success");
     } else {
       showToast("Nenhum tópico teórico anterior foi encontrado no seu histórico.", "info");
     }
@@ -4391,20 +4520,27 @@ export default function Cronograma({
     try {
       setRestructureSaving(true);
       const updatedWeeks = [...schedule.weeks];
-      const currentDayIdx = getDayIndexInOrder(activeDayTab);
+      const startDateStr = (schedule as any)?.startDate || schedule?.createdAt;
+      const chronologicalWeekDays = getChronologicalWeekDays(startDateStr);
 
-      // Gather ALL uncompleted topics from past weeks AND past days of the current week
+      // ALWAYS calculate atrasos and redistribution starting from TODAY
+      const todayTarget = getTodayWeekAndDay(schedule);
+      const todayWeekIdx = todayTarget.weekIndex;
+      const todayDayTab = todayTarget.dayTab;
+      const todayDayPos = chronologicalWeekDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(todayDayTab));
+
+      // Gather ALL uncompleted topics from past weeks AND past days of the current week relative to TODAY
       const uncompletedBacklog: StudyPlanTopic[] = [];
 
       for (let w = 0; w < updatedWeeks.length; w++) {
         const week = updatedWeeks[w];
-        const isPastWeek = w < activeWeekIndex;
-        const isCurrentWeek = w === activeWeekIndex;
+        const isPastWeek = w < todayWeekIdx;
+        const isCurrentWeek = w === todayWeekIdx;
 
         if (isPastWeek || isCurrentWeek) {
           Object.entries(week.days || {}).forEach(([dayName, topicsArr]) => {
-            const dayIdxInWeek = getDayIndexInOrder(dayName);
-            const isPastDayInCurrentWeek = isCurrentWeek && currentDayIdx !== -1 && dayIdxInWeek !== -1 && dayIdxInWeek < currentDayIdx;
+            const dayPos = chronologicalWeekDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(dayName));
+            const isPastDayInCurrentWeek = isCurrentWeek && todayDayPos !== -1 && dayPos !== -1 && dayPos < todayDayPos;
 
             if ((isPastWeek || isPastDayInCurrentWeek) && Array.isArray(topicsArr)) {
               const remainingTopics: StudyPlanTopic[] = [];
@@ -4436,7 +4572,7 @@ export default function Cronograma({
       }
 
       if (uncompletedBacklog.length === 0) {
-        showToast("Você não possui matérias pendentes/atrasadas anteriores a este dia!", "info");
+        showToast("Você não possui matérias pendentes/atrasadas anteriores ao dia de hoje!", "info");
         setShowRestructureModal(false);
         setRestructureSaving(false);
         return;
@@ -4464,13 +4600,13 @@ export default function Cronograma({
         return (b.historicalIncidence || 0) - (a.historicalIncidence || 0);
       });
 
-      // Generate sequence of the next N study days
+      // Generate sequence of the next N study days starting from TODAY
       const studyDaysSequence: { weekIdx: number; dayName: string }[] = [];
-      let tempW = activeWeekIndex;
-      let startIdx = activeStudyDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(activeDayTab));
+      let tempW = todayWeekIdx;
+      let startIdx = activeStudyDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(todayDayTab));
       
       if (startIdx < 0) {
-        const activeChronologicalIdx = getDayIndexInOrder(activeDayTab);
+        const activeChronologicalIdx = getDayIndexInOrder(todayDayTab);
         const upcomingStudyDays = activeStudyDays
           .map(d => ({ name: d, idx: getDayIndexInOrder(d) }))
           .sort((a, b) => a.idx - b.idx);
@@ -4928,14 +5064,24 @@ export default function Cronograma({
                             <div className="flex-1 space-y-2">
                               {studyDayTopics.map((topic, tIdx) => {
                                 const dbTopic = getMatchedDbTopic(topic.title, topic.topicId, topic.type);
+                                const hasDbStudyList = !!(
+                                  dbTopic && (
+                                    dbTopic.completed === true ||
+                                    dbTopic.completed === 'true' ||
+                                    (typeof dbTopic.repetitions === 'number' && dbTopic.repetitions > 0) ||
+                                    (dbTopic.lastReviewDate && String(dbTopic.lastReviewDate).trim().length > 0)
+                                  )
+                                );
 
                                 return (
                                   <div 
                                     key={tIdx} 
                                     className={`flex items-start justify-between p-2.5 rounded-lg border transition-all ${
-                                      topic.isCompleted 
-                                        ? "bg-stone-50 border-stone-200/50 text-stone-400" 
-                                        : "bg-white border-stone-100 text-stone-800 hover:border-stone-200"
+                                      hasDbStudyList
+                                        ? "bg-indigo-100/80 border-indigo-300/90 border-l-4 border-l-indigo-600 text-stone-800 shadow-xs"
+                                        : isTopicDone(topic) 
+                                          ? "bg-stone-50 border-stone-200/50 text-stone-400" 
+                                          : "bg-white border-stone-100 text-stone-800 hover:border-stone-200"
                                     }`}
                                   >
                                     <div className="flex items-start gap-2.5 min-w-0 flex-1">
@@ -4953,10 +5099,33 @@ export default function Cronograma({
                                           <span className="text-[10px] text-stone-400 font-mono">
                                             {topic.subjectName} • Incidência: {topic.historicalIncidence}%
                                           </span>
+                                          {(() => {
+                                            const hasDbStudy = !!(
+                                              dbTopic && (
+                                                dbTopic.completed === true ||
+                                                dbTopic.completed === 'true' ||
+                                                (typeof dbTopic.repetitions === 'number' && dbTopic.repetitions > 0) ||
+                                                (dbTopic.lastReviewDate && String(dbTopic.lastReviewDate).trim().length > 0)
+                                              )
+                                            );
+                                            if (hasDbStudy && !isTopicDone(topic)) {
+                                              return (
+                                                <span className="bg-indigo-600 text-white border border-indigo-700 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                                                  <BookOpen className="w-2.5 h-2.5 text-white" /> Já Estudado no MedRevise
+                                                </span>
+                                              );
+                                            }
+                                            return null;
+                                          })()}
                                         </div>
 
                                         {/* Forgetting Curve & Accuracy minimalist indicators */}
-                                        {dbTopic && (dbTopic.repetitions > 0 || dbTopic.lastReviewDate) && (
+                                        {dbTopic && (
+                                          dbTopic.completed === true ||
+                                          dbTopic.completed === 'true' ||
+                                          (typeof dbTopic.repetitions === 'number' && dbTopic.repetitions > 0) ||
+                                          (dbTopic.lastReviewDate && String(dbTopic.lastReviewDate).trim().length > 0)
+                                        ) && (
                                           <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                             {(() => {
                                               const retention = calculateEstimatedRetention(dbTopic);
@@ -6027,10 +6196,15 @@ export default function Cronograma({
                   <Button
                     size="xs"
                     onClick={() => setShowRestructureModal(true)}
-                    className="bg-[#D44E3D]/5 hover:bg-[#D44E3D]/10 text-[#D44E3D] border border-[#D44E3D]/10 text-xs font-bold"
+                    className="bg-[#D44E3D]/5 hover:bg-[#D44E3D]/10 text-[#D44E3D] border border-[#D44E3D]/10 text-xs font-bold flex items-center gap-1.5"
                   >
-                    <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                    Recuperar Atraso
+                    <AlertCircle className="w-3.5 h-3.5 text-[#D44E3D]" />
+                    <span>Recuperar Atraso</span>
+                    {uncompletedBacklogList.length > 0 && (
+                      <span className="bg-[#D44E3D] text-white text-[10px] font-mono font-black px-1.5 py-0.5 rounded-full leading-none ml-0.5 shadow-2xs">
+                        {uncompletedBacklogList.length}
+                      </span>
+                    )}
                   </Button>
                   <Button
                     size="xs"
@@ -6263,11 +6437,23 @@ export default function Cronograma({
                                   tIncidence >= 25 ? 'extremo' : tIncidence >= 22 ? 'alto' : tIncidence >= 18 ? 'medio' : 'baixo'
                                 );
 
+                                const dbTopicMatch = getMatchedDbTopic(topic.title, topic.topicId, topic.type);
+                                const hasDbStudy = !!(
+                                  dbTopicMatch && (
+                                    dbTopicMatch.completed === true ||
+                                    dbTopicMatch.completed === 'true' ||
+                                    (typeof dbTopicMatch.repetitions === 'number' && dbTopicMatch.repetitions > 0) ||
+                                    (dbTopicMatch.lastReviewDate && String(dbTopicMatch.lastReviewDate).trim().length > 0)
+                                  )
+                                );
+
                                 let borderLeftClass = "border-l-4 border-l-stone-300";
                                 let importanceBadgeColor = "bg-stone-50 text-stone-600 border-stone-200";
                                 let importanceText = "Secundário";
                                 
-                                if (tImportance === 'extremo') {
+                                if (hasDbStudy) {
+                                  borderLeftClass = "border-l-4 border-l-indigo-600 shadow-xs";
+                                } else if (tImportance === 'extremo') {
                                   borderLeftClass = "border-l-4 border-l-red-500 shadow-xs";
                                   importanceBadgeColor = "bg-red-50 text-red-700 border-red-200 font-bold";
                                   importanceText = "🚨 CRÍTICO";
@@ -6288,12 +6474,14 @@ export default function Cronograma({
                                     key={`sorted-topic-${sortedIdx}-${topic.title}-${tType}`} 
                                     className={`p-5 rounded-2xl border transition-all duration-300 hover:shadow-sm ${borderLeftClass} ${
                                       isTopicDone(topic) 
-                                        ? "bg-stone-50/70 border-stone-200/60 opacity-80" 
-                                        : isRescheduled
-                                          ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400 shadow-3xs"
-                                          : tType === 'revisao'
-                                            ? "bg-purple-50/10 border-purple-150/30 hover:bg-purple-50/20"
-                                            : "bg-white border-[#E2E0D9] hover:border-stone-400"
+                                        ? hasDbStudy ? "bg-indigo-100/70 border-indigo-300/90 text-stone-800" : "bg-stone-50/70 border-stone-200/60 opacity-80" 
+                                        : hasDbStudy
+                                          ? "bg-indigo-100/80 border-indigo-400/90 ring-2 ring-indigo-500/30 hover:border-indigo-600 shadow-xs"
+                                          : isRescheduled
+                                            ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400 shadow-3xs"
+                                            : tType === 'revisao'
+                                              ? "bg-purple-50/10 border-purple-150/30 hover:bg-purple-50/20"
+                                              : "bg-white border-[#E2E0D9] hover:border-stone-400"
                                     }`}
                                   >
                                     <div className="flex items-start justify-between gap-4">
@@ -6328,6 +6516,25 @@ export default function Cronograma({
                                               <RefreshCw className="w-2.5 h-2.5 text-amber-700" /> Atraso Recalculado
                                             </span>
                                           )}
+                                          {(() => {
+                                            const dbTopicMatch = getMatchedDbTopic(topic.title, topic.topicId, topic.type);
+                                            const hasDbStudy = !!(
+                                              dbTopicMatch && (
+                                                dbTopicMatch.completed === true ||
+                                                dbTopicMatch.completed === 'true' ||
+                                                (typeof dbTopicMatch.repetitions === 'number' && dbTopicMatch.repetitions > 0) ||
+                                                (dbTopicMatch.lastReviewDate && String(dbTopicMatch.lastReviewDate).trim().length > 0)
+                                              )
+                                            );
+                                            if (hasDbStudy && !isTopicDone(topic)) {
+                                              return (
+                                                <span className="bg-indigo-600 text-white border border-indigo-700 px-2 py-0.5 rounded-md text-[9px] font-mono font-bold tracking-wider uppercase shadow-xs flex items-center gap-1">
+                                                  <BookOpen className="w-2.5 h-2.5 text-white" /> Já Estudado no MedRevise
+                                                </span>
+                                              );
+                                            }
+                                            return null;
+                                          })()}
                                           <span className="font-bold text-stone-700 uppercase tracking-wide bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200">{topic.subjectName}</span>
                                           <span className="text-stone-300">•</span>
                                           <span className="flex items-center gap-1 font-bold text-[#b45309]">
@@ -6351,10 +6558,18 @@ export default function Cronograma({
                                         {/* Forgetting Curve & MedRevise Integration Row */}
                                         {(() => {
                                           const dbTopic = getMatchedDbTopic(topic.title, topic.topicId, topic.type);
+                                          const hasDbStudy = !!(
+                                            dbTopic && (
+                                              dbTopic.completed === true ||
+                                              dbTopic.completed === 'true' ||
+                                              (typeof dbTopic.repetitions === 'number' && dbTopic.repetitions > 0) ||
+                                              (dbTopic.lastReviewDate && String(dbTopic.lastReviewDate).trim().length > 0)
+                                            )
+                                          );
                                           return (
                                             <div className="mt-2.5 space-y-2">
                                               {/* Retention & Accuracy Minimalist Indicators */}
-                                              {dbTopic && (dbTopic.repetitions > 0 || dbTopic.lastReviewDate) && (
+                                              {dbTopic && hasDbStudy && (
                                                 <div className="flex flex-wrap items-center gap-1.5">
                                                   {(() => {
                                                     const retention = calculateEstimatedRetention(dbTopic);
@@ -6627,11 +6842,23 @@ export default function Cronograma({
                                   tIncidence >= 25 ? 'extremo' : tIncidence >= 22 ? 'alto' : tIncidence >= 18 ? 'medio' : 'baixo'
                                 );
 
+                                const dbTopicMatchGrid = getMatchedDbTopic(topic.title, topic.topicId, topic.type);
+                                const hasDbStudyGrid = !!(
+                                  dbTopicMatchGrid && (
+                                    dbTopicMatchGrid.completed === true ||
+                                    dbTopicMatchGrid.completed === 'true' ||
+                                    (typeof dbTopicMatchGrid.repetitions === 'number' && dbTopicMatchGrid.repetitions > 0) ||
+                                    (dbTopicMatchGrid.lastReviewDate && String(dbTopicMatchGrid.lastReviewDate).trim().length > 0)
+                                  )
+                                );
+
                                 let borderLeftClass = "border-l-4 border-l-stone-300";
                                 let importanceBadgeColor = "bg-stone-50 text-stone-600 border-stone-200";
                                 let importanceText = "Secundário";
                                 
-                                if (tImportance === 'extremo') {
+                                if (hasDbStudyGrid) {
+                                  borderLeftClass = "border-l-4 border-l-indigo-600 shadow-2xs";
+                                } else if (tImportance === 'extremo') {
                                   borderLeftClass = "border-l-4 border-l-red-500 shadow-2xs";
                                   importanceBadgeColor = "bg-red-50 text-red-700 border-red-200 font-bold";
                                   importanceText = "🚨 CRÍTICO";
@@ -6652,12 +6879,14 @@ export default function Cronograma({
                                     key={`sorted-grid-${sortedIdx}-${topic.title}`} 
                                     className={`p-4 rounded-xl border transition-all duration-300 hover:shadow-2xs ${borderLeftClass} ${
                                       isTopicDone(topic) 
-                                        ? "bg-stone-50/70 border-stone-200/60 opacity-80" 
-                                        : isRescheduledGrid
-                                          ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400"
-                                          : tType === 'revisao'
-                                            ? "bg-purple-50/10 border-purple-100/30 hover:bg-purple-50/20"
-                                            : "bg-white border-[#E2E0D9] hover:border-stone-400"
+                                        ? hasDbStudyGrid ? "bg-indigo-100/70 border-indigo-300/90 text-stone-800" : "bg-stone-50/70 border-stone-200/60 opacity-80" 
+                                        : hasDbStudyGrid
+                                          ? "bg-indigo-100/80 border-indigo-400/90 ring-2 ring-indigo-500/30 hover:border-indigo-600 shadow-xs"
+                                          : isRescheduledGrid
+                                            ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400"
+                                            : tType === 'revisao'
+                                              ? "bg-purple-50/10 border-purple-100/30 hover:bg-purple-50/20"
+                                              : "bg-white border-[#E2E0D9] hover:border-stone-400"
                                     }`}
                                   >
                                     <div className="flex items-start justify-between gap-3">
@@ -6692,6 +6921,25 @@ export default function Cronograma({
                                               <RefreshCw className="w-2 h-2 text-amber-700" /> Recalculado
                                             </span>
                                           )}
+                                          {(() => {
+                                            const dbTopicMatch = getMatchedDbTopic(topic.title, topic.topicId, topic.type);
+                                            const hasDbStudy = !!(
+                                              dbTopicMatch && (
+                                                dbTopicMatch.completed === true ||
+                                                dbTopicMatch.completed === 'true' ||
+                                                (typeof dbTopicMatch.repetitions === 'number' && dbTopicMatch.repetitions > 0) ||
+                                                (dbTopicMatch.lastReviewDate && String(dbTopicMatch.lastReviewDate).trim().length > 0)
+                                              )
+                                            );
+                                            if (hasDbStudy && !isTopicDone(topic)) {
+                                              return (
+                                                <span className="bg-indigo-600 text-white border border-indigo-700 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold tracking-wider uppercase shadow-xs flex items-center gap-1">
+                                                  <BookOpen className="w-2 h-2 text-white" /> Já Estudado no MedRevise
+                                                </span>
+                                              );
+                                            }
+                                            return null;
+                                          })()}
                                           <span className="font-bold text-stone-700 uppercase tracking-tight bg-stone-100 px-1 py-0.5 rounded border border-stone-150">{topic.subjectName}</span>
                                           <span className="text-stone-300">•</span>
                                           <span className="font-bold text-[#b45309]">
@@ -6713,7 +6961,12 @@ export default function Cronograma({
                                           return (
                                             <div className="mt-1.5 space-y-1">
                                               {/* Retention & Accuracy Minimalist Indicators */}
-                                              {dbTopic && (dbTopic.repetitions > 0 || dbTopic.lastReviewDate) && (
+                                              {dbTopic && (
+                                                dbTopic.completed === true ||
+                                                dbTopic.completed === 'true' ||
+                                                (typeof dbTopic.repetitions === 'number' && dbTopic.repetitions > 0) ||
+                                                (dbTopic.lastReviewDate && String(dbTopic.lastReviewDate).trim().length > 0)
+                                              ) && (
                                                 <div className="flex flex-wrap items-center gap-1">
                                                   {(() => {
                                                     const retention = calculateEstimatedRetention(dbTopic);
@@ -7414,6 +7667,14 @@ export default function Cronograma({
                                 const done = isTopicDone(topic);
                                 const isRev = topic.type === 'revisao';
                                 const dbTopic = getMatchedDbTopic(topic.title, topic.topicId, topic.type);
+                                const hasDbStudyPreview = !!(
+                                  dbTopic && (
+                                    dbTopic.completed === true ||
+                                    dbTopic.completed === 'true' ||
+                                    (typeof dbTopic.repetitions === 'number' && dbTopic.repetitions > 0) ||
+                                    (dbTopic.lastReviewDate && String(dbTopic.lastReviewDate).trim().length > 0)
+                                  )
+                                );
 
                                 const isRescheduledWeek = !!topic.isRescheduled;
 
@@ -7422,12 +7683,14 @@ export default function Cronograma({
                                     key={tIdx} 
                                     className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border transition-all gap-3 ${
                                       done 
-                                        ? "bg-stone-50 border-stone-200/60 opacity-80" 
-                                        : isRescheduledWeek
-                                          ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400"
-                                          : isRev 
-                                            ? "bg-amber-50/10 border-amber-200/50 hover:border-amber-300"
-                                            : "bg-white border-[#E2E0D9] hover:border-[#D44E3D]"
+                                        ? hasDbStudyPreview ? "bg-indigo-100/70 border-indigo-300/90 border-l-4 border-l-indigo-600 opacity-90" : "bg-stone-50 border-stone-200/60 opacity-80" 
+                                        : hasDbStudyPreview
+                                          ? "bg-indigo-100/80 border-indigo-400/90 border-l-4 border-l-indigo-600 ring-2 ring-indigo-500/30 hover:border-indigo-600 shadow-xs"
+                                          : isRescheduledWeek
+                                            ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400"
+                                            : isRev 
+                                              ? "bg-amber-50/10 border-amber-200/50 hover:border-amber-300"
+                                              : "bg-white border-[#E2E0D9] hover:border-[#D44E3D]"
                                     }`}
                                   >
                                     <div className="space-y-1.5 flex-1 min-w-0 pr-2">
@@ -7449,6 +7712,24 @@ export default function Cronograma({
                                             Incidência: {topic.historicalIncidence}%
                                           </span>
                                         )}
+                                        {(() => {
+                                          const hasDbStudy = !!(
+                                            dbTopic && (
+                                              dbTopic.completed === true ||
+                                              dbTopic.completed === 'true' ||
+                                              (typeof dbTopic.repetitions === 'number' && dbTopic.repetitions > 0) ||
+                                              (dbTopic.lastReviewDate && String(dbTopic.lastReviewDate).trim().length > 0)
+                                            )
+                                          );
+                                          if (hasDbStudy && !done) {
+                                            return (
+                                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase bg-indigo-50 border border-indigo-200 text-indigo-800 flex items-center gap-1">
+                                                <BookOpen className="w-2.5 h-2.5 text-indigo-600" /> Já Estudado no MedRevise
+                                              </span>
+                                            );
+                                          }
+                                          return null;
+                                        })()}
                                         {topic.importanceDegree && (
                                           <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${
                                             topic.importanceDegree === 'extremo' ? 'bg-red-50 text-red-700' :
@@ -7467,7 +7748,12 @@ export default function Cronograma({
                                       <p className="text-[10px] text-stone-500">{topic.subjectName}</p>
 
                                       {/* Forgetting Curve & Accuracy minimalist indicators */}
-                                      {dbTopic && (dbTopic.repetitions > 0 || dbTopic.lastReviewDate) && (
+                                      {dbTopic && (
+                                        dbTopic.completed === true ||
+                                        dbTopic.completed === 'true' ||
+                                        (typeof dbTopic.repetitions === 'number' && dbTopic.repetitions > 0) ||
+                                        (dbTopic.lastReviewDate && String(dbTopic.lastReviewDate).trim().length > 0)
+                                      ) && (
                                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                           {(() => {
                                             const retention = calculateEstimatedRetention(dbTopic);

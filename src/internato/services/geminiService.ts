@@ -2285,11 +2285,10 @@ function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate',
   3. Listas elegantes estruturadas com CADA ITEM EM UMA LINHA SEPARADA PRÓPRIA (\`- **Item**: ... → ...\`). NUNCA agrupe múltiplos itens com marcadores (\`•\` ou \`-\`) na mesma linha de texto.
 \n`;
 
-  instructions += `REGRA INVIOLÁVEL ANTI-DUPLICAÇÃO E TABELAS COMPARATIVAS ÚNICAS:
-- CADA TABELA COMPARATIVA (ex: "Comparação entre Doença X e Doença Y", "Diagnóstico Diferencial", "Classificação de Risco") DEVE APARECER NO MÁXIMO UMA ÚNICA VEZ EM TODO O RESUMO.
-- É TERMINANTEMENTE PROIBIDO REPETIR A MESMA TABELA COMPARATIVA OU O MESMO QUADRO EM MÚLTIPLOS CAPÍTULOS OU SEÇÕES.
-- Se uma comparação entre X e Y ou uma tabela comparativa já foi apresentada anteriormente, NÃO A RECRIE, NÃO FAÇA VARIAÇÕES DELA E NÃO A REPITA. No máximo, faça uma breve menção direta no texto.
-- Toda tabela inserida deve trazer conteúdo inédito e exclusivo daquele trecho do resumo.
+  instructions += `REGRA INVIOLÁVEL DE NÃO REPETIÇÃO ABSOLUTA E DENSIDADE MÁXIMA (PREFERÊNCIA CRUCIAL DO ALUNO):
+- PROIBIÇÃO CRÍTICA DE DUPLICAÇÃO DE ESCALAS, TABELAS E INFORMAÇÕES: É expressamente proibido repetir qualquer tabela, escala (ex: CURB-65, Wells, NIHSS, etc.) ou informação já mencionada. Uma vez detalhado um escore, escala ou protocolo, ele não deve ser apresentado novamente em nenhuma outra seção ou capítulo sob hipótese alguma. Refira-se a ele brevemente no texto se necessário, mas nunca o re-desenhe ou re-liste.
+- DENSIDADE DO CONTEÚDO EXTREMAMENTE ALTA: Aumente ao máximo a densidade científica e clínica de cada frase. Cada parágrafo deve conter informações médicas concretas (fisiopatologia celular, critérios exatos de diagnóstico, doses exatas em mg/kg, fluxo de tratamento sequencial, diretrizes brasileiras atualizadas). É terminantemente proibido incluir termos genéricos, frases de preenchimento ("conforme mencionado", "como vimos", "é de suma importância saber que"), ou transições vazias.
+- ZERO INTRODUÇÕES REPETIDAS: Não crie novas introduções ou visões gerais para sub-tópicos de um mesmo tema. Vá direto aos dados de conduta prática, beira-leito e diferenciação de provas.
 \n`;
 
   instructions += `REGRA DE TABELAS FORA DE CAIXAS DE ALERTA:

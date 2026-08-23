@@ -731,11 +731,16 @@ async function generateMonograph(title: string, area: string, reference?: string
       
       const nextChapterTitle = i < outline.length - 1 ? outline[i + 1] : null;
       const isChapter10 = i === 9 || chapterTitle.toLowerCase().includes('capítulo 10') || chapterTitle.toLowerCase().includes('capitulo 10');
+      const previousSignatures = extractPreviousContentSignatures(fullMonograph);
       
       const chapterPrompt = `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite. Você está escrevendo um TRATADO MÉDICO MAGNUM OPUS, exaustivo, enciclopédico e didaticamente impecável sobre "${title}".
       CAPÍTULO PARA ESCREVER AGORA: "${chapterTitle}".
       
       ${nextChapterTitle ? `CRONOGRAMA DE CAPÍTULOS: O próximo capítulo sequencial após este será exatamente: "${nextChapterTitle}". Se for incluir uma frase de finalização ou sugestão de transição de leitura ao final do capítulo, refira-se obrigatoriamente a este título de forma exata e coincidente: "${nextChapterTitle}". Nunca sugira capítulos sequenciais com nomes diferentes deste.` : "Este é o capítulo final exaustivo da monografia."}
+      
+      ELEMENTOS JÁ GERADOS NOS CAPÍTULOS ANTERIORES (REGRA RÍGIDA ANTI-DUPLICAÇÃO):
+      ${previousSignatures}
+      * É ESTRITAMENTE PROIBIDO REPETIR QUALQUER TABELA, ESCORE OU CAIXA DE DICA LISTADA ACIMA.
       
       EXIGÊNCIA DE COMPLETUDE TOTAL, APROFUNDAMENTO E DIDÁTICA (MANDATÓRIO):
       - DENSIDADE E METRAGEM PEDAGÓGICA (APROFUNDAMENTO SEM REDUNDÂNCIA): Redija um capítulo extremamente denso, rico e substancial (busque entre 800 e 1.200 palavras por capítulo). Aprofunde ao máximo cada subseção com riqueza conceitual, fisiopatologia explicada passo a passo (o porquê de cada alteração), dados farmacológicos completos (mecanismos, posologias exatas, ajustes em insuficiência renal/hepática, efeitos adversos) e condutas práticas de falha terapêutica.
@@ -2106,13 +2111,23 @@ export function deduplicateTablesAndAlerts(content: string): string {
   const lines = contentFixed.split('\n');
   const resultLines: string[] = [];
   
-  const seenAlertSignatures = new Set<string>();
-  const seenTableSignatures = new Set<string>();
+  const seenAlertSignatures = new Map<string, { chapterTitle: string; alertTitle: string }>();
+  const seenTableSignatures = new Map<string, { chapterTitle: string; tableName: string }>();
+
+  let currentChapterTitle = 'Capítulo Anterior';
 
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
     const trimmed = line.trim();
+
+    // Active Chapter/Section Heading Tracking
+    if (/^#+\s+/.test(trimmed)) {
+      const headingText = trimmed.replace(/^#+\s+/, '').trim();
+      if (headingText && !/SUMÁRIO|SUMARIO|ÍNDICE|INDICE/i.test(headingText)) {
+        currentChapterTitle = headingText;
+      }
+    }
 
     // 1. Check for GFM Callout / Alert box start: "> [!IMPORTANT]" or "> [!CAUTION]", etc.
     if (/^>\s*\[!(IMPORTANT|CAUTION|WARNING|TIP|NOTE)\]/i.test(trimmed)) {
@@ -2136,26 +2151,35 @@ export function deduplicateTablesAndAlerts(content: string): string {
         .trim();
 
       if (alertText.length >= 15) {
-        let isDuplicateAlert = false;
-        for (const seenSig of seenAlertSignatures) {
-          if (seenSig === alertText) {
-            isDuplicateAlert = true;
+        let matchedSigKey: string | null = null;
+        for (const [seenSigKey] of seenAlertSignatures.entries()) {
+          if (seenSigKey === alertText) {
+            matchedSigKey = seenSigKey;
             break;
           }
-          if (alertText.length > 30 && seenSig.length > 30) {
-            if (seenSig.includes(alertText) || alertText.includes(seenSig)) {
-              isDuplicateAlert = true;
+          if (alertText.length > 30 && seenSigKey.length > 30) {
+            if (seenSigKey.includes(alertText) || alertText.includes(seenSigKey)) {
+              matchedSigKey = seenSigKey;
               break;
             }
           }
         }
 
-        if (isDuplicateAlert) {
-          // Skip duplicate alert box!
+        if (matchedSigKey) {
+          const firstSeen = seenAlertSignatures.get(matchedSigKey);
+          const origChapter = firstSeen ? firstSeen.chapterTitle : currentChapterTitle;
+          const slug = slugify(origChapter);
+          resultLines.push(`\n*Nota de Estudo: A observação clínica sobre este ponto foi destacada na íntegra no [${origChapter}](#${slug}).*\n`);
           i = j;
           continue;
         } else {
-          seenAlertSignatures.add(alertText);
+          let alertTitle = 'Observação Clínica';
+          const titleLine = alertLines.find(l => l.includes('**'));
+          if (titleLine) {
+            const m = titleLine.match(/\*\*([^*]+)\*\*/);
+            if (m && m[1]) alertTitle = m[1].trim();
+          }
+          seenAlertSignatures.set(alertText, { chapterTitle: currentChapterTitle, alertTitle });
         }
       }
 
@@ -2184,29 +2208,56 @@ export function deduplicateTablesAndAlerts(content: string): string {
           .join('||');
 
         if (normalizedCells.length >= 20) {
-          let isDuplicateTable = false;
-          for (const seenSig of seenTableSignatures) {
-            if (seenSig === normalizedCells) {
-              isDuplicateTable = true;
+          let matchedSigKey: string | null = null;
+          for (const [seenSigKey] of seenTableSignatures.entries()) {
+            if (seenSigKey === normalizedCells) {
+              matchedSigKey = seenSigKey;
               break;
             }
-            if (seenSig.length > 30 && normalizedCells.length > 30) {
-              const sig1Cells = new Set(seenSig.split('||'));
+            if (seenSigKey.length > 30 && normalizedCells.length > 30) {
+              const sig1Cells = new Set(seenSigKey.split('||'));
               const sig2Cells = normalizedCells.split('||');
               const matchCount = sig2Cells.filter(c => sig1Cells.has(c)).length;
               if (matchCount / Math.max(1, sig2Cells.length) >= 0.7) {
-                isDuplicateTable = true;
+                matchedSigKey = seenSigKey;
                 break;
               }
             }
           }
 
-          if (isDuplicateTable) {
-            resultLines.push('\n*(Tabela comparativa / escore oficial apresentado em capítulo anterior)*\n');
+          if (matchedSigKey) {
+            const firstSeen = seenTableSignatures.get(matchedSigKey);
+            const origChapter = firstSeen ? firstSeen.chapterTitle : currentChapterTitle;
+            const tableName = firstSeen ? firstSeen.tableName : 'Classificação / Escore Médico';
+            const slug = slugify(origChapter);
+            resultLines.push(`\n*Nota de Estudo: A Tabela de ${tableName} foi detalhada na íntegra no [${origChapter}](#${slug}).*\n`);
             i = j;
             continue;
           } else {
-            seenTableSignatures.add(normalizedCells);
+            // Infer Table Name from preceding lines or first header row
+            let tableName = '';
+            for (let k = resultLines.length - 1; k >= Math.max(0, resultLines.length - 3); k--) {
+              const pLine = resultLines[k].trim();
+              if (pLine.startsWith('**') && pLine.endsWith('**')) {
+                tableName = pLine.replace(/\*\*/g, '').trim();
+                break;
+              } else if (pLine.startsWith('###') || pLine.startsWith('####')) {
+                tableName = pLine.replace(/^#+\s*/, '').trim();
+                break;
+              }
+            }
+            if (!tableName) {
+              const firstRow = tableLines[0] || '';
+              const cells = firstRow.split('|').map(c => c.trim()).filter(Boolean);
+              if (cells.length > 0) {
+                tableName = cells.slice(0, 2).join(' / ');
+              }
+            }
+            if (!tableName || tableName.length < 3) {
+              tableName = 'Classificação e Escores';
+            }
+
+            seenTableSignatures.set(normalizedCells, { chapterTitle: currentChapterTitle, tableName });
           }
         }
       }

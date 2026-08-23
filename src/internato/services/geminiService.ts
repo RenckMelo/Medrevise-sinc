@@ -155,12 +155,20 @@ async function callGemini(action: 'generateContent' | 'generateJson', prompt: st
   });
 }
 
+function getTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export async function checkUsageLimit(creditsNeeded: number = 1) {
   const currentUser = auth.currentUser;
   if (!currentUser) return; // Allow bypass if not logged in (e.g. during initialization or demo)
 
   const email = (currentUser.email || '').toLowerCase().trim();
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDateString();
   const isSpecialUser = email === 'ysabelleosaraiva@gmail.com' || email === 'yasabelleosaraiva@gmail.com' || email === 'lucas1renck2melo@gmail.com';
 
   const userRef = doc(db, 'users', currentUser.uid);
@@ -201,7 +209,7 @@ export async function getGlobalUsage() {
   if (!currentUser) return { count: 0, limit: 10 };
 
   const email = (currentUser.email || '').toLowerCase().trim();
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDateString();
   const isSpecialUser = email === 'ysabelleosaraiva@gmail.com' || email === 'yasabelleosaraiva@gmail.com' || email === 'lucas1renck2melo@gmail.com';
 
   const userRef = doc(db, 'users', currentUser.uid);
@@ -243,7 +251,6 @@ export async function resetSpecialUsage() {
   const currentUser = auth.currentUser;
   if (!currentUser) return;
   const email = (currentUser.email || '').toLowerCase().trim();
-  const today = new Date().toISOString().split('T')[0];
   const isSpecialUser = email === 'ysabelleosaraiva@gmail.com' || email === 'yasabelleosaraiva@gmail.com' || email === 'lucas1renck2melo@gmail.com';
 
   if (isSpecialUser) {
@@ -263,7 +270,7 @@ export async function recordUsage(credits: number = 1) {
     if (!currentUser) return;
 
     const email = (currentUser.email || '').toLowerCase().trim();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDateString();
 
     // Record in user's personal profile
     const userRef = doc(db, 'users', currentUser.uid);
@@ -276,10 +283,15 @@ export async function recordUsage(credits: number = 1) {
           'aiUsage.count': increment(credits)
         });
       } else {
-        await updateDoc(userRef, {
+        await setDoc(userRef, {
           aiUsage: { date: today, count: credits }
-        });
+        }, { merge: true });
       }
+    } else {
+      await setDoc(userRef, {
+        email: email,
+        aiUsage: { date: today, count: credits }
+      }, { merge: true });
     }
 
     // Also update overall global counter for statistics
@@ -322,7 +334,7 @@ export type ProgressCallback = (data: { current: number; total: number; message:
  * gerados sequencialmente com profundidade máxima, tabelas de escores completas,
  * farmacologia exata, guia de manejo passo a passo e zero repetição.
  */
-async function generateMasterSummary(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate') {
+async function generateMasterSummary(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate', existingChapters?: string[]) {
   const model = "gemini-3.1-flash-lite";
   
   try {
@@ -350,7 +362,12 @@ async function generateMasterSummary(title: string, area: string, reference?: st
     onProgress?.({ current: 1, total: 7, message: "Estruturando ementa de alta densidade (50cr)..." });
 
     // Planejar ementa modular adaptada ao tema (5 a 6 capítulos)
-    const masterOutlinePrompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica.
+    let chapters: string[] = [];
+    if (existingChapters && Array.isArray(existingChapters) && existingChapters.length > 0) {
+      console.log("[Resumo Master] Preservando ementa de capítulos da pré-análise:", existingChapters);
+      chapters = existingChapters;
+    } else {
+      const masterOutlinePrompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica.
 Crie a ementa de capítulos para um RESUMO MASTER EXTENSIVO DE ALTA PERFORMANCE (50 créditos) sobre:
 Título: "${title}"
 Área: "${area}"
@@ -375,14 +392,14 @@ DIRETRIZES DA EMENTA MASTER (5 a 6 CAPÍTULOS):
 
 Retorne APENAS um array JSON de strings com os títulos dos 5 a 6 capítulos numerados. Ex: ["1. Introdução e Fisiopatologia", "2. Quadro Clínico...", ...]`;
 
-    let chapters: string[] = [];
-    try {
-      const outlineRes = await callGemini('generateJson', masterOutlinePrompt, model);
-      if (Array.isArray(outlineRes) && outlineRes.length >= 4) {
-        chapters = outlineRes;
+      try {
+        const outlineRes = await callGemini('generateJson', masterOutlinePrompt, model);
+        if (Array.isArray(outlineRes) && outlineRes.length >= 4) {
+          chapters = outlineRes;
+        }
+      } catch (outlineErr) {
+        console.warn('[Resumo Master] Falha ao obter ementa dinâmica, utilizando ementa padrão estruturada:', outlineErr);
       }
-    } catch (outlineErr) {
-      console.warn('[Resumo Master] Falha ao obter ementa dinâmica, utilizando ementa padrão estruturada:', outlineErr);
     }
 
     if (chapters.length === 0) {
@@ -496,7 +513,8 @@ export async function generateTopicContent(
   depth: GenerationDepth = 'standard',
   onProgress?: ProgressCallback,
   illustrationLevel: string = 'moderate',
-  alertBoxLevel: string = 'moderate'
+  alertBoxLevel: string = 'moderate',
+  existingChapters?: string[]
 ) {
   const creditsMap = {
     standard: 1,
@@ -508,11 +526,11 @@ export async function generateTopicContent(
   const credits = creditsMap[depth] || 1;
   
   if (depth === 'monograph') {
-    return generateMonograph(title, area, reference, userId, onProgress, illustrationLevel, alertBoxLevel);
+    return generateMonograph(title, area, reference, userId, onProgress, illustrationLevel, alertBoxLevel, existingChapters);
   }
 
   if (depth === 'master') {
-    return generateMasterSummary(title, area, reference, userId, onProgress, illustrationLevel, alertBoxLevel);
+    return generateMasterSummary(title, area, reference, userId, onProgress, illustrationLevel, alertBoxLevel, existingChapters);
   }
 
   const { residencyFocus, isCustom } = await getUserFocusSettings(userId);
@@ -656,7 +674,7 @@ function slugify(text: any): string {
 /**
  * MODO MONOGRAFIA (100cr): Geração em múltiplas etapas para alcançar 10-20 páginas de conteúdo.
  */
-async function generateMonograph(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate') {
+async function generateMonograph(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate', existingChapters?: string[]) {
   const model = "gemini-3.1-flash-lite";
   
   try {
@@ -677,8 +695,13 @@ async function generateMonograph(title: string, area: string, reference?: string
     
     onProgress?.({ current: 1, total: 11, message: "Planejando estrutura..." });
     
-    // Etapa 1: Gerar Estrutura Detalhada
-    const outlinePrompt = `Você é um coordenador de curso de medicina e banca examinadora de alta performance. Crie um sumário/outline ACADÊMICO DE EXTREMA EXCELÊNCIA para uma monografia de conclusão de curso completa, extremamente rica e didática sobre "${title}" (${area}).
+    let outline: string[] = [];
+    if (existingChapters && Array.isArray(existingChapters) && existingChapters.length > 0) {
+      console.log("[Monografia] Preservando ementa de capítulos da pré-análise:", existingChapters);
+      outline = existingChapters;
+    } else {
+      // Etapa 1: Gerar Estrutura Detalhada
+      const outlinePrompt = `Você é um coordenador de curso de medicina e banca examinadora de alta performance. Crie um sumário/outline ACADÊMICO DE EXTREMA EXCELÊNCIA para uma monografia de conclusão de curso completa, extremamente rica e didática sobre "${title}" (${area}).
     O sumário deve ter exatamente 10 capítulos numerados, organizados na SEQUÊNCIA DIDÁTICA E ACADÊMICA MAIS EFICAZ, COMPREENSIVA E LOGICAMENTE PROGRESSIVA, focada em exaurir o tema para que o aluno domine todo o espectro do assunto e resolva qualquer questão de prova de residência médica.
     
     ATENÇÃO - DIRETRIZ INVIOLÁVEL PARA OS CAPÍTULOS:
@@ -693,13 +716,14 @@ async function generateMonograph(title: string, area: string, reference?: string
     - Considerações Acadêmicas e Referências Bibliográficas no formato de Vancouver ou ABNT de forma diluída nos capítulos.
 
     Retorne APENAS um array JSON de strings com os títulos de exatamente 10 capítulos, perfeitamente encadeados e sem lacunas temporais ou didáticas. Exemplo de item final: ["...", "Capítulo 10: Roteiro Prático de Consulta, Anamnese Guiada e Manejo Comentado de Beira de Leito"]`;
-    
-    console.log("[Monografia] Solicitando estrutura...");
-    const outline = await callGemini('generateJson', outlinePrompt, model) as string[];
-    
-    if (!Array.isArray(outline) || outline.length === 0) {
-      console.error("[Monografia] Falha na estrutura:", outline);
-      throw new Error("Falha ao gerar estrutura da monografia. Formato inválido.");
+      
+      console.log("[Monografia] Solicitando estrutura...");
+      outline = await callGemini('generateJson', outlinePrompt, model) as string[];
+      
+      if (!Array.isArray(outline) || outline.length === 0) {
+        console.error("[Monografia] Falha na estrutura:", outline);
+        throw new Error("Falha ao gerar estrutura da monografia. Formato inválido.");
+      }
     }
 
     console.log("[Monografia] Estrutura definida:", outline);

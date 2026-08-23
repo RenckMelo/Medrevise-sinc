@@ -3190,7 +3190,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
         if (prog.partialContent) {
           setCurrentContent(sanitizeMarkdown(prog.partialContent));
         }
-      }, targetIllLvl, targetAlertLvl);
+      }, targetIllLvl, targetAlertLvl, analysisResult?.chapters || editedChapters);
       
       if (content) {
         const sanitized = sanitizeMarkdown(content);

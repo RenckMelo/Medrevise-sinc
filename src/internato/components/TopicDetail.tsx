@@ -2929,19 +2929,28 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     if (availableCredits !== undefined) {
       setGlobalQuota(prev => ({
         available: availableCredits,
-        limit: prev?.limit || 120
+        limit: prev?.limit || 10
       }));
     }
   }, [availableCredits]);
 
   useEffect(() => {
     fetchQuota();
-    // Refresh quota every 2 minutes if generating
+
+    const handleCreditsUpdated = () => {
+      fetchQuota();
+    };
+    window.addEventListener('ai-credits-updated', handleCreditsUpdated);
+
+    // Refresh quota every 30 seconds if generating
     let interval: any;
     if (isGenerating) {
-      interval = setInterval(fetchQuota, 120000);
+      interval = setInterval(fetchQuota, 30000);
     }
-    return () => clearInterval(interval);
+    return () => {
+      window.removeEventListener('ai-credits-updated', handleCreditsUpdated);
+      if (interval) clearInterval(interval);
+    };
   }, [isGenerating]);
 
   useEffect(() => {
@@ -8102,7 +8111,7 @@ th { background: #F8F7F4; font-weight: bold; }
             <div className="fixed inset-0 z-[9999] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-4">
               <SummaryGenerationWizard
                 topicTitle={topic.title}
-                availableCredits={availableCredits || 100}
+                availableCredits={availableCredits !== undefined ? availableCredits : (globalQuota?.available ?? 0)}
                 isGenerating={isGenerating}
                 initialAnalysis={analysisResult}
                 onRunAnalysis={async (selectedDepth) => {

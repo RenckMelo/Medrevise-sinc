@@ -1234,6 +1234,73 @@ export default function QuestionModule({
     }
   };
 
+  const handleFinishEarly = async () => {
+    if (questions.length === 0) return;
+
+    const answeredCount = quizMode === 'exam' 
+      ? Object.keys(examAnswers).length 
+      : currentQuizResults.length;
+
+    const confirmMsg = `Deseja encerrar o simulado agora?\n\n` +
+      `Você respondeu ${answeredCount} de ${questions.length} questões.\n` +
+      `O relatório de desempenho será gerado com o seu aproveitamento até este momento.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    if (quizMode === 'exam') {
+      await submitExam();
+    } else {
+      setShowResults(true);
+      setIsActive(false);
+
+      const finalDuration = Math.max(15, seconds);
+      const totalAnsweredSoFar = Math.max(1, currentQuizResults.length);
+      const quizAttempt = {
+        id: Math.random().toString(36).substr(2, 9),
+        userId,
+        subjectIds: selectedSubjectIds.length > 0 ? selectedSubjectIds : [...new Set(questions.map(q => q.subjectId).filter(Boolean) as string[])],
+        topicIds: selectedTopicIds,
+        questions: currentQuizResults,
+        score,
+        totalQuestions: totalAnsweredSoFar,
+        timeSpentSeconds: finalDuration,
+        timestamp: new Date().toISOString(),
+        type: selectedSubjectIds.length > 1 ? 'simulado' : 'individual' as any
+      };
+
+      const studySessionEntry = {
+        id: Math.random().toString(36).substr(2, 9),
+        subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || 'geral',
+        startTime: new Date(Date.now() - finalDuration * 1000).toISOString(),
+        durationSeconds: finalDuration
+      };
+
+      if (onProgressUpdate && userProgress) {
+        onProgressUpdate({
+          totalStudyTimeSeconds: (userProgress.totalStudyTimeSeconds || 0) + finalDuration,
+          quizHistory: [...(userProgress.quizHistory || []), quizAttempt],
+          studySessions: [...(userProgress.studySessions || []), studySessionEntry]
+        });
+      }
+
+      try {
+        await addDoc(collection(db, 'quizAttempts'), quizAttempt);
+        const progressRef = doc(db, 'userProgress', userId);
+        await updateDoc(progressRef, {
+          totalStudyTimeSeconds: increment(finalDuration),
+          quizHistory: arrayUnion(quizAttempt),
+          studySessions: arrayUnion(studySessionEntry)
+        });
+
+        if (questionsSyncMode === 'auto') {
+          await syncQuizResultToMedRevise(questions.slice(0, totalAnsweredSoFar), score, finalDuration, undefined, currentQuizResults);
+        }
+      } catch (err) {
+        console.warn('Firestore write failed on finish early:', err);
+      }
+    }
+  };
+
   const handleExamOptionClick = (idx: number) => {
     setExamAnswers(prev => ({
       ...prev,
@@ -1669,7 +1736,7 @@ export default function QuestionModule({
     }
   };
 
-  const handleStartWithExisting = (countToUse: number) => {
+  const handleStartWithExisting = async (countToUse: number) => {
     // Apply filters to topicPrepQuestions to get the actual list to slice
     let filteredList = [...topicPrepQuestions];
     if (filterUnanswered && userProgress) {
@@ -1683,8 +1750,82 @@ export default function QuestionModule({
       });
     }
 
+    // If the available filtered questions are fewer than the user selected, auto-generate the missing ones!
+    if (filteredList.length < countToUse) {
+      const missingCount = countToUse - filteredList.length;
+      const uniqueTids = Array.from(new Set(selectedTopicIds)).filter(Boolean);
+      
+      if (uniqueTids.length > 0) {
+        setIsGeneratingTopicQuestions(true);
+        setGenerationProgress(10);
+        setGenerationStatus(`Identificado: faltam ${missingCount} questões para atingir a meta de ${countToUse}. Gerando com IA...`);
+
+        const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+        const targetExam = preset ? preset.name : undefined;
+        const allAdded: Question[] = [];
+
+        try {
+          const batchSize = 5;
+          const batchesCount = Math.ceil(missingCount / batchSize);
+
+          for (let b = 0; b < batchesCount; b++) {
+            const currentBatchSize = Math.min(batchSize, missingCount - (b * batchSize));
+            setGenerationStatus(`Gerando lote de questões faltantes: ${b + 1} de ${batchesCount}...`);
+            setGenerationProgress(Math.round(((b + 1) / (batchesCount + 1)) * 80) + 10);
+
+            for (const tid of uniqueTids) {
+              const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
+              const existingTexts = [
+                ...topicPrepQuestions.map(q => q.text),
+                ...allAdded.map(q => q.text)
+              ];
+
+              const newQuestions = await generateQuestions(
+                topicTitle,
+                subjectName,
+                currentBatchSize,
+                existingTexts,
+                userId,
+                targetExam
+              );
+
+              if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
+                for (const qData of newQuestions) {
+                  const docRef = await addDoc(collection(db, 'questions'), {
+                    ...qData,
+                    topicId: topicId,
+                    subjectId: subjectId
+                  });
+                  const qObj = { id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question;
+                  allAdded.push(qObj);
+                  filteredList.push(qObj);
+                }
+                safeLocalStorageRemove(`questions_topic_${topicId}`);
+                if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
+              }
+            }
+          }
+
+          setGenerationProgress(95);
+          setGenerationStatus("Sincronizando novas questões com seu simulado...");
+          await loadSelectedTopicsStats(uniqueTids);
+
+        } catch (err: any) {
+          console.warn('Auto-generation of missing questions failed:', err);
+          alert(`Aviso: não foi possível gerar todas as questões faltantes (${err.message || 'IA offline'}). Iniciando com as disponíveis.`);
+        } finally {
+          setIsGeneratingTopicQuestions(false);
+        }
+      }
+    }
+
     const shuffled = filteredList.sort(() => Math.random() - 0.5);
     const finalSelection = shuffled.slice(0, countToUse);
+
+    if (finalSelection.length === 0) {
+      alert('Nenhuma questão encontrada ou gerada para os filtros selecionados.');
+      return;
+    }
 
     setQuestions(finalSelection);
     setIsActive(true);
@@ -2101,36 +2242,50 @@ export default function QuestionModule({
                           </div>
                         </div>
 
-                        {existingCount > 0 ? (
-                          <div className="space-y-2">
-                            <label className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
-                              Quantas deseja resolver:
-                            </label>
-                            <select 
-                              value={selectedCountFromExisting}
-                              onChange={(e) => setSelectedCountFromExisting(Number(e.target.value))}
-                              className="w-full bg-white border border-[#E2E0D9] rounded-xl px-3 py-2 text-xs font-bold text-[#1A1A1A] outline-none focus:border-primary"
-                            >
-                              {[5, 10, 15, 20].filter(qty => qty <= existingCount).map(qty => (
-                                <option key={`existing-qty-${qty}`} value={qty}>{qty} questões</option>
-                              ))}
-                              <option value={existingCount}>Todas as {existingCount} questões</option>
-                            </select>
-                          </div>
-                        ) : (
-                          <div className="p-3 bg-amber-50/60 border border-amber-200/50 rounded-xl text-center">
-                            <p className="text-[11px] text-amber-700 font-semibold leading-normal">
-                              Nenhuma questão atende aos filtros atuais. Desative-os ou gere mais com a IA ao lado!
-                            </p>
-                          </div>
-                        )}
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
+                            Quantas questões deseja responder:
+                          </label>
+                          <select 
+                            value={selectedCountFromExisting}
+                            onChange={(e) => setSelectedCountFromExisting(Number(e.target.value))}
+                            className="w-full bg-white border border-[#E2E0D9] rounded-xl px-3 py-2.5 text-xs font-bold text-[#1A1A1A] outline-none focus:border-primary cursor-pointer"
+                          >
+                            {[5, 10, 15, 20, 25, 30].map(qty => {
+                              if (qty <= existingCount) {
+                                return <option key={`existing-qty-${qty}`} value={qty}>{qty} questões (todas prontas)</option>;
+                              } else {
+                                const diff = qty - existingCount;
+                                return <option key={`existing-qty-${qty}`} value={qty}>{qty} questões ({existingCount} prontas + {diff} geradas via IA)</option>;
+                              }
+                            })}
+                            {existingCount > 0 && ![5, 10, 15, 20, 25, 30].includes(existingCount) && (
+                              <option value={existingCount}>Todas as {existingCount} questões prontas</option>
+                            )}
+                          </select>
+                        </div>
 
                         <Button 
                           onClick={() => handleStartWithExisting(selectedCountFromExisting)}
-                          disabled={existingCount === 0}
-                          className="w-full bg-stone-900 text-white text-[10px] uppercase tracking-widest font-black h-11 rounded-xl"
+                          disabled={selectedCountFromExisting <= 0}
+                          className={cn(
+                            "w-full text-white text-[10px] uppercase tracking-widest font-black h-12 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-all",
+                            selectedCountFromExisting <= existingCount
+                              ? "bg-stone-900 hover:bg-black"
+                              : "bg-primary hover:bg-primary/95 shadow-primary/20"
+                          )}
                         >
-                          Iniciar com {existingCount > 0 ? selectedCountFromExisting : 0} Existentes
+                          {selectedCountFromExisting <= existingCount ? (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                              Iniciar com {selectedCountFromExisting} Questões
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-4 h-4 text-amber-300" />
+                              Iniciar {selectedCountFromExisting} ({existingCount} prontas + gerar {selectedCountFromExisting - existingCount} com IA)
+                            </>
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -3810,18 +3965,30 @@ export default function QuestionModule({
           </div>
         </div>
         
-        <div className="flex items-center gap-4 w-full sm:w-auto">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <Button 
             variant="outline"
-            className="h-11 border-primary/20 text-primary text-[10px] uppercase font-black tracking-widest px-4 rounded-xl w-full"
+            className="h-11 border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 text-[10px] uppercase font-black tracking-widest px-4 rounded-xl flex items-center gap-2 cursor-pointer shadow-xs"
+            onClick={handleFinishEarly}
+            title="Finalizar agora e ver relatório de desempenho até o momento"
+          >
+            <CheckCircle2 className="w-4 h-4 text-rose-600" />
+            Finalizar Teste Agora
+          </Button>
+
+          <Button 
+            variant="ghost"
+            className="h-11 text-stone-500 hover:text-stone-900 text-[10px] uppercase font-black tracking-widest px-3 rounded-xl cursor-pointer"
             onClick={() => {
-              setSelectedTopicIds([]);
-              setSelectedSubjectIds([]);
-              setQuestions([]);
-              setIsSelecting(true);
+              if (window.confirm('Deseja sair e configurar um novo teste? O progresso não finalizado será descartado.')) {
+                setSelectedTopicIds([]);
+                setSelectedSubjectIds([]);
+                setQuestions([]);
+                setIsSelecting(true);
+              }
             }}
           >
-            Configurar Novo Teste
+            Sair
           </Button>
         </div>
       </div>
@@ -4172,17 +4339,26 @@ export default function QuestionModule({
                     Finalizar Simulado <CheckCircle2 className="w-4.5 h-4.5" />
                   </Button>
                 ) : (
-                  <Button
-                    onClick={() => {
-                      setCurrentIndex(prev => prev + 1);
-                      setSelectedOption(null);
-                      setIsAnswered(false);
-                      setAiExplanation(null);
-                    }}
-                    className="bg-[#1A1A1A] hover:bg-black text-white text-[10px] uppercase font-black tracking-widest px-8 h-12 rounded-xl gap-2 shadow-lg w-full sm:w-auto shrink-0"
-                  >
-                    Próxima Questão <ChevronRight className="w-4 h-4" />
-                  </Button>
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <Button
+                      variant="outline"
+                      onClick={handleFinishEarly}
+                      className="border-rose-200 text-rose-700 bg-rose-50/50 hover:bg-rose-100 text-[10px] uppercase font-black tracking-widest px-4 h-12 rounded-xl cursor-pointer"
+                    >
+                      Encerrar Agora
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setCurrentIndex(prev => prev + 1);
+                        setSelectedOption(null);
+                        setIsAnswered(false);
+                        setAiExplanation(null);
+                      }}
+                      className="bg-[#1A1A1A] hover:bg-black text-white text-[10px] uppercase font-black tracking-widest px-8 h-12 rounded-xl gap-2 shadow-lg w-full sm:w-auto shrink-0 cursor-pointer"
+                    >
+                      Próxima Questão <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
                 )}
               </CardFooter>
             )}

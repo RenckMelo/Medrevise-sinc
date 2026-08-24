@@ -1092,7 +1092,7 @@ export default function Cronograma({
     if (!planTopic) return false;
     
     // If explicitly uncompleted by the user, respect their manual choice!
-    if (planTopic.isExplicitlyUncompleted === true || planTopic.isExplicitlyUncompleted === 'true') {
+    if (Boolean(planTopic.isExplicitlyUncompleted)) {
       return false;
     }
 
@@ -1137,7 +1137,7 @@ export default function Cronograma({
       studyTime < schedStartOfDay
     );
 
-    const isCompletedVal = planTopic.isCompleted === true || planTopic.isCompleted === 'true';
+    const isCompletedVal = Boolean(planTopic.isCompleted);
 
     // If studied BEFORE schedule creation:
     if (studyOccurredBeforeSchedule) {

@@ -1317,55 +1317,7 @@ export default function FlashcardModule({
             </div>
           )}
 
-          {/* MODAL VIEW DEEP DIVE */}
-          {selectedDeepDive && (
-            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
-              <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-stone-200 p-6 sm:p-8 space-y-6">
-                <div className="flex items-start justify-between gap-4 border-b border-stone-200 pb-4">
-                  <div className="space-y-1">
-                    <Badge className="bg-purple-100 text-purple-900 text-[10px] font-bold uppercase tracking-wider">
-                      {selectedDeepDive.topicTitle}
-                    </Badge>
-                    <h2 className="text-2xl font-display font-black text-[#1A1A1A]">
-                      {selectedDeepDive.concept}
-                    </h2>
-                    <p className="text-xs text-stone-500 font-semibold">
-                      Aprofundado em {new Date(selectedDeepDive.createdAt).toLocaleDateString('pt-BR')}
-                    </p>
-                  </div>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedDeepDive(null)}
-                    className="rounded-full h-9 w-9 p-0 text-stone-400 hover:text-stone-900"
-                  >
-                    <X className="w-5 h-5" />
-                  </Button>
-                </div>
-
-                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-2">
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Pergunta do Flashcard</div>
-                  <p className="text-sm font-bold text-stone-900">{selectedDeepDive.front}</p>
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500 pt-2 border-t border-stone-200/60">Resposta do Flashcard</div>
-                  <p className="text-xs font-semibold text-stone-700 italic">{selectedDeepDive.back}</p>
-                </div>
-
-                <div className="prose prose-sm max-w-none text-stone-800 space-y-4 pt-2">
-                  <ReactMarkdown>{selectedDeepDive.expandedAnalysis}</ReactMarkdown>
-                </div>
-
-                <div className="pt-4 border-t border-stone-200 flex justify-end gap-3">
-                  <Button
-                    onClick={() => setSelectedDeepDive(null)}
-                    className="bg-[#1A1A1A] hover:bg-black text-white font-bold text-xs uppercase tracking-wider px-6 h-11 rounded-xl"
-                  >
-                    Fechar
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* MODAL VIEW DEEP DIVE MOVED TO ROOT COMPONENT FOR GLOBAL ACCESSIBILITY */}
         </div>
       )}
 
@@ -1831,77 +1783,80 @@ export default function FlashcardModule({
         </Card>
       )}
 
-      {/* AI COVERAGE POTENTIAL ANALYSIS MODAL */}
+      {/* AI COVERAGE POTENTIAL ANALYSIS MODAL (RESPONSIVE FOR MOBILE & DESKTOP) */}
       {showPotentialModal && potentialAnalysis && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <Card className="max-w-lg w-full bg-white rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl border border-[#E2E0D9] relative animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in">
+          <Card className="max-w-lg w-full bg-white rounded-3xl p-5 sm:p-7 space-y-4 shadow-2xl border border-[#E2E0D9] relative animate-in zoom-in-95 max-h-[90vh] flex flex-col my-auto overflow-hidden">
             <button
               onClick={() => setShowPotentialModal(false)}
-              className="absolute top-5 right-5 p-2 rounded-full hover:bg-slate-100 text-[#8E8A82] transition-colors"
+              className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 text-[#8E8A82] transition-colors z-10"
             >
               <XCircle className="w-5 h-5" />
             </button>
 
-            <div className="space-y-2 text-center">
+            <div className="space-y-1.5 text-center shrink-0 pr-6">
               <Badge className="bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-primary/20">
                 Análise de Cobertura de Conteúdo por IA
               </Badge>
-              <h3 className="text-xl font-display font-black text-[#1A1A1A]">
+              <h3 className="text-lg sm:text-xl font-display font-black text-[#1A1A1A]">
                 Extrator Integral de Flashcards
               </h3>
               <p className="text-xs text-[#8E8A82]">
-                A IA analisou a extensão e a densidade médica deste tema para garantir 100% de cobertura:
+                A IA analisou a extensão médica deste tema para garantir 100% de cobertura:
               </p>
             </div>
 
-            {/* RECOMMENDATION METRICS */}
-            <div className="grid grid-cols-2 gap-3 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
-              <div className="text-center p-3.5 bg-white rounded-xl border border-[#E2E0D9] space-y-1 shadow-2xs">
-                <span className="text-[10px] uppercase font-extrabold text-[#8E8A82] tracking-wider block">Total Recomendado</span>
-                <span className="text-3xl font-display font-black text-primary block">
-                  {potentialAnalysis.estimatedIdealCards}
+            {/* Scrollable Body Container for Mobile Legibility */}
+            <div className="overflow-y-auto space-y-4 pr-1 flex-1 no-scrollbar">
+              {/* RECOMMENDATION METRICS */}
+              <div className="grid grid-cols-2 gap-2.5 bg-[#FBFBFA] p-3.5 rounded-2xl border border-[#E2E0D9]">
+                <div className="text-center p-3 bg-white rounded-xl border border-[#E2E0D9] space-y-0.5 shadow-2xs">
+                  <span className="text-[9px] uppercase font-extrabold text-[#8E8A82] tracking-wider block">Total Recomendado</span>
+                  <span className="text-2xl sm:text-3xl font-display font-black text-primary block">
+                    {potentialAnalysis.estimatedIdealCards}
+                  </span>
+                  <span className="text-[9px] font-bold text-emerald-700 block">Flashcards Médicos</span>
+                </div>
+
+                <div className="text-center p-3 bg-white rounded-xl border border-[#E2E0D9] space-y-0.5 shadow-2xs">
+                  <span className="text-[9px] uppercase font-extrabold text-[#8E8A82] tracking-wider block">Custo em Créditos</span>
+                  <span className="text-2xl sm:text-3xl font-display font-black text-amber-600 block flex items-center justify-center gap-1">
+                    <Zap className="w-4 h-4 text-amber-500 fill-amber-400" />
+                    {potentialAnalysis.creditCost}
+                  </span>
+                  <span className="text-[9px] font-bold text-[#8E8A82] block">Tabela Transparente</span>
+                </div>
+              </div>
+
+              {/* CONCEPTS MAPPED */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#1A1A1A] block">
+                  Eixos Médicos Identificados no Tema:
                 </span>
-                <span className="text-[10px] font-bold text-emerald-700 block">Flashcards Médicos</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {potentialAnalysis.coreMedicalConcepts.map((concept, idx) => (
+                    <Badge key={idx} variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold px-2.5 py-1">
+                      ✓ {concept}
+                    </Badge>
+                  ))}
+                </div>
               </div>
 
-              <div className="text-center p-3.5 bg-white rounded-xl border border-[#E2E0D9] space-y-1 shadow-2xs">
-                <span className="text-[10px] uppercase font-extrabold text-[#8E8A82] tracking-wider block">Custo em Créditos</span>
-                <span className="text-3xl font-display font-black text-amber-600 block flex items-center justify-center gap-1">
-                  <Zap className="w-5 h-5 text-amber-500 fill-amber-400" />
-                  {potentialAnalysis.creditCost}
+              {/* AI SUMMARY */}
+              <div className="p-3.5 bg-primary/5 rounded-2xl border border-primary/20 space-y-1 text-xs text-[#1A1A1A] leading-relaxed">
+                <span className="font-extrabold text-primary block text-[10px] uppercase tracking-wider">
+                  Parecer do Diretor Pedagógico:
                 </span>
-                <span className="text-[10px] font-bold text-[#8E8A82] block">Tabela Transparente</span>
+                <p className="text-[#1A1A1A] font-medium text-xs">{potentialAnalysis.analysisSummary}</p>
               </div>
             </div>
 
-            {/* CONCEPTS MAPPED */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] block">
-                Eixos Médicos Identificados no Tema:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {potentialAnalysis.coreMedicalConcepts.map((concept, idx) => (
-                  <Badge key={idx} variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold px-2.5 py-1">
-                    ✓ {concept}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            {/* AI SUMMARY */}
-            <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20 space-y-1 text-xs text-[#1A1A1A] leading-relaxed">
-              <span className="font-extrabold text-primary block text-[11px] uppercase tracking-wider">
-                Parecer do Diretor Pedagógico:
-              </span>
-              <p className="text-[#1A1A1A] font-medium">{potentialAnalysis.analysisSummary}</p>
-            </div>
-
-            {/* ACTION BUTTONS */}
-            <div className="space-y-2 pt-2">
+            {/* STICKY BOTTOM ACTION BUTTONS */}
+            <div className="space-y-2 pt-3 border-t border-[#E2E0D9] shrink-0 bg-white">
               <Button
                 onClick={() => handleGenerateExtractedCards(potentialAnalysis.estimatedIdealCards, potentialAnalysis.creditCost)}
                 disabled={isGenerating}
-                className="w-full bg-primary hover:bg-primary/90 text-white font-black text-xs uppercase tracking-widest h-12 rounded-xl gap-2 shadow-md"
+                className="w-full bg-primary hover:bg-primary/90 text-white font-black text-xs uppercase tracking-widest h-12 rounded-xl gap-2 shadow-md cursor-pointer"
               >
                 {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                 Extrair Cobertura Completa ({potentialAnalysis.estimatedIdealCards} Cards - {potentialAnalysis.creditCost} Créditos)
@@ -1910,7 +1865,7 @@ export default function FlashcardModule({
               <Button
                 onClick={() => setShowPotentialModal(false)}
                 variant="ghost"
-                className="w-full text-xs font-bold text-[#8E8A82] hover:bg-slate-100 h-9 rounded-lg"
+                className="w-full text-xs font-bold text-[#8E8A82] hover:bg-slate-100 h-9 rounded-lg cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -2324,6 +2279,58 @@ export default function FlashcardModule({
             </Button>
           </div>
         </Card>
+      )}
+
+      {/* GLOBAL MODAL VIEW DEEP DIVE (AVAILABLE ACROSS ALL TABS AND DECK SESSIONS) */}
+      {selectedDeepDive && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-stone-200 p-5 sm:p-8 space-y-4 my-auto overflow-hidden">
+            <div className="flex items-start justify-between gap-4 border-b border-stone-200 pb-3 shrink-0">
+              <div className="space-y-1">
+                <Badge className="bg-purple-100 text-purple-900 text-[10px] font-bold uppercase tracking-wider">
+                  {selectedDeepDive.topicTitle}
+                </Badge>
+                <h2 className="text-xl sm:text-2xl font-display font-black text-[#1A1A1A]">
+                  {selectedDeepDive.concept}
+                </h2>
+                <p className="text-xs text-stone-500 font-semibold">
+                  Aprofundamento Clínico por IA • {new Date(selectedDeepDive.createdAt).toLocaleDateString('pt-BR')}
+                </p>
+              </div>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedDeepDive(null)}
+                className="rounded-full h-9 w-9 p-0 text-stone-400 hover:text-stone-900 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            <div className="overflow-y-auto space-y-4 pr-1 flex-1 no-scrollbar">
+              <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-2">
+                <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Pergunta do Flashcard</div>
+                <p className="text-sm font-bold text-stone-900">{selectedDeepDive.front}</p>
+                <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500 pt-2 border-t border-stone-200/60">Resposta do Flashcard</div>
+                <p className="text-xs font-semibold text-stone-700 italic">{selectedDeepDive.back}</p>
+              </div>
+
+              <div className="prose prose-sm max-w-none text-stone-800 space-y-4 pt-2">
+                <ReactMarkdown>{selectedDeepDive.expandedAnalysis}</ReactMarkdown>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-stone-200 flex justify-end gap-3 shrink-0 bg-white">
+              <Button
+                onClick={() => setSelectedDeepDive(null)}
+                className="bg-[#1A1A1A] hover:bg-black text-white font-bold text-xs uppercase tracking-wider px-6 h-11 rounded-xl cursor-pointer"
+              >
+                Fechar e Voltar ao Estudo
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -9,6 +9,8 @@ export interface StudyPlanTopic {
   isPriority: boolean;
   isCompleted: boolean;
   isPreCompleted?: boolean;
+  completedAt?: string;
+  isExplicitlyUncompleted?: boolean;
   review24h: boolean;
   review7d: boolean;
   review30d: boolean;

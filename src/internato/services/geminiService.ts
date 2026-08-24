@@ -280,18 +280,24 @@ export async function recordUsage(credits: number = 1) {
       const usage = data?.aiUsage;
       if (usage && usage.date === today) {
         await updateDoc(userRef, {
-          'aiUsage.count': increment(credits)
+          'aiUsage.count': increment(credits),
+          [`dailyUsage.${today}`]: increment(credits)
         });
+        console.log(`[Usage] Accumulated +${credits} credits for ${email} on ${today}. Previous count was: ${usage.count}`);
       } else {
         await setDoc(userRef, {
-          aiUsage: { date: today, count: credits }
+          aiUsage: { date: today, count: credits },
+          [`dailyUsage.${today}`]: credits
         }, { merge: true });
+        console.log(`[Usage] Initialized new daily usage with ${credits} credits for ${email} on ${today}.`);
       }
     } else {
       await setDoc(userRef, {
         email: email,
-        aiUsage: { date: today, count: credits }
+        aiUsage: { date: today, count: credits },
+        [`dailyUsage.${today}`]: credits
       }, { merge: true });
+      console.log(`[Usage] Created user profile and initialized ${credits} credits for ${email} on ${today}.`);
     }
 
     // Also update overall global counter for statistics

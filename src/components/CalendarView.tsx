@@ -291,7 +291,7 @@ export default function CalendarView() {
       for (const schedDoc of schedSnap.docs) {
         const schedData = schedDoc.data();
         let modified = false;
-        const updatedWeeks = (schedData.weeks || []).map((week: any) => {
+        const updatedWeeks = (schedData.weeks || []).map((week: any, wIdx: number) => {
           let weekModified = false;
 
           // Check mock exam
@@ -306,13 +306,45 @@ export default function CalendarView() {
           // Check daily topics
           const updatedDays: any = {};
           Object.entries(week.days || {}).forEach(([dayName, dayTopics]: [string, any]) => {
-            updatedDays[dayName] = (dayTopics as any[]).map((topic: any) => {
-              const topicClean = (topic.title || '').toLowerCase().trim();
+            updatedDays[dayName] = (dayTopics as any[]).map((topic: any, tIdx: number) => {
+              const eventWeekIdx = (targetEvent as any).cronogramaWeekIdx;
+              const eventDayAbbr = (targetEvent as any).cronogramaDayAbbr;
+              const eventTopicIdx = (targetEvent as any).cronogramaTopicIdx;
+
+              // If event has exact position metadata, match ONLY exact week, day and topic index
               if (
+                eventWeekIdx !== undefined &&
+                eventDayAbbr !== undefined &&
+                eventTopicIdx !== undefined
+              ) {
+                if (
+                  (schedDoc.id === (targetEvent as any).scheduleId || !(targetEvent as any).scheduleId) &&
+                  wIdx === eventWeekIdx &&
+                  dayName === eventDayAbbr &&
+                  tIdx === eventTopicIdx
+                ) {
+                  weekModified = true;
+                  return { ...topic, isCompleted: newCompleted };
+                }
+                return topic;
+              }
+
+              // Fallback for events without position metadata: check title AND date
+              const topicClean = (topic.title || '').toLowerCase().trim();
+              const isTitleMatch =
                 topicClean === targetCleanLower ||
                 targetEvent.title.toLowerCase().includes(topicClean) ||
-                (topicClean && targetCleanLower.includes(topicClean))
-              ) {
+                (topicClean && targetCleanLower.includes(topicClean));
+
+              if (isTitleMatch) {
+                const eventDateStr = targetEvent.start ? String(targetEvent.start).substring(0, 10) : '';
+                if (eventDateStr && topic.date) {
+                  if (String(topic.date).substring(0, 10) === eventDateStr) {
+                    weekModified = true;
+                    return { ...topic, isCompleted: newCompleted };
+                  }
+                  return topic;
+                }
                 weekModified = true;
                 return { ...topic, isCompleted: newCompleted };
               }
@@ -347,13 +379,13 @@ export default function CalendarView() {
         }
       }
 
-      // 4. Sync to topics collection in Firestore
+      // 4. Sync to topics collection in Firestore (only for standalone topics, not individual cronograma slots)
       const foundTopic = topics.find(t => {
         const tTitle = ((t as any).title || (t as any).name || '').toLowerCase().trim();
         return tTitle === targetCleanLower || (tTitle && targetCleanLower.includes(tTitle));
       });
 
-      if (foundTopic) {
+      if (foundTopic && !(targetEvent as any).isCronograma) {
         await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
           completed: newCompleted
         });

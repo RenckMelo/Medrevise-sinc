@@ -1319,16 +1319,19 @@ export default function QuestionModule({
       
       for (const q of questions) {
         const chosenIdx = answersToUse[q.id];
-        const isCorrect = chosenIdx !== undefined && chosenIdx === q.correctOptionIndex;
+        // Skip questions that were not answered when finishing early or submitting exam
+        if (chosenIdx === undefined) continue;
+
+        const isCorrect = chosenIdx === q.correctOptionIndex;
         if (isCorrect) finalScore++;
         
         const attempt: QuestionAttempt = {
           questionId: q.id,
-          selectedOption: chosenIdx !== undefined ? String.fromCharCode(65 + chosenIdx) : '-',
+          selectedOption: String.fromCharCode(65 + chosenIdx),
           correctOption: String.fromCharCode(65 + q.correctOptionIndex),
           isCorrect,
           timestamp: new Date().toISOString(),
-          timeSpentSeconds: Math.round(seconds / questions.length),
+          timeSpentSeconds: Math.round(seconds / Math.max(1, Object.keys(answersToUse).length)),
           subjectId: q.subjectId || '',
           content: q.text,
           options: q.options.reduce((acc: any, opt, idx) => {
@@ -1358,7 +1361,7 @@ export default function QuestionModule({
         topicIds: selectedTopicIds,
         questions: quizResults,
         score: finalScore,
-        totalQuestions: questions.length,
+        totalQuestions: quizResults.length,
         timeSpentSeconds: finalExamDuration,
         timestamp: new Date().toISOString(),
         type: 'simulado' as any
@@ -1375,9 +1378,9 @@ export default function QuestionModule({
       updates.quizHistory = arrayUnion(quizAttempt);
       updates.studySessions = arrayUnion(studySessionEntry);
       
-      questions.forEach(q => {
-        if (q.subjectId) {
-          updates[`stats.subjectQuestions.${q.subjectId}`] = increment(1);
+      quizResults.forEach(r => {
+        if (r.subjectId) {
+          updates[`stats.subjectQuestions.${r.subjectId}`] = increment(1);
         }
       });
 
@@ -1390,9 +1393,9 @@ export default function QuestionModule({
         const localCorrect = Array.from(new Set([...(userProgress.correctQuestionIds || []), ...correctIds]));
         const localStats = { ...(userProgress.stats || {}) };
         const subQ = { ...(localStats.subjectQuestions || {}) };
-        questions.forEach(q => {
-          if (q.subjectId) {
-            subQ[q.subjectId] = (subQ[q.subjectId] || 0) + 1;
+        quizResults.forEach(r => {
+          if (r.subjectId) {
+            subQ[r.subjectId] = (subQ[r.subjectId] || 0) + 1;
           }
         });
         localStats.subjectQuestions = subQ;
@@ -1407,6 +1410,9 @@ export default function QuestionModule({
           stats: localStats
         });
       }
+
+      setCurrentQuizResults(quizResults);
+      setScore(finalScore);
       
       try {
         await addDoc(collection(db, 'quizAttempts'), quizAttempt);
@@ -3690,38 +3696,55 @@ export default function QuestionModule({
         </div>
 
         <CardContent className="p-12 space-y-12">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            <div className="text-center space-y-2 p-6 bg-[#FBFBFA] rounded-3xl">
-              <p className="text-4xl font-display font-black text-primary">{Math.round((score / questions.length) * 100)}%</p>
-              <p className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82]">Precisão</p>
-            </div>
-            <div className="text-center space-y-2 p-6 bg-[#FBFBFA] rounded-3xl">
-              <p className="text-4xl font-display font-black text-emerald-700">{score}</p>
-              <p className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82]">Acertos</p>
-            </div>
-            <div className="text-center space-y-2 p-6 bg-[#FBFBFA] rounded-3xl">
-              <p className="text-4xl font-display font-black text-rose-700">{questions.length - score}</p>
-              <p className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82]">Erros</p>
-            </div>
-            <div className="text-center space-y-2 p-6 bg-[#FBFBFA] rounded-3xl">
-              <p className="text-4xl font-display font-black text-[#1A1A1A]">{formatTime(seconds)}</p>
-              <p className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82]">Tempo Total</p>
-            </div>
-          </div>
+          {(() => {
+            const evaluatedCount = currentQuizResults.length > 0 ? currentQuizResults.length : questions.length;
+            const accuracyPct = evaluatedCount > 0 ? Math.round((score / evaluatedCount) * 100) : 0;
+            const wrongCount = Math.max(0, evaluatedCount - score);
+            const unattemptedCount = Math.max(0, questions.length - evaluatedCount);
 
-          <div className="space-y-4">
-            <div className="flex justify-between text-[11px] uppercase tracking-widest font-black text-[#1A1A1A]">
-              <span>Progresso no Teste</span>
-              <span>{Math.round((score / questions.length) * 100)}%</span>
-            </div>
-            <div className="h-4 bg-[#F0EEE9] rounded-full overflow-hidden">
-              <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: `${(score / questions.length) * 100}%` }}
-                className="h-full bg-primary"
-              />
-            </div>
-          </div>
+            return (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+                  <div className="text-center space-y-2 p-6 bg-[#FBFBFA] rounded-3xl">
+                    <p className="text-4xl font-display font-black text-primary">{accuracyPct}%</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82]">Precisão</p>
+                  </div>
+                  <div className="text-center space-y-2 p-6 bg-[#FBFBFA] rounded-3xl">
+                    <p className="text-4xl font-display font-black text-emerald-700">{score}</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82]">Acertos</p>
+                  </div>
+                  <div className="text-center space-y-2 p-6 bg-[#FBFBFA] rounded-3xl">
+                    <p className="text-4xl font-display font-black text-rose-700">{wrongCount}</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82]">Erros</p>
+                  </div>
+                  <div className="text-center space-y-2 p-6 bg-[#FBFBFA] rounded-3xl">
+                    <p className="text-4xl font-display font-black text-[#1A1A1A]">{formatTime(seconds)}</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82]">Tempo Total</p>
+                  </div>
+                </div>
+
+                {unattemptedCount > 0 && (
+                  <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl text-xs text-amber-900 font-medium">
+                    📋 <strong>Encerrado antecipadamente:</strong> {evaluatedCount} de {questions.length} questões foram respondidas. As {unattemptedCount} questões não feitas foram desconsideradas e não contam como erro.
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <div className="flex justify-between text-[11px] uppercase tracking-widest font-black text-[#1A1A1A]">
+                    <span>Aproveitamento nas Respondidas</span>
+                    <span>{accuracyPct}%</span>
+                  </div>
+                  <div className="h-4 bg-[#F0EEE9] rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${accuracyPct}%` }}
+                      className="h-full bg-primary"
+                    />
+                  </div>
+                </div>
+              </>
+            );
+          })()}
 
           {/* MedRevise Auto-Registration Card */}
           <div className="bg-[#FAF8F5] border-2 border-primary/20 rounded-3xl p-6 sm:p-8 space-y-6">
@@ -3780,7 +3803,7 @@ export default function QuestionModule({
                     Métricas de Desempenho
                   </label>
                   <div className="p-3 bg-white rounded-xl border border-[#E2E0D9] text-xs font-bold text-[#1A1A1A]">
-                    {score} de {questions.length} acertos ({Math.round((score / questions.length) * 100)}%)
+                    {score} de {currentQuizResults.length > 0 ? currentQuizResults.length : questions.length} acertos ({currentQuizResults.length > 0 ? Math.round((score / currentQuizResults.length) * 100) : Math.round((score / questions.length) * 100)}%)
                   </div>
                 </div>
 
@@ -3846,15 +3869,16 @@ export default function QuestionModule({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[...new Set(questions.map(q => q.subjectId))].filter(Boolean).map(sid => {
                   const subject = subjects.find(s => s.id === sid);
-                  const subjectQuestions = questions.filter(q => q.subjectId === sid);
-                  const subjectScore = currentQuizResults.filter(r => r.subjectId === sid && r.isCorrect).length;
-                  const percentage = Math.round((subjectScore / subjectQuestions.length) * 100);
+                  const subjectAnswered = currentQuizResults.filter(r => r.subjectId === sid);
+                  const subjectTotal = subjectAnswered.length > 0 ? subjectAnswered.length : questions.filter(q => q.subjectId === sid).length;
+                  const subjectScore = subjectAnswered.filter(r => r.isCorrect).length;
+                  const percentage = subjectTotal > 0 ? Math.round((subjectScore / subjectTotal) * 100) : 0;
                   
                   return (
                     <div key={sid} className="p-4 bg-[#F9F7F2] rounded-2xl flex justify-between items-center">
                       <div>
                         <div className="text-[10px] uppercase font-bold text-[#8E8A82] mb-1">{subject?.name || 'Geral'}</div>
-                        <div className="text-sm font-bold">{subjectScore} / {subjectQuestions.length} corretas</div>
+                        <div className="text-sm font-bold">{subjectScore} / {subjectTotal} corretas</div>
                       </div>
                       <div className="text-right">
                         <div className={cn(

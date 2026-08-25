@@ -2570,9 +2570,25 @@ export default function Cronograma({
         const updatePromises = calSnap.docs
           .filter(docSnap => {
             const data = docSnap.data();
+            if (data.scheduleId && schedule.id && data.scheduleId !== schedule.id) return false;
+
+            // Match exact position metadata if present
+            if (data.cronogramaWeekIdx !== undefined && data.cronogramaDayAbbr !== undefined && data.cronogramaTopicIdx !== undefined) {
+              return data.cronogramaWeekIdx === weekIdx && data.cronogramaDayAbbr === dayName && data.cronogramaTopicIdx === topicIdx;
+            }
+
+            // Fallback for events without position metadata: match title AND date
             const cronoTitle = (data.cronogramaTopicTitle || '').toLowerCase().trim();
             const evtTitle = (data.title || '').toLowerCase().trim();
-            return cronoTitle === targetCleanTitle || evtTitle.includes(targetCleanTitle) || targetCleanTitle.includes(cronoTitle);
+            const titleMatches = cronoTitle === targetCleanTitle || evtTitle.includes(targetCleanTitle) || targetCleanTitle.includes(cronoTitle);
+
+            if (!titleMatches) return false;
+
+            if (data.start && targetTopic.date) {
+              return String(data.start).substring(0, 10) === String(targetTopic.date).substring(0, 10);
+            }
+
+            return false;
           })
           .map(docSnap => updateDoc(doc(db, 'users', user.uid, 'calendarEvents', docSnap.id), {
             completed: targetTopic.isCompleted
@@ -10096,99 +10112,6 @@ export default function Cronograma({
               </div>
             </div>
 
-            <p className="text-xs text-stone-600 leading-relaxed">
-              Deseja que este estudo crie automaticamente o semestre <strong>"CRONOGRAMA"</strong> e a matÃ©ria <strong>"{pendingStudyArgs.scheduleTopic?.subjectName || 'Geral'}"</strong> no seu MedRevise?
-            </p>
-
-            <div className="p-3 bg-[#FAF9F5] border border-stone-200/80 rounded-2xl text-[11px] text-stone-600 space-y-1">
-              <p>â€¢ <strong>Sincronizar:</strong> MatÃ©ria e tÃ³pico sÃ£o salvos no MedRevise para acompanhamento lÃ¡.</p>
-              <p>â€¢ <strong>Manter no MedInternato:</strong> O planejamento fica 100% contido aqui. VocÃª poderÃ¡ criar matÃ©rias manualmente no MedRevise se quiser.</p>
-            </div>
-
-            <div className="space-y-2 pt-1">
-              <button
-                onClick={() => {
-                  if (rememberSyncChoice) updateSyncMode('sync');
-                  setSyncConfirmModalOpen(false);
-                  handleContinueStudy(pendingStudyArgs.scheduleTopic, pendingStudyArgs.targetView, 'sync');
-                }}
-                className="w-full bg-[#1A1A1A] hover:bg-black text-white font-bold text-xs py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-              >
-                <Check className="w-4 h-4 text-emerald-400" />
-                <span>Sim, criar matÃ©ria no MedRevise</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  if (rememberSyncChoice) updateSyncMode('internato_only');
-                  setSyncConfirmModalOpen(false);
-                  handleContinueStudy(pendingStudyArgs.scheduleTopic, pendingStudyArgs.targetView, 'internato_only');
-                }}
-                className="w-full bg-stone-100 hover:bg-stone-200 text-[#1A1A1A] font-bold text-xs py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer border border-stone-200"
-              >
-                <span>NÃ£o, manter apenas no MedInternato</span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2 border-t border-stone-100">
-              <input
-                type="checkbox"
-                id="rememberSync"
-                checked={rememberSyncChoice}
-                onChange={(e) => setRememberSyncChoice(e.target.checked)}
-                className="rounded border-stone-300 text-[#D44E3D] focus:ring-[#D44E3D] cursor-pointer"
-              />
-              <label htmlFor="rememberSync" className="text-[11px] font-medium text-stone-600 cursor-pointer select-none">
-                Lembrar minha decisÃ£o para os prÃ³ximos tÃ³picos
-              </label>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SCHEDULE PLANNER WIZARD MODAL */}
-      <AnimatePresence>
-        {showPlannerWizard && (
-          <SchedulePlannerWizard
-            onGenerateSchedule={handleWizardGenerateSchedule}
-            onCancel={() => setShowPlannerWizard(false)}
-            availableCredits={availableCredits}
-            isGenerating={generating}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* CUSTOM ANIMATED TOAST */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-white border border-[#E2E0D9] shadow-2xl p-4 rounded-xl flex items-start gap-3"
-          >
-            {toast.type === 'success' ? (
-              <span className="p-1 bg-emerald-500/10 text-emerald-600 rounded-lg shrink-0">
-                <CheckCircle2 className="w-5 h-5" />
-              </span>
-            ) : toast.type === 'error' ? (
-              <span className="p-1 bg-red-500/10 text-red-600 rounded-lg shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </span>
-            ) : (
-              <span className="p-1 bg-blue-500/10 text-blue-600 rounded-lg shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </span>
-            )}
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-[#1A1A1A] font-mono uppercase tracking-wider">
-                {toast.type === 'success' ? 'Sucesso' : toast.type === 'error' ? 'Erro' : 'Aviso'}
-              </p>
-              <p className="text-xs text-stone-600 leading-normal">{toast.message}</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+            <p classNaxœÌXÙn7}ÏW\(hd-^‚Æ•’œ°ìÀr QP3Wc9!9¶Å@%íSûšOğŸôKz9ZgF^‚ AãxDq¸ÜåÜÃC‡X/XYod ù4VIôU* \<‚0(<‚Ô¿üÀàcŒ€Æ&8PàkÀb«Bf¹ÏB”ôNÁh„=•š§'Ç'/OF¡VuMšxó·æl9t¡t¶ti‡qCLÉøCbg*âş‹’‰{Ğ·Ç´|şÅ—¨™(^¯,,	1t08ÅKnğEÊ›Z9:x”î	ø%ø‚ã­"ozïıãÃÆáóÃ½sè) }ÌÂ¶]©”®€V±0ğ¶GbÔ÷Õj4:ÏØDÌGoìUs¡­EÿşñçÂÿ.—>5ø'¦÷—uæaB°7_)äáÍ_ô`âRçğÂYˆ˜fÀ|FL“œ(7_J‰ßwîİa”?=[í•kKfÕŠ'	&		ÓUû”s¨V*?¯¤åö1æ%x«ü› R¬›/$L/m¨%c&¦XINÿiºA7µV¦İ“µyˆ·!²ëâÜ‹-¥#Ó dSpÿ¢>ÙØ„úLr x64a:ì¡î¥ß*îã&ÄQÀ,ºùºQ4Ô*nş²fƒ6™¨dŸëF3qB8ßè3apíŒ!“À¦‹«Œ1)†»+crï-Ó´o9^mÁ­Ö]_çºV¢zåõc!¦åPm¸ŸsªKÔûÔÕÌ¿˜BıjÈ)Ÿ}²×ë)Àœh¢1S4òv•â
+E3i¸åJzŒïMçcÁ±±¼?°ˆÒêÇÚ(íEŠ'fÈuE{2ög3O¹o‘M¹µCúMÌ¤Ô…Şn¥R€òšé-I•neÀœÂ/•‰–…]yŠ»xù¼„WRŒÿ¿È¼ßÎ‡btJ¸DIKŒ.ØzFÏÿH¬Şr€< ¹	¦‰ë·qºµ“™,Kß‡¾tïılš÷sêqëöÜ›vˆÂg].£ØæÜ²ãˆöğ]UöÔ(BxP/¬"<?"™‹A}’/„<V¨¦µ¤¢Â¤ªõ§¹y8ƒei¶øæ¨›a$ƒ%ÎZ»»í–Ã™›}íäÕ²3¬{9ª	ÖCCŠC¥3±Y5jU‚$ 1àq˜•#Y*EAŠÊ“ô:—A€#ÚJ;Öã¤' @Ÿ'Ú#Ñ$>"}óuÄCjÍ¤‰É0±~-oíH}¥DÌZ“òSè6m·ŞµáõQãø¸}
+ï^ıÖ8mAç¤Õ8‚§åyÖjÉ‰©ñµ&õ*}\.>1Cuõš¤ŒDıÎI­ <Ukº3KJy äK¤7qgcë“)7Ngß^gf7Ù$æ<ïx8kÔŒ„ÓÙ%ãOb`M©µ¦>Éö¤Çs33„ XŸíÕQ+x[ìV+çÂ·’ƒæ›îÙIÇ¯:³vÎNİ³‡ÅŞ*fl.Ş¡r[¢¤§­—D½Œ¢4EúÛñ>T¶€{ôa|&:JÏ÷²G›îŸšXM&.çU³“pÄíš­¶ïŞj•5ù(aâÜĞ{š†–>?y{¢ï‘wå™–ÇÕT4¥‡÷ÛÛíJëùù\à¸›E”>“VÈÙeÙ„›wVY$]lÓ˜—ëB½^'-û>S„©,$™pçHú6Tu¶ÎEÒİ{ª•´pr”27OÈpb»/Ì•X“k_àvúß#A¶·F­;Ù6a²>¡ÖJ‹GT-)oÜ÷oğ¤!PÛ3Rr ğû\y¨Å=cÊä¤ã[mFÿ;,NÃÿ¶{Øº«nî¨"Õ•Ña*:q¡ö]Iùî(½âT,k\¼êÅnìšªxzŠmj¹Å©zUÌj€µ×èu~İò'©tÈDá`fhH±^ßvå]íXräÃø:µ©êëGÿ  ÿÿ æk9µ

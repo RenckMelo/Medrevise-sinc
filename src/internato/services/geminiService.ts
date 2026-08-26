@@ -5,6 +5,26 @@ import { cleanAndFixMarkdownTables } from '../utils/markdownUtils';
 
 export const AI_LIMIT_PER_DAY = 3000; // Shared admin pool is 3000, other plans have custom limits
 
+export function sanitizeTopicTitle(title: any, fallback: string = 'Tópico de Estudo'): string {
+  if (title === null || title === undefined) return fallback;
+  if (typeof title === 'string') {
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === 'undefined' || trimmed === 'null' || trimmed.toLowerCase() === 'undefined') {
+      return fallback;
+    }
+    return trimmed;
+  }
+  if (typeof title === 'object') {
+    const raw = title.title || title.topicTitle || title.name || title.topicName || title.topic || title.titulo;
+    return sanitizeTopicTitle(raw, fallback);
+  }
+  const str = String(title).trim();
+  if (!str || str === 'undefined' || str === 'null' || str.toLowerCase() === 'undefined') {
+    return fallback;
+  }
+  return str;
+}
+
 async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 4, initialDelay: number = 2000): Promise<T> {
   let lastError: any;
   for (let i = 0; i < maxRetries; i++) { 
@@ -346,8 +366,8 @@ export type ProgressCallback = (data: { current: number; total: number; message:
  * farmacologia exata, guia de manejo passo a passo e zero repetição.
  */
 async function generateMasterSummary(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate', existingChapters?: string[]) {
-  const safeTitle = (title || 'Tópico de Estudo').toString().trim();
-  const safeArea = (area || 'Clínica Médica').toString().trim();
+  const safeTitle = sanitizeTopicTitle(title, 'Tópico de Estudo');
+  const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
   const model = "gemini-3.1-flash-lite";
   
   try {
@@ -529,8 +549,8 @@ export async function generateTopicContent(
   alertBoxLevel: string = 'moderate',
   existingChapters?: string[]
 ) {
-  const safeTitle = (title || 'Tópico de Estudo').toString().trim();
-  const safeArea = (area || 'Clínica Médica').toString().trim();
+  const safeTitle = sanitizeTopicTitle(title, 'Tópico de Estudo');
+  const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
   const creditsMap = {
     standard: 1,
     deep: 5,
@@ -690,8 +710,8 @@ function slugify(text: any): string {
  * MODO MONOGRAFIA (100cr): Geração em múltiplas etapas para alcançar 10-20 páginas de conteúdo.
  */
 async function generateMonograph(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate', existingChapters?: string[]) {
-  const safeTitle = (title || 'Tópico de Estudo').toString().trim();
-  const safeArea = (area || 'Clínica Médica').toString().trim();
+  const safeTitle = sanitizeTopicTitle(title, 'Tópico de Estudo');
+  const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
   const model = "gemini-3.1-flash-lite";
   
   try {
@@ -1134,6 +1154,7 @@ export async function resumeFailedSummaryContent(
 }
 
 export async function deepenTopicSection(topicTitle: string, currentContent: string, sectionTitle: string, userId?: string, customPrompt?: string) {
+  const safeTopicTitle = sanitizeTopicTitle(topicTitle, 'Tópico de Estudo');
   try {
     await checkUsageLimit();
     
@@ -1145,7 +1166,7 @@ export async function deepenTopicSection(topicTitle: string, currentContent: str
     const promptText = `Você é o COORDENADOR-PRECEPTOR de um Internato Médico de Elite.
 Você está realizando uma mentoria clínica hiper-personalizada de alta complexidade para esclarecer e aprofundar uma dúvida de um aluno de alto rendimento.
 
-TÓPICO PRINCIPAL DE DISCUSSÃO: "${topicTitle}"
+TÓPICO PRINCIPAL DE DISCUSSÃO: "${safeTopicTitle}"
 
 MATÉRIA / CONCEITO ATUAL DA DISCUSSÃO NO RESUMO:
 ---
@@ -1182,6 +1203,8 @@ export async function generateQuestions(
   userId?: string,
   targetExam?: string
 ) {
+  const safeTopicTitle = sanitizeTopicTitle(topicTitle, 'Tópico de Estudo');
+  const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
   await checkUsageLimit();
 
   const chunkSize = Math.min(count, 2); // Generate 2 questions at a time to strictly guarantee complete, unabridged clinical vignettes and full options without model summarization
@@ -1678,8 +1701,8 @@ export interface SuggestedExtraChapter {
  * justificativa de profundidade, capítulos sugeridos e destaques essenciais do tema.
  */
 export async function analyzeSummaryNeeds(title: string, area: string, depth: GenerationDepth = 'custom_analyzed') {
-  const safeTitle = (title || 'Tópico de Estudo').toString().trim();
-  const safeArea = (area || 'Clínica Médica').toString().trim();
+  const safeTitle = sanitizeTopicTitle(title, 'Tópico de Estudo');
+  const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
   const depthText = {
     standard: "Padrão (escopo focado de 3 a 5 capítulos curtos, objetivos e práticos)",
     deep: "Avançado (escopo aprofundado de 5 a 6 capítulos detalhados)",
@@ -1859,8 +1882,8 @@ export async function generateCustomAnalyzedSummary(
   depth: GenerationDepth = 'custom_analyzed'
 ) {
   try {
-    const safeTitle = (title || 'Tópico de Estudo').toString().trim();
-    const safeArea = (area || 'Clínica Médica').toString().trim();
+    const safeTitle = sanitizeTopicTitle(title, 'Tópico de Estudo');
+    const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
     let chapters = [...(analysis?.chapters || [])];
     
     // Se já houver conteúdo existente, verifica se o sumário contém os capítulos originais planejados

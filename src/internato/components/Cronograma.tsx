@@ -559,6 +559,44 @@ export default function Cronograma({
     });
   };
 
+  const extractTopicTitleFromScheduleItem = (item: any): string => {
+    if (!item) return 'TÃ³pico de Estudo';
+    if (typeof item === 'string') {
+      const s = item.trim();
+      return (s && s !== 'undefined' && s !== 'null' && s.toLowerCase() !== 'undefined') ? s : 'TÃ³pico de Estudo';
+    }
+    
+    const raw = item.title ||
+                item.topicTitle ||
+                item.name ||
+                item.topicName ||
+                item.topic ||
+                item.titulo ||
+                (typeof item.scheduleTopic === 'string' ? item.scheduleTopic : '') ||
+                '';
+                
+    let str = String(raw || '').trim();
+    if (!str || str === 'undefined' || str === 'null' || str.toLowerCase() === 'undefined') {
+      if (item.scheduleTopic && typeof item.scheduleTopic === 'object') {
+        return extractTopicTitleFromScheduleItem(item.scheduleTopic);
+      }
+      return 'TÃ³pico de Estudo';
+    }
+    return str;
+  };
+
+  const getCleanScheduleTopicTitle = (item: any): string => {
+    const full = extractTopicTitleFromScheduleItem(item);
+    const cleaned = full
+      .replace(/^RevisÃ£o Ativa \+ Flashcards: /, '')
+      .replace(/^âš¡ \[QUESTÃ•ES AVANÃ‡ADAS\] /, '')
+      .replace(/^ğŸ”„ \[REVISÃƒO DE REFORÃ‡O\] /, '')
+      .replace(/^ğŸ”„ \[.*?\] /, '')
+      .replace(/^âš¡ \[.*?\] /, '')
+      .trim();
+    return (cleaned && cleaned !== 'undefined' && cleaned !== 'null' && cleaned.toLowerCase() !== 'undefined') ? cleaned : 'TÃ³pico de Estudo';
+  };
+
   const handleContinueStudy = async (
     scheduleTopic: any, 
     targetView: 'topicDetail' | 'questions' | 'flashcards' = 'topicDetail',
@@ -574,29 +612,26 @@ export default function Cronograma({
       return;
     }
 
-    setStudyingTopicTitle(scheduleTopic.title);
+    const rawTitle = extractTopicTitleFromScheduleItem(scheduleTopic);
+    const cleanTitle = getCleanScheduleTopicTitle(scheduleTopic);
+
+    setStudyingTopicTitle(cleanTitle);
 
     try {
-      const cleanTitle = (scheduleTopic?.title || '')
-        .replace(/^RevisÃ£o Ativa \+ Flashcards: /, '')
-        .replace(/^âš¡ \[QUESTÃ•ES AVANÃ‡ADAS\] /, '')
-        .replace(/^ğŸ”„ \[REVISÃƒO DE REFORÃ‡O\] /, '')
-        .trim();
-
-      const topicIdToTry = scheduleTopic.topicId || scheduleTopic.linkedTopicId || scheduleTopic.id;
+      const topicIdToTry = scheduleTopic?.topicId || scheduleTopic?.linkedTopicId || scheduleTopic?.id;
 
       let targetSubject: any;
       let targetTopic: any;
 
       // 1. Fast path: check in-memory cache and topics list using O(1) cache map and findMatchingTopic
-      const matchedFromCache = getMatchedDbTopic(scheduleTopic.title, topicIdToTry, scheduleTopic.type);
+      const matchedFromCache = getMatchedDbTopic(rawTitle, topicIdToTry, scheduleTopic?.type) || getMatchedDbTopic(cleanTitle, topicIdToTry, scheduleTopic?.type);
       const matchedInMemory = matchedFromCache || findMatchingTopic(cleanTitle, topics || [], topicIdToTry) || matchTopicForSchedule(cleanTitle, topics || []);
 
       if (matchedInMemory) {
-        targetTopic = matchedInMemory;
+        targetTopic = { ...matchedInMemory, title: matchedInMemory.title || cleanTitle };
         targetSubject = (subjects || []).find(s => s.id === matchedInMemory.subjectId) || {
           id: matchedInMemory.subjectId,
-          name: scheduleTopic.subjectName || 'Geral',
+          name: scheduleTopic?.subjectName || 'Geral',
           semesterId: matchedInMemory.semesterId || 'cronograma_local',
           icon: 'BookOpen',
           color: 'bg-blue-100 text-[#0066cc]'
@@ -10079,41 +10114,5 @@ export default function Cronograma({
               {/* Footer with remove link option */}
               {linkingTopic.currentLinkedId && (
                 <div className="p-4 bg-stone-50 border-t border-stone-150 flex justify-end">
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => handleLinkTopic(linkingTopic.weekIdx, linkingTopic.dayName, linkingTopic.topicIdx, null)}
-                    className="text-xs text-rose-600 hover:bg-rose-50"
-                  >
-                    Remover VÃ­nculo Atual
-                  </Button>
-                </div>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* MedRevise Export Confirmation Modal */}
-      {syncConfirmModalOpen && pendingStudyArgs && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white border border-[#E2E0D9] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-[#D44E3D] shrink-0">
-                <ArrowLeftRight className="w-5 h-5 text-[#D44E3D]" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-base text-[#1A1A1A] font-display">
-                  Exportar para o MedRevise?
-                </h3>
-                <p className="text-[11px] text-stone-500 font-medium">
-                  SincronizaÃ§Ã£o do Planejamento
-                </p>
-              </div>
-            </div>
-
-    xœÜ•İNÛ0ÇïyŠ£rA+‘–µ°M¬íÄ`Hc›`ÚB“kŸ&mÙN?@<Ï í	úb;I[Ö&èW‹ÔÚ9±Ï‡ÿ?Û ó§k+æıg–b¯p¢‰‡¢õÁhŒ^€B&¤#‡ŠMPÔú;°öœ¡ÇŸFRóL1Ğ‡LÔ"„Ù£•Ü 3à1ëLìĞ{ÚÀŠKI`™cÀbÔ‚<¸Ü6û<Y6ûÅ£.°1%ïŠ\r•GXÄz¿–S·eû;ëÅ¨V‹*œ€˜úˆ£è f6jÏœ7.²FF¢W•Š»RÛ,”Œ ajÉ1OßÌ¤Vù^|AÑ»w˜b:@w5Õü41’ãCe°Ñ§	Ó1öîëØ€^Ÿ/\VæÕ±˜‹14ÎUO+E£CHèçL¦
-'Ğ-´îÖ…ô×»g‡‡;g704<óÇ.WÿÉX®«UYÒLoÁÕĞè¥(d–VVàUêHêTê„‘ÊÜ(j5`İìq"Sêğ}9z+ß/ñPÈ_fBÈÑjš±“ò¿ˆbyB!¢“Ğ®ğ!TH%ës’éĞ«™,(©±
-éª$¿%YUï+ äêUDYÁæ–#°¾WªY0?ŒVÓ½Æ»¾¸Ñ> !â¡–¶iyE;fzB¦M³"¦ÑCéR
-ÄÔšW2åqcšñµä¸®3¥6&¦…Bò¤Î°˜PÏ³kzXd
-¿:-ö‹Œh—8Ş‡-ª}x†ı!%KúF	°Ó¨İ<Zî‰h¢Ö·E{¹-æ¯oè51#tÇƒxa::(Ë\Åù„Öˆ=_Q¡vÔ¶œ½ Ezÿ;;ÿªñåˆY9 ÿâq½;xÛÁ6ŞÌ}ŒºoÀ'L˜qäÓç¡¹¢+Õ]\y«·åVğt[t¾­šJ†µ×Åµñd£µzØù  ÿÿ ªÙEÈ
+                  <Buxœl‘ÍJÄ0€ï}ŠĞËnÁşxXmü¹"öb2¶CÓÉ’ÌÖªìSù¾˜İ
+krÉ7ßLf³¥HV/Jâ*®ë9:? Š}Zº3¨Úêsˆj+IÚÀ#R»³{Tk3êé’½´z8¨–ïO²ƒåÓ>É«Ur>­Œôş”ZÅ§tzQ¢±=¸«]Îè¥À¦SpğâÕÀ ¡ó©bp¢–ûô<Û„†İ»¸ß#©ƒ‘Nì¾¿Æ®mÀ+óÛ¿ğ¿F™kì—x1q™w–ÑR¶P¹sV™ßv’áÙRğëÌzr£   ÿÿ ¤‡ˆ	

@@ -23,7 +23,7 @@ interface SummaryGenerationWizardProps {
 }
 
 export default function SummaryGenerationWizard({
-  topicTitle,
+  topicTitle: rawTopicTitle,
   onGenerate,
   onCancel,
   isGenerating,
@@ -31,6 +31,7 @@ export default function SummaryGenerationWizard({
   initialAnalysis,
   onRunAnalysis
 }: SummaryGenerationWizardProps) {
+  const topicTitle = (rawTopicTitle && rawTopicTitle !== 'undefined' && rawTopicTitle !== 'null' && rawTopicTitle.toLowerCase() !== 'undefined') ? rawTopicTitle.trim() : 'Tópico de Estudo';
   const [step, setStep] = useState<number>(1);
   const [depth, setDepth] = useState<string>('standard');
   const [illustrationLevel, setIllustrationLevel] = useState<'minimum' | 'moderate' | 'maximum'>('moderate');

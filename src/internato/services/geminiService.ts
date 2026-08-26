@@ -5,6 +5,7 @@ import { cleanAndFixMarkdownTables } from '../utils/markdownUtils';
 
 export const AI_LIMIT_PER_DAY = 3000; // Shared admin pool is 3000, other plans have custom limits
 
+// Sanitiza e valida o título do tópico para prevenir erros 'undefined' em análises e resumos
 export function sanitizeTopicTitle(title: any, fallback: string = 'Tópico de Estudo'): string {
   if (title === null || title === undefined) return fallback;
   if (typeof title === 'string') {

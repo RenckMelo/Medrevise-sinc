@@ -1,3 +1,4 @@
+// MedRevise Core Application - Updated
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, db, signInWithPopup, signOut, doc, updateDoc, signInAnonymously } from './firebase';
 import InternatoApp from './internato/InternatoApp';

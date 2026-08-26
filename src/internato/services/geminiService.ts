@@ -195,7 +195,9 @@ export async function checkUsageLimit(creditsNeeded: number = 1) {
     }
 
     const usage = userData?.aiUsage;
-    const currentCount = (usage && usage.date === today) ? (usage.count || 0) : 0;
+    const todayUsageCount = (usage && usage.date === today) ? (usage.count || 0) : 0;
+    const dailyUsageCount = userData?.dailyUsage?.[today] || 0;
+    const currentCount = Math.max(todayUsageCount, dailyUsageCount);
     const available = Math.max(0, limit - currentCount);
 
     if (creditsNeeded > available) {
@@ -236,13 +238,14 @@ export async function getGlobalUsage() {
     }
 
     const usage = userData?.aiUsage;
-    if (usage && usage.date === today) {
-      return {
-        count: Math.min(limit, usage.count || 0),
-        limit: limit
-      };
-    }
-    return { count: 0, limit: limit };
+    const todayUsageCount = (usage && usage.date === today) ? (usage.count || 0) : 0;
+    const dailyUsageCount = userData?.dailyUsage?.[today] || 0;
+    const currentCount = Math.max(todayUsageCount, dailyUsageCount);
+
+    return {
+      count: Math.min(limit, currentCount),
+      limit: limit
+    };
   }
   return { count: 0, limit: isSpecialUser ? 1000 : 10 };
 }
@@ -278,6 +281,7 @@ export async function recordUsage(credits: number = 1) {
     if (snap.exists()) {
       const data = snap.data();
       const usage = data?.aiUsage;
+      const existingDaily = data?.dailyUsage?.[today] || 0;
       if (usage && usage.date === today) {
         await updateDoc(userRef, {
           'aiUsage.count': increment(credits),
@@ -285,11 +289,12 @@ export async function recordUsage(credits: number = 1) {
         });
         console.log(`[Usage] Accumulated +${credits} credits for ${email} on ${today}. Previous count was: ${usage.count}`);
       } else {
+        const newCount = existingDaily + credits;
         await setDoc(userRef, {
-          aiUsage: { date: today, count: credits },
-          [`dailyUsage.${today}`]: credits
+          aiUsage: { date: today, count: newCount },
+          [`dailyUsage.${today}`]: newCount
         }, { merge: true });
-        console.log(`[Usage] Initialized new daily usage with ${credits} credits for ${email} on ${today}.`);
+        console.log(`[Usage] Initialized new daily usage with ${newCount} credits for ${email} on ${today}.`);
       }
     } else {
       await setDoc(userRef, {
@@ -341,6 +346,8 @@ export type ProgressCallback = (data: { current: number; total: number; message:
  * farmacologia exata, guia de manejo passo a passo e zero repetição.
  */
 async function generateMasterSummary(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate', existingChapters?: string[]) {
+  const safeTitle = (title || 'Tópico de Estudo').toString().trim();
+  const safeArea = (area || 'Clínica Médica').toString().trim();
   const model = "gemini-3.1-flash-lite";
   
   try {
@@ -427,7 +434,7 @@ Retorne APENAS um array JSON de strings com os títulos dos 5 a 6 capítulos num
     }
 
     const totalChapters = chapters.length;
-    let fullContent = `# ${title.toUpperCase()}\n\n*Resumo Extensivo Master (50cr) - Método Preceptor IA de Alta Performance*\n\n---\n\n## SUMÁRIO DE NAVEGAÇÃO\n\n`;
+    let fullContent = `# ${safeTitle.toUpperCase()}\n\n*Resumo Extensivo Master (50cr) - Método Preceptor IA de Alta Performance*\n\n---\n\n## SUMÁRIO DE NAVEGAÇÃO\n\n`;
 
     chapters.forEach((chapter) => {
       const slug = slugify(chapter);
@@ -522,6 +529,8 @@ export async function generateTopicContent(
   alertBoxLevel: string = 'moderate',
   existingChapters?: string[]
 ) {
+  const safeTitle = (title || 'Tópico de Estudo').toString().trim();
+  const safeArea = (area || 'Clínica Médica').toString().trim();
   const creditsMap = {
     standard: 1,
     deep: 5,
@@ -532,11 +541,11 @@ export async function generateTopicContent(
   const credits = creditsMap[depth] || 1;
   
   if (depth === 'monograph') {
-    return generateMonograph(title, area, reference, userId, onProgress, illustrationLevel, alertBoxLevel, existingChapters);
+    return generateMonograph(safeTitle, safeArea, reference, userId, onProgress, illustrationLevel, alertBoxLevel, existingChapters);
   }
 
   if (depth === 'master') {
-    return generateMasterSummary(title, area, reference, userId, onProgress, illustrationLevel, alertBoxLevel, existingChapters);
+    return generateMasterSummary(safeTitle, safeArea, reference, userId, onProgress, illustrationLevel, alertBoxLevel, existingChapters);
   }
 
   const { residencyFocus, isCustom } = await getUserFocusSettings(userId);
@@ -622,7 +631,7 @@ export async function generateTopicContent(
   SUA PRINCIPAL MISSÃO: DIRECIONAMENTO ADEQUADO AO CUSTO EM CRÉDITOS
   ${depthScopeInstruction}
 
-  TAREFA: CRIE UM RESUMO MÉDICO PROPORCIONAL AO CUSTO (${credits} CRÉDITO(S)) para o tópico: "${title}" (${area}).
+  TAREFA: CRIE UM RESUMO MÉDICO PROPORCIONAL AO CUSTO (${credits} CRÉDITO(S)) para o tópico: "${safeTitle}" (${safeArea}).
 
   DIRETRIZ DE SUMÁRIO INTERATIVO (MANDATÓRIO):
   - No início do seu texto, logo após o cabeçalho/título inicial, você DEVE gerar uma seção intitulada "## SUMÁRIO DE NAVEGAÇÃO".
@@ -681,6 +690,8 @@ function slugify(text: any): string {
  * MODO MONOGRAFIA (100cr): Geração em múltiplas etapas para alcançar 10-20 páginas de conteúdo.
  */
 async function generateMonograph(title: string, area: string, reference?: string, userId?: string, onProgress?: ProgressCallback, illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate', existingChapters?: string[]) {
+  const safeTitle = (title || 'Tópico de Estudo').toString().trim();
+  const safeArea = (area || 'Clínica Médica').toString().trim();
   const model = "gemini-3.1-flash-lite";
   
   try {
@@ -735,7 +746,7 @@ async function generateMonograph(title: string, area: string, reference?: string
     console.log("[Monografia] Estrutura definida:", outline);
     onProgress?.({ current: 2, total: 11, message: `Estrutura pronta: ${outline.length} capítulos.` });
 
-    let fullMonograph = `# ${title.toUpperCase()}\n\n*Tratado Médico Especializado - Gerado por Preceptor IA*\n\n---\n\n## SUMÁRIO\n\n`;
+    let fullMonograph = `# ${safeTitle.toUpperCase()}\n\n*Tratado Médico Especializado - Gerado por Preceptor IA*\n\n---\n\n## SUMÁRIO\n\n`;
     outline.forEach((chapter, idx) => {
       const slug = slugify(chapter);
       fullMonograph += `${idx + 1}. [${chapter}](#${slug})\n`;
@@ -1667,6 +1678,8 @@ export interface SuggestedExtraChapter {
  * justificativa de profundidade, capítulos sugeridos e destaques essenciais do tema.
  */
 export async function analyzeSummaryNeeds(title: string, area: string, depth: GenerationDepth = 'custom_analyzed') {
+  const safeTitle = (title || 'Tópico de Estudo').toString().trim();
+  const safeArea = (area || 'Clínica Médica').toString().trim();
   const depthText = {
     standard: "Padrão (escopo focado de 3 a 5 capítulos curtos, objetivos e práticos)",
     deep: "Avançado (escopo aprofundado de 5 a 6 capítulos detalhados)",
@@ -1688,8 +1701,8 @@ export async function analyzeSummaryNeeds(title: string, area: string, depth: Ge
   const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Sua especialidade é analisar editais e provas de residência (SUS, SES-GO, SES-DF, ENARE, USP, UNIFESP, etc.) para desenhar materiais de estudo impecáveis, exaustivos e 100% autossuficientes.
 
 Analise o seguinte tópico médico de estudo:
-Título: "${title}"
-Grande Área: "${area}"
+Título: "${safeTitle}"
+Grande Área: "${safeArea}"
 Nível de Profundidade Desejado: ${depthText}
 
 Seu objetivo é definir as necessidades exatas para que o aluno receba um resumo completo, profundamente detalhado, didático e autossuficiente (capaz de substituir livros-texto), cobrindo tanto a BASE DIDÁTICA FISIOPATOLÓGICA/FISIOLÓGICA quanto o CONTEÚDO PRÁTICO DE PROVA E MANEJO COMPLETO (critérios oficiais na íntegra, doses exatas mg/kg, checklists de procedimento, todas as escalas e escores relevantes e pegadinhas de bancas).
@@ -1846,6 +1859,8 @@ export async function generateCustomAnalyzedSummary(
   depth: GenerationDepth = 'custom_analyzed'
 ) {
   try {
+    const safeTitle = (title || 'Tópico de Estudo').toString().trim();
+    const safeArea = (area || 'Clínica Médica').toString().trim();
     let chapters = [...(analysis?.chapters || [])];
     
     // Se já houver conteúdo existente, verifica se o sumário contém os capítulos originais planejados
@@ -1924,7 +1939,7 @@ export async function generateCustomAnalyzedSummary(
     }
 
     if (startChapterIndex === 0) {
-      fullContent = `# ${title.toUpperCase()}\n\n*Tratado Personalizado de Alta Performance - Gerado por Preceptor IA (Análise Prévia de Requisitos)*\n\n---\n\n## SUMÁRIO DE NAVEGAÇÃO\n\n`;
+      fullContent = `# ${safeTitle.toUpperCase()}\n\n*Tratado Personalizado de Alta Performance - Gerado por Preceptor IA (Análise Prévia de Requisitos)*\n\n---\n\n## SUMÁRIO DE NAVEGAÇÃO\n\n`;
       
       // Gerar links de ancoragem
       chapters.forEach((chapter) => {

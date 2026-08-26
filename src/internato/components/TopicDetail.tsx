@@ -3192,8 +3192,9 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
       setMonographProgress({ current: 0, total: 4, message: 'Preparando preceptor médico...' });
     }
 
+    const effectiveTopicTitle = topic?.title || (topic as any)?.name || (topic as any)?.titulo || (topic as any)?.topicTitle || 'Tópico de Estudo';
     try {
-      const content = await generateTopicContent(topic.title, subjectName, targetRef, userId, targetDepth, (prog) => {
+      const content = await generateTopicContent(effectiveTopicTitle, subjectName, targetRef, userId, targetDepth, (prog) => {
         setMonographProgress(prog);
         setGenerationStatus(prog.message);
         if (prog.partialContent) {
@@ -3312,8 +3313,9 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     setIsAnalyzing(true);
     setAnalysisError('');
     const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
+    const effectiveTopicTitle = topic?.title || (topic as any)?.name || (topic as any)?.titulo || (topic as any)?.topicTitle || 'Tópico de Estudo';
     try {
-      const result = await analyzeSummaryNeeds(topic.title, subjectName, depth);
+      const result = await analyzeSummaryNeeds(effectiveTopicTitle, subjectName, depth);
       setAnalysisResult(result);
       setEditedChapters(result.chapters || []);
       
@@ -3365,12 +3367,13 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
 
     let analysisToUse = overrideAnalysis || analysisResult;
     
+    const effectiveTopicTitle = topic?.title || (topic as any)?.name || (topic as any)?.titulo || (topic as any)?.topicTitle || 'Tópico de Estudo';
     // Fallback se não houver análise prévia (ex: se o usuário optou por gerar "Sem Pré-Análise")
     if (!analysisToUse) {
       const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
       try {
         setGenerationStatus('Analisando tópicos e estruturando capítulos...');
-        const autoAnalysis = await analyzeSummaryNeeds(topic.title, subjectName, targetDepth);
+        const autoAnalysis = await analyzeSummaryNeeds(effectiveTopicTitle, subjectName, targetDepth);
         if (autoAnalysis) {
           analysisToUse = autoAnalysis;
         } else {
@@ -3431,7 +3434,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
 
     try {
       const content = await generateCustomAnalyzedSummary(
-        topic.title,
+        effectiveTopicTitle,
         subjectName,
         analysisToUse,
         overrideConfig?.referencePref || referencePref,
@@ -8110,14 +8113,15 @@ th { background: #F8F7F4; font-weight: bold; }
           {showSummaryWizard && (
             <div className="fixed inset-0 z-[9999] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-4">
               <SummaryGenerationWizard
-                topicTitle={topic.title}
+                topicTitle={topic?.title || (topic as any)?.name || (topic as any)?.titulo || (topic as any)?.topicTitle || 'Tópico de Estudo'}
                 availableCredits={availableCredits !== undefined ? availableCredits : (globalQuota?.available ?? 0)}
                 isGenerating={isGenerating}
                 initialAnalysis={analysisResult}
                 onRunAnalysis={async (selectedDepth) => {
                   setDepth(selectedDepth as GenerationDepth);
                   const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
-                  const res = await analyzeSummaryNeeds(topic.title, subjectName, selectedDepth as GenerationDepth);
+                  const safeTitle = topic?.title || (topic as any)?.name || (topic as any)?.titulo || (topic as any)?.topicTitle || 'Tópico de Estudo';
+                  const res = await analyzeSummaryNeeds(safeTitle, subjectName, selectedDepth as GenerationDepth);
                   if (res) {
                     setAnalysisResult(res);
                     if (res.chapters) setEditedChapters(res.chapters);

@@ -347,22 +347,38 @@ export async function updateDoc(docRef: any, updateFields: any): Promise<void> {
   }
   
   const mergedData = existing?.data ? { ...existing.data } : {};
+
+  const getNestedValue = (obj: any, path: string): any => {
+    if (!obj || typeof obj !== 'object' || obj === null) return undefined;
+    if (!path.includes('.')) return obj[path];
+    const parts = path.split('.');
+    let current = obj;
+    for (const part of parts) {
+      if (current && typeof current === 'object' && current !== null && part in current) {
+        current = current[part];
+      } else {
+        return undefined;
+      }
+    }
+    return current;
+  };
   
   const resolveValue = (key: string, val: any) => {
     if (val && typeof val === 'object' && (val as any).type) {
       const type = (val as any).type;
+      const existingVal = getNestedValue(mergedData, key);
       if (type === 'increment') {
         const incVal = (val as any).value || 0;
-        const existingVal = mergedData[key] || 0;
-        return existingVal + incVal;
+        const baseNum = typeof existingVal === 'number' ? existingVal : 0;
+        return baseNum + incVal;
       } else if (type === 'arrayUnion') {
         const elems = (val as any).elements || [];
-        const existingArr = Array.isArray(mergedData[key]) ? mergedData[key] : [];
+        const existingArr = Array.isArray(existingVal) ? existingVal : [];
         const newSet = new Set([...existingArr, ...elems]);
         return Array.from(newSet);
       } else if (type === 'arrayRemove') {
         const elems = (val as any).elements || [];
-        const existingArr = Array.isArray(mergedData[key]) ? mergedData[key] : [];
+        const existingArr = Array.isArray(existingVal) ? existingVal : [];
         return existingArr.filter((item: any) => !elems.includes(item));
       }
     }

@@ -1787,6 +1787,19 @@ app.post('/api/mercadopago/webhook', async (req, res) => {
 });
 
 // Setup dev server or fallback static routes
+
+// Handle AI Studio internal control plane file reads directly
+app.get('/__aistudio_internal_control_plane/fs/read', (req, res) => {
+  const relPath = req.query.path as string;
+  if (!relPath) return res.status(400).send('Missing path parameter');
+  const fullPath = path.resolve(process.cwd(), relPath);
+  if (fs.existsSync(fullPath)) {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.sendFile(fullPath);
+  }
+  return res.status(404).send('File not found');
+});
+
 async function configureAndListen() {
   const PORT = 3000;
 

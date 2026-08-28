@@ -19,7 +19,8 @@ import {
   Link2,
   HelpCircle,
   Lightbulb,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -62,6 +63,26 @@ export default function App() {
   const [appMode, setAppMode] = useState<'revise' | 'internato'>(() => {
     return (localStorage.getItem('app_mode') as 'revise' | 'internato') || 'revise';
   });
+
+  const [isSamsungDark, setIsSamsungDark] = useState<boolean>(() => {
+    return localStorage.getItem('samsung_dark_mode') === 'true';
+  });
+
+  useEffect(() => {
+    if (isSamsungDark) {
+      document.documentElement.classList.add('samsung-dark');
+      document.body.classList.add('samsung-dark');
+      localStorage.setItem('samsung_dark_mode', 'true');
+    } else {
+      document.documentElement.classList.remove('samsung-dark');
+      document.body.classList.remove('samsung-dark');
+      localStorage.setItem('samsung_dark_mode', 'false');
+    }
+  }, [isSamsungDark]);
+
+  const toggleSamsungDarkMode = () => {
+    setIsSamsungDark(prev => !prev);
+  };
 
   useEffect(() => {
     if (appMode === 'internato') {
@@ -477,6 +498,20 @@ export default function App() {
                 value={`${Math.floor(totalCombinedTime / 60)}h`} 
               />
             </div>
+            <button
+              onClick={toggleSamsungDarkMode}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 border transition-all text-[10px] sm:text-[11px] font-mono font-bold tracking-wider cursor-pointer shrink-0 rounded-md shadow-2xs",
+                isSamsungDark
+                  ? "bg-stone-900 border-amber-400 text-amber-300 hover:bg-stone-800"
+                  : "bg-white border-[#141414] text-[#141414] hover:bg-stone-100"
+              )}
+              title="Alternar Modo Escuro Samsung (OLED Pitch Black)"
+            >
+              <Moon size={13} className={isSamsungDark ? "text-amber-300 fill-amber-300" : "text-[#141414]"} />
+              <span className="hidden sm:inline">Modo Escuro (Samsung)</span>
+              <span className="sm:hidden">Escuro</span>
+            </button>
             <button 
               onClick={() => {
                 setAppMode('internato');

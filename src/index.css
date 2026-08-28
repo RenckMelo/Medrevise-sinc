@@ -66,6 +66,298 @@
   }
 }
 
+/* SAMSUNG INTERNET OLED HIGH-CONTRAST / SOPHISTICATED DARK MODE */
+html.samsung-dark,
+body.samsung-dark,
+.samsung-dark {
+  --background: #0D0D12;
+  --foreground: #F4F4F6;
+  --card: #16161D;
+  --card-foreground: #F4F4F6;
+  --popover: #1A1A22;
+  --popover-foreground: #F4F4F6;
+  --primary: #2A2A3A;
+  --primary-foreground: #FFFFFF;
+  --secondary: #22222C;
+  --secondary-foreground: #F4F4F6;
+  --muted: #282834;
+  --muted-foreground: #A1A1AA;
+  --accent: #282834;
+  --accent-foreground: #F4F4F6;
+  --destructive: #F87171;
+  --border: #2A2A38;
+  --input: #1C1C24;
+  --ring: #3F3F50;
+  background-color: #0D0D12 !important;
+  color: #F4F4F6 !important;
+}
+
+body.samsung-dark {
+  background-color: #0D0D12 !important;
+  color: #F4F4F6 !important;
+}
+
+/* Base Canvas & Background Depth Layering */
+.samsung-dark [class*="bg-[#E4E3E0]"],
+.samsung-dark [class*="bg-[#F4F3EF]"] {
+  background-color: #0D0D12 !important;
+}
+
+/* Elevated Primary Cards & Navigation Headers (matching all bg-white variants) */
+.samsung-dark [class*="bg-white"],
+.samsung-dark header[class*="bg-white"],
+.samsung-dark aside[class*="bg-white"],
+.samsung-dark nav[class*="bg-white"] {
+  background-color: #16161D !important;
+  color: #F4F4F6 !important;
+  border-color: #2A2A38 !important;
+}
+
+/* Low-opacity white utility overrides */
+.samsung-dark [class*="bg-white/10"],
+.samsung-dark [class*="bg-white/20"],
+.samsung-dark [class*="bg-white/5"] {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Inset Containers, Sub-cards & Secondary Light Surfaces (wildcards for all hex & light neutral variants) */
+.samsung-dark [class*="bg-[#FAF"],
+.samsung-dark [class*="bg-[#FBF"],
+.samsung-dark [class*="bg-[#F9F"],
+.samsung-dark [class*="bg-[#F8F"],
+.samsung-dark [class*="bg-[#F5F"],
+.samsung-dark [class*="bg-[#F4F"],
+.samsung-dark [class*="bg-[#F3F"],
+.samsung-dark [class*="bg-[#F2F"],
+.samsung-dark [class*="bg-[#F0F"],
+.samsung-dark [class*="bg-[#EAE"],
+.samsung-dark [class*="bg-[#EDE"],
+.samsung-dark [class*="bg-[#E4E"],
+.samsung-dark [class*="bg-[#FFF"],
+.samsung-dark [class*="bg-[#f8f"],
+.samsung-dark [class*="bg-stone-50"],
+.samsung-dark [class*="bg-slate-50"],
+.samsung-dark [class*="bg-gray-50"],
+.samsung-dark [class*="bg-neutral-50"],
+.samsung-dark [class*="bg-zinc-50"] {
+  background-color: #1C1C24 !important;
+  color: #E4E4E8 !important;
+}
+
+/* Badges, Pills, Secondary Controls & Light Neutral Accents */
+.samsung-dark [class*="bg-stone-100"],
+.samsung-dark [class*="bg-stone-200"],
+.samsung-dark [class*="bg-stone-300"],
+.samsung-dark [class*="bg-slate-100"],
+.samsung-dark [class*="bg-slate-200"],
+.samsung-dark [class*="bg-gray-100"],
+.samsung-dark [class*="bg-gray-200"],
+.samsung-dark [class*="bg-neutral-100"],
+.samsung-dark [class*="bg-neutral-200"],
+.samsung-dark [class*="bg-zinc-100"],
+.samsung-dark [class*="bg-zinc-200"],
+.samsung-dark [class*="bg-[#E2E0D9]"] {
+  background-color: #242432 !important;
+  color: #D1D1DB !important;
+  border-color: #333342 !important;
+}
+
+/* Primary Action Triggers (which were bg-[#141414], bg-[#1A1A1A], bg-black in light mode) */
+.samsung-dark button[class*="bg-[#141414]"],
+.samsung-dark button[class*="bg-[#1A1A1A]"],
+.samsung-dark button[class*="bg-black"],
+.samsung-dark button[class*="bg-stone-900"],
+.samsung-dark a[class*="bg-[#141414]"],
+.samsung-dark a[class*="bg-[#1A1A1A]"],
+.samsung-dark a[class*="bg-black"] {
+  background-color: #272736 !important;
+  color: #FFFFFF !important;
+  border-color: #3F3F52 !important;
+}
+
+.samsung-dark button[class*="bg-[#141414]"]:hover,
+.samsung-dark button[class*="bg-[#1A1A1A]"]:hover,
+.samsung-dark button[class*="bg-black"]:hover,
+.samsung-dark a[class*="bg-[#141414]"]:hover,
+.samsung-dark a[class*="bg-[#1A1A1A]"]:hover {
+  background-color: #323246 !important;
+  color: #FFFFFF !important;
+}
+
+/* General Typography Contrast Adaptations */
+.samsung-dark [class*="text-[#141414]"],
+.samsung-dark [class*="text-[#1A1A1A]"],
+.samsung-dark [class*="text-[#27272A]"],
+.samsung-dark [class*="text-[#111827]"],
+.samsung-dark [class*="text-[#18181B]"],
+.samsung-dark [class*="text-stone-900"],
+.samsung-dark [class*="text-stone-800"],
+.samsung-dark [class*="text-slate-900"],
+.samsung-dark [class*="text-slate-800"],
+.samsung-dark [class*="text-zinc-900"],
+.samsung-dark [class*="text-zinc-800"] {
+  color: #F4F4F6 !important;
+}
+
+.samsung-dark [class*="text-stone-700"],
+.samsung-dark [class*="text-slate-700"],
+.samsung-dark [class*="text-zinc-700"] {
+  color: #D1D1DB !important;
+}
+
+.samsung-dark [class*="text-[#8E8A82]"],
+.samsung-dark [class*="text-[#6E6A62]"],
+.samsung-dark [class*="text-stone-500"],
+.samsung-dark [class*="text-stone-600"],
+.samsung-dark [class*="text-slate-500"],
+.samsung-dark [class*="text-slate-600"] {
+  color: #9E9EA8 !important;
+}
+
+.samsung-dark [class*="border-[#141414]"],
+.samsung-dark [class*="border-[#1A1A1A]"],
+.samsung-dark [class*="border-[#E2E0D9]"],
+.samsung-dark [class*="border-stone-200"],
+.samsung-dark [class*="border-stone-100"],
+.samsung-dark [class*="border-stone-300"],
+.samsung-dark [class*="border-slate-200"],
+.samsung-dark [class*="border-slate-100"],
+.samsung-dark [class*="border-gray-200"],
+.samsung-dark [class*="border-gray-100"] {
+  border-color: #2A2A38 !important;
+}
+
+/* Preserved & Sophisticated Color Accents (Green/Emerald, Red/Rose, Amber, Blue, Purple, Indigo, Sky) */
+.samsung-dark [class*="bg-emerald"],
+.samsung-dark [class*="bg-green"] {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+  color: #4ADE80 !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+
+.samsung-dark [class*="text-emerald"],
+.samsung-dark [class*="text-green"] {
+  color: #4ADE80 !important;
+}
+
+.samsung-dark [class*="border-emerald"],
+.samsung-dark [class*="border-green"] {
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+
+.samsung-dark [class*="bg-rose"],
+.samsung-dark [class*="bg-red"] {
+  background-color: rgba(244, 63, 94, 0.16) !important;
+  color: #FB7185 !important;
+  border-color: rgba(244, 63, 94, 0.35) !important;
+}
+
+.samsung-dark [class*="text-rose"],
+.samsung-dark [class*="text-red"],
+.samsung-dark [class*="text-[#D44E3D]"] {
+  color: #FB7185 !important;
+}
+
+.samsung-dark [class*="border-rose"],
+.samsung-dark [class*="border-red"],
+.samsung-dark [class*="border-[#D44E3D]"] {
+  border-color: rgba(244, 63, 94, 0.35) !important;
+}
+
+.samsung-dark [class*="bg-amber"],
+.samsung-dark [class*="bg-yellow"],
+.samsung-dark [class*="bg-[#FFFDE7]"] {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+  color: #FCD34D !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+.samsung-dark [class*="text-amber"],
+.samsung-dark [class*="text-yellow"] {
+  color: #FCD34D !important;
+}
+
+.samsung-dark [class*="border-amber"],
+.samsung-dark [class*="border-yellow"] {
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+.samsung-dark [class*="bg-blue"],
+.samsung-dark [class*="bg-indigo"],
+.samsung-dark [class*="bg-purple"],
+.samsung-dark [class*="bg-sky"],
+.samsung-dark [class*="bg-violet"] {
+  background-color: rgba(99, 102, 241, 0.16) !important;
+  color: #A5B4FC !important;
+  border-color: rgba(99, 102, 241, 0.35) !important;
+}
+
+.samsung-dark [class*="text-blue"],
+.samsung-dark [class*="text-indigo"],
+.samsung-dark [class*="text-purple"],
+.samsung-dark [class*="text-sky"],
+.samsung-dark [class*="text-violet"] {
+  color: #A5B4FC !important;
+}
+
+.samsung-dark [class*="border-blue"],
+.samsung-dark [class*="border-indigo"],
+.samsung-dark [class*="border-purple"],
+.samsung-dark [class*="border-sky"],
+.samsung-dark [class*="border-violet"] {
+  border-color: rgba(99, 102, 241, 0.35) !important;
+}
+
+/* Inputs & Form Controls */
+.samsung-dark input,
+.samsung-dark textarea,
+.samsung-dark select {
+  background-color: #181820 !important;
+  color: #F4F4F6 !important;
+  border-color: #333340 !important;
+}
+
+.samsung-dark input::placeholder,
+.samsung-dark textarea::placeholder {
+  color: #71717A !important;
+}
+
+/* Markdown Styling in Dark Mode */
+.samsung-dark .markdown-body {
+  color: #E4E4E8 !important;
+}
+.samsung-dark .markdown-body p,
+.samsung-dark .markdown-body li,
+.samsung-dark .markdown-body td,
+.samsung-dark .markdown-body span {
+  color: #E4E4E8 !important;
+}
+.samsung-dark .markdown-body h1,
+.samsung-dark .markdown-body h2,
+.samsung-dark .markdown-body h3,
+.samsung-dark .markdown-body h4 {
+  color: #FFFFFF !important;
+  border-color: #2A2A34 !important;
+}
+.samsung-dark .markdown-body table,
+.samsung-dark .markdown-body td,
+.samsung-dark .markdown-body th {
+  border-color: #2A2A34 !important;
+}
+.samsung-dark .markdown-body th {
+  background-color: #1E1E26 !important;
+  color: #FFFFFF !important;
+}
+.samsung-dark .markdown-body td {
+  background-color: #141418 !important;
+}
+.samsung-dark .markdown-body blockquote {
+  background-color: #1A1A22 !important;
+  border-color: #2A2A34 !important;
+  border-left-color: #FB7185 !important;
+  color: #E4E4E8 !important;
+}
+
 /* MARKDOWN INTENSE ACADEMIC STYLING FOR MEDINTERNATO */
 .markdown-body {
   @apply font-sans leading-relaxed text-[#27272A] text-[13.5px] sm:text-[15.5px];

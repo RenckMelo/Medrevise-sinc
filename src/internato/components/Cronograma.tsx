@@ -1,4 +1,4 @@
-﻿import { ManualLinkingModal } from './ManualLinkingModal';
+import { ManualLinkingModal } from './ManualLinkingModal';
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Calendar as CalendarIcon, 
@@ -5486,16 +5486,16 @@ export default function Cronograma({
     <div className="space-y-6 max-w-5xl mx-auto pb-12">
       
       {/* PREMIUM HEADER CONTROLS & META */}
-      <div className="bg-white border border-[#E2E0D9] rounded-2xl shadow-xs overflow-hidden">
+      <div className="bg-[#FAF9F5]/90 border border-stone-200/80 rounded-2xl shadow-3xs overflow-hidden">
         {/* Title and main header info */}
-        <div className="p-6 border-b border-stone-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-white to-stone-50/40">
+        <div className="p-6 border-b border-stone-200/60 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-[#FAF9F6] to-stone-100/50">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <div className="p-2 bg-[#D44E3D]/5 text-[#D44E3D] rounded-xl border border-[#D44E3D]/10 shadow-3xs">
+              <div className="p-2 bg-[#D44E3D]/10 text-[#D44E3D] rounded-xl border border-[#D44E3D]/20 shadow-3xs">
                 <CalendarIcon className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-[#1A1A1A] tracking-tight font-display flex items-center gap-2">
+                <h1 className="text-lg font-bold text-stone-900 tracking-tight font-display flex items-center gap-2">
                   Cronograma Inteligente de Estudos
                 </h1>
                 <p className="text-xs text-[#8E8A82]">
@@ -5506,15 +5506,15 @@ export default function Cronograma({
           </div>
 
           {/* User Credit Pool Indicator */}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50/60 border border-amber-200/50 text-amber-900 rounded-xl text-xs font-mono font-bold shadow-3xs">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50/80 border border-amber-200/70 text-amber-900 rounded-xl text-xs font-mono font-bold shadow-3xs">
             <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-500/20" />
             <span>Pool de Créditos:</span>
-            <span className="text-amber-700 bg-white px-1.5 py-0.5 rounded border border-amber-200/60">{availableCredits} ⚡</span>
+            <span className="text-amber-800 bg-white/80 px-1.5 py-0.5 rounded border border-amber-200/70">{availableCredits} ⚡</span>
           </div>
         </div>
 
         {/* Dynamic Context Settings & Dropdowns */}
-        <div className="px-6 py-4 bg-stone-50/40 flex flex-wrap items-center justify-between gap-4 border-t border-stone-100">
+        <div className="px-6 py-4 bg-stone-100/40 flex flex-wrap items-center justify-between gap-4 border-t border-stone-200/60">
           {schedules.length > 0 && (
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2.5">
@@ -5523,7 +5523,7 @@ export default function Cronograma({
                   <select
                     value={schedule?.id || ''}
                     onChange={(e) => handleSwitchSchedule(e.target.value)}
-                    className="appearance-none pr-8 pl-3 py-1.5 text-xs font-bold bg-white border border-[#E2E0D9] hover:border-stone-400 text-stone-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#D44E3D] cursor-pointer max-w-xs md:max-w-md truncate shadow-3xs transition-all"
+                    className="appearance-none pr-8 pl-3 py-1.5 text-xs font-bold bg-white/90 border border-stone-200 hover:border-stone-400 text-stone-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#D44E3D] cursor-pointer max-w-xs md:max-w-md truncate shadow-3xs transition-all"
                   >
                     {schedules.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -5569,7 +5569,7 @@ export default function Cronograma({
       </div>
 
       {/* MedRevise Sync Preferences Switcher */}
-      <div className="bg-white border border-[#E2E0D9] rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+      <div className="bg-[#FAF9F5]/90 border border-stone-200/80 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-3xs">
         <div className="flex items-center gap-2.5">
           <div className="p-2 bg-amber-50 rounded-xl text-amber-600 border border-amber-200/80 shrink-0">
             <ArrowLeftRight className="w-4 h-4 text-[#D44E3D]" />
@@ -10016,6 +10016,18 @@ export default function Cronograma({
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* SCHEDULE PLANNER WIZARD MODAL */}
+      <AnimatePresence>
+        {showPlannerWizard && (
+          <SchedulePlannerWizard
+            onGenerateSchedule={handleWizardGenerateSchedule}
+            onCancel={() => setShowPlannerWizard(false)}
+            availableCredits={availableCredits}
+            isGenerating={generating}
+          />
         )}
       </AnimatePresence>
 

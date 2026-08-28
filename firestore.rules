@@ -89,11 +89,6 @@ service cloud.firestore {
     // Rules
     // ===============================================================
 
-    match /pre_authorized_emails/{emailId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());

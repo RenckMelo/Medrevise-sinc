@@ -2129,37 +2129,37 @@ export default function FlashcardModule({
                   {/* ERREI */}
                   <Button
                     onClick={() => handleRateCard('errei')}
-                    className="flex flex-col items-center justify-center h-16 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl space-y-1 transition-all shadow-2xs"
+                    className="flex flex-col items-center justify-center h-16 bg-rose-600 hover:bg-rose-700 text-white border-2 border-rose-500 rounded-2xl space-y-1 transition-all shadow-md font-black cursor-pointer active:scale-95"
                   >
                     <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1">
-                      <XCircle className="w-3.5 h-3.5" />
+                      <XCircle className="w-4 h-4 stroke-[2.5]" />
                       Errei [1]
                     </span>
-                    <span className="text-[10px] font-bold opacity-75">{currentCardSRS?.erreiInterval}</span>
+                    <span className="text-[10px] font-bold opacity-90">{currentCardSRS?.erreiInterval}</span>
                   </Button>
 
                   {/* DIFÍCIL */}
                   <Button
                     onClick={() => handleRateCard('dificil')}
-                    className="flex flex-col items-center justify-center h-16 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-2xl space-y-1 transition-all shadow-2xs"
+                    className="flex flex-col items-center justify-center h-16 bg-amber-500 hover:bg-amber-600 text-white border-2 border-amber-400 rounded-2xl space-y-1 transition-all shadow-md font-black cursor-pointer active:scale-95"
                   >
                     <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <AlertTriangle className="w-4 h-4 stroke-[2.5]" />
                       Difícil [2]
                     </span>
-                    <span className="text-[10px] font-bold opacity-75">{currentCardSRS?.dificilInterval}</span>
+                    <span className="text-[10px] font-bold opacity-90">{currentCardSRS?.dificilInterval}</span>
                   </Button>
 
                   {/* BOM / ACERTEI */}
                   <Button
                     onClick={() => handleRateCard('bom')}
-                    className="flex flex-col items-center justify-center h-16 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-2xl space-y-1 transition-all shadow-2xs"
+                    className="flex flex-col items-center justify-center h-16 bg-emerald-600 hover:bg-emerald-700 text-white border-2 border-emerald-500 rounded-2xl space-y-1 transition-all shadow-md font-black cursor-pointer active:scale-95"
                   >
                     <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
                       Bom [3]
                     </span>
-                    <span className="text-[10px] font-bold opacity-75">{currentCardSRS?.bomInterval}</span>
+                    <span className="text-[10px] font-bold opacity-90">{currentCardSRS?.bomInterval}</span>
                   </Button>
 
                   {/* FÁCIL */}

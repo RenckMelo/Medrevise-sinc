@@ -3467,14 +3467,7 @@ export default function QuestionModule({
                                   </div>
 
                                   <div className="flex items-center gap-2">
-                                    {attempt ? (
-                                      <Badge className={cn(
-                                        "text-[9px] font-black px-2.5 py-1 border",
-                                        attempt.isCorrect ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-rose-50 text-rose-800 border-rose-200"
-                                      )}>
-                                        {attempt.isCorrect ? '✔ VOCÊ ACERTOU' : '✖ VOCÊ ERROU'}
-                                      </Badge>
-                                    ) : (
+                                    {!attempt && (
                                       <Badge variant="outline" className="text-[9px] font-bold text-stone-500 border-stone-200 bg-stone-50">
                                         NÃO RESPONDIDA
                                       </Badge>
@@ -3509,14 +3502,14 @@ export default function QuestionModule({
                                       <div 
                                         key={optIdx}
                                         className={cn(
-                                          "p-3.5 rounded-xl text-xs border flex items-center gap-3 font-medium",
-                                          isCorrect ? "bg-emerald-50/90 border-emerald-500/50 text-emerald-950 font-bold" :
-                                          wasChosen && !isCorrect ? "bg-rose-50/90 border-rose-500/50 text-rose-950" :
+                                          "p-3.5 rounded-xl text-xs border-2 flex items-center gap-3 transition-all",
+                                          isCorrect ? "bg-emerald-500/20 border-emerald-600 text-emerald-950 dark:text-emerald-100 font-extrabold shadow-xs" :
+                                          wasChosen && !isCorrect ? "bg-rose-500/20 border-rose-600 text-rose-950 dark:text-rose-100 font-extrabold shadow-xs" :
                                           "bg-stone-50/60 border-[#E2E0D9] text-stone-700"
                                         )}
                                       >
                                         <span className={cn(
-                                          "w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0",
+                                          "w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 shadow-2xs",
                                           isCorrect ? "bg-emerald-600 text-white" :
                                           wasChosen ? "bg-rose-600 text-white" :
                                           "bg-stone-200 text-stone-600"
@@ -3524,8 +3517,8 @@ export default function QuestionModule({
                                           {String.fromCharCode(65 + optIdx)}
                                         </span>
                                         <span className="flex-1">{opt}</span>
-                                        {isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
-                                        {wasChosen && !isCorrect && <XCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                                        {isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 stroke-[2.5]" />}
+                                        {wasChosen && !isCorrect && <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 stroke-[2.5]" />}
                                       </div>
                                     );
                                   })}
@@ -3607,12 +3600,6 @@ export default function QuestionModule({
                               </Badge>
                               <h4 className="text-xl font-display font-bold leading-tight">{q.text}</h4>
                             </div>
-                            <Badge className={cn(
-                              "text-[10px] font-bold px-3 py-1 shrink-0 border",
-                              attempt.isCorrect ? "bg-emerald-100 text-emerald-900 border-emerald-200/80" : "bg-rose-100 text-rose-900 border-rose-200/80"
-                            )}>
-                              {attempt.isCorrect ? 'ACERTO' : 'ERRO'}
-                            </Badge>
                           </div>
 
                           <div className="space-y-3">
@@ -3624,23 +3611,23 @@ export default function QuestionModule({
                                 <div 
                                   key={optIdx}
                                   className={cn(
-                                    "p-4 rounded-xl text-sm border flex items-center gap-4",
-                                    isCorrect ? "bg-emerald-50/80 border-emerald-600/40 text-emerald-950 font-bold" :
-                                    wasSelected && !isCorrect ? "bg-rose-50/80 border-rose-600/40 text-rose-950" :
+                                    "p-4 rounded-xl text-sm border-2 flex items-center gap-4 transition-all",
+                                    isCorrect ? "bg-emerald-500/20 border-emerald-600 text-emerald-950 dark:text-emerald-100 font-extrabold shadow-xs" :
+                                    wasSelected && !isCorrect ? "bg-rose-500/20 border-rose-600 text-rose-950 dark:text-rose-100 font-extrabold shadow-xs" :
                                     "bg-white border-[#E2E0D9] text-gray-500"
                                   )}
                                 >
                                   <span className={cn(
-                                    "w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0",
-                                    isCorrect ? "bg-emerald-700 text-white" :
-                                    wasSelected ? "bg-rose-700 text-white" :
+                                    "w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 shadow-2xs",
+                                    isCorrect ? "bg-emerald-600 text-white" :
+                                    wasSelected ? "bg-rose-600 text-white" :
                                     "bg-gray-100 text-[#8E8A82]"
                                   )}>
                                     {String.fromCharCode(65 + optIdx)}
                                   </span>
                                   {opt}
-                                  {isCorrect && <CheckCircle2 className="w-4 h-4 ml-auto text-emerald-700" />}
-                                  {wasSelected && !isCorrect && <XCircle className="w-4 h-4 ml-auto text-rose-700" />}
+                                  {isCorrect && <CheckCircle2 className="w-5 h-5 ml-auto text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />}
+                                  {wasSelected && !isCorrect && <XCircle className="w-5 h-5 ml-auto text-rose-600 dark:text-rose-400 stroke-[2.5]" />}
                                 </div>
                               );
                             })}
@@ -4227,9 +4214,9 @@ export default function QuestionModule({
                         "w-full flex items-center gap-6 p-6 md:p-8 text-left transition-all border-2 rounded-2xl group relative overflow-hidden",
                         isAnswered && quizMode === 'study'
                           ? isCorrect 
-                            ? "border-emerald-700/30 bg-emerald-50/50 text-[#173827] font-semibold shadow-xs" 
+                            ? "border-emerald-600 bg-emerald-500/20 text-emerald-950 dark:text-emerald-100 font-extrabold shadow-md ring-2 ring-emerald-500/30" 
                             : isSelected 
-                              ? "border-rose-700/30 bg-rose-50/40 text-[#472222] font-semibold shadow-xs"
+                              ? "border-rose-600 bg-rose-500/20 text-rose-950 dark:text-rose-100 font-extrabold shadow-md ring-2 ring-rose-500/30"
                               : "border-[#E2E0D9]/70 opacity-40 bg-[#FAF9F5]"
                           : isSelected
                             ? "border-primary bg-primary/5 font-semibold"
@@ -4246,8 +4233,8 @@ export default function QuestionModule({
                     >
                       <span className={cn(
                         "w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xs font-black shrink-0 transition-all",
-                        isAnswered && quizMode === 'study' && isCorrect ? "bg-[#2D5A43] border-[#2D5A43] text-white shadow-xs" :
-                        isAnswered && quizMode === 'study' && isSelected && !isCorrect ? "bg-[#8C3A3A] border-[#8C3A3A] text-white shadow-xs" :
+                        isAnswered && quizMode === 'study' && isCorrect ? "bg-emerald-600 border-emerald-500 text-white shadow-sm" :
+                        isAnswered && quizMode === 'study' && isSelected && !isCorrect ? "bg-rose-600 border-rose-500 text-white shadow-sm" :
                         isSelected ? "bg-primary border-primary text-white" : 
                         "border-[#E2E0D9] text-[#8E8A82]"
                       )}>

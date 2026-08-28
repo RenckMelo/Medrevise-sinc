@@ -45,7 +45,8 @@ import {
   Sparkles,
   Award,
   Cpu,
-  Lightbulb
+  Lightbulb,
+  Moon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -58,6 +59,26 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
   const userId = user?.uid || 'guest';
 
   const [currentView, setCurrentView] = useState<'dashboard' | 'cronograma' | 'subjects' | 'topicDetail' | 'questions' | 'flashcards' | 'admin' | 'review'>('dashboard');
+
+  const [isSamsungDark, setIsSamsungDark] = useState<boolean>(() => {
+    return localStorage.getItem('samsung_dark_mode') === 'true';
+  });
+
+  useEffect(() => {
+    if (isSamsungDark) {
+      document.documentElement.classList.add('samsung-dark');
+      document.body.classList.add('samsung-dark');
+      localStorage.setItem('samsung_dark_mode', 'true');
+    } else {
+      document.documentElement.classList.remove('samsung-dark');
+      document.body.classList.remove('samsung-dark');
+      localStorage.setItem('samsung_dark_mode', 'false');
+    }
+  }, [isSamsungDark]);
+
+  const toggleSamsungDarkMode = () => {
+    setIsSamsungDark(prev => !prev);
+  };
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [selectedQuestionAttempt, setSelectedQuestionAttempt] = useState<any>(null);
@@ -439,6 +460,20 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
               <span>Provedores IA</span>
             </button>
           )}
+
+          {/* Samsung Dark Mode Toggle */}
+          <button
+            onClick={toggleSamsungDarkMode}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0 border ${
+              isSamsungDark
+                ? 'bg-stone-900 text-amber-300 border-amber-400/90 hover:bg-stone-800'
+                : 'bg-white text-stone-800 border-[#E2E0D9] hover:bg-stone-100'
+            }`}
+            title="Alternar Modo Escuro Samsung (OLED Pitch Black)"
+          >
+            <Moon className={`w-3.5 h-3.5 ${isSamsungDark ? 'text-amber-300 fill-amber-300' : 'text-stone-700'}`} />
+            <span className="hidden xs:inline">Modo Escuro (Samsung)</span>
+          </button>
 
           {onToggleAppMode && (
             <Button

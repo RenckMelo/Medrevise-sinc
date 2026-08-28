@@ -82,6 +82,36 @@
     --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
+.internato-mode.samsung-dark,
+.samsung-dark .internato-mode {
+    --background: #0D0D12;
+    --foreground: #F4F4F6;
+    --card: #16161D;
+    --card-foreground: #F4F4F6;
+    --popover: #1A1A22;
+    --popover-foreground: #F4F4F6;
+    --primary: #2A2A3A;
+    --primary-foreground: #FFFFFF;
+    --secondary: #22222C;
+    --secondary-foreground: #F4F4F6;
+    --muted: #282834;
+    --muted-foreground: #A1A1AA;
+    --accent: #282834;
+    --accent-foreground: #F4F4F6;
+    --destructive: #F87171;
+    --border: #2A2A38;
+    --input: #1C1C24;
+    --ring: #3F3F50;
+    --sidebar: #16161D;
+    --sidebar-foreground: #F4F4F6;
+    --sidebar-primary: #2A2A3A;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #22222C;
+    --sidebar-accent-foreground: #F4F4F6;
+    --sidebar-border: #2A2A38;
+    --sidebar-ring: #3F3F50;
+}
+
 .internato-mode * {
   border-color: var(--border);
 }

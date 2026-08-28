@@ -988,7 +988,7 @@ export default function SubjectList({
                   
                   <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap justify-end min-w-0 flex-1 max-w-[calc(100%-3.5rem)] overflow-hidden">
                     {semesterLabel && (
-                      <span className="text-[9px] uppercase tracking-wider font-extrabold bg-[#F0EEE9] px-2 py-0.5 rounded-full text-stone-700 shrink-0 max-w-full truncate">
+                      <span className="text-[9px] uppercase tracking-wider font-semibold bg-stone-100/80 border border-stone-200/60 px-2 py-0.5 rounded-md text-stone-500 shrink-0 max-w-full truncate">
                         {semesterLabel}
                       </span>
                     )}

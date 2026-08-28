@@ -478,38 +478,6 @@ export default function CalendarView() {
     })
   );
 
-  // Auto-migration to flag previously recalculated overdue topics
-  useEffect(() => {
-    if (!user || !topics || topics.length === 0) return;
-    const topicsToUpgrade = topics.filter(t => {
-      if (t.completed || t.wasRescheduledOverdue) return false;
-      if (!t.nextReviewDate) return false;
-      try {
-        const d = new Date(t.nextReviewDate);
-        return d.getMinutes() === 0 && d.getSeconds() === 0;
-      } catch (err) {
-        return false;
-      }
-    });
-
-    if (topicsToUpgrade.length > 0) {
-      const upgradeBatch = async () => {
-        try {
-          const batch = writeBatch(db);
-          topicsToUpgrade.forEach(t => {
-            const topicRef = doc(db, 'users', user.uid, 'topics', t.id);
-            batch.update(topicRef, { wasRescheduledOverdue: true });
-          });
-          await batch.commit();
-          console.log(`Auto-migrated ${topicsToUpgrade.length} previously recalculated topics to Ex-Atrasado status.`);
-        } catch (e) {
-          console.error("Error migrating rescheduled topics:", e);
-        }
-      };
-      upgradeBatch();
-    }
-  }, [user, topics]);
-
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart);

@@ -61,27 +61,28 @@ export default function QuestionReview({ attempt, onBack }: QuestionReviewProps)
                 let textColor = 'text-[#1A1A1A]';
 
                 if (isSelected && isCorrect) {
-                  bgColor = 'bg-green-50';
-                  borderColor = 'border-green-500';
-                  textColor = 'text-green-700';
+                  bgColor = 'bg-emerald-500/20';
+                  borderColor = 'border-2 border-emerald-600';
+                  textColor = 'text-emerald-950 dark:text-emerald-100 font-extrabold';
                 } else if (isSelected && !isCorrect) {
-                  bgColor = 'bg-red-50';
-                  borderColor = 'border-red-500';
-                  textColor = 'text-red-700';
+                  bgColor = 'bg-rose-500/20';
+                  borderColor = 'border-2 border-rose-600';
+                  textColor = 'text-rose-950 dark:text-rose-100 font-extrabold';
                 } else if (!isSelected && isCorrect) {
-                  bgColor = 'bg-green-50/50';
-                  borderColor = 'border-green-300';
+                  bgColor = 'bg-emerald-500/10';
+                  borderColor = 'border-2 border-emerald-500';
+                  textColor = 'text-emerald-900 dark:text-emerald-200 font-bold';
                 }
 
                 return (
                   <div 
                     key={key}
-                    className={`p-5 rounded-xl border-2 ${bgColor} ${borderColor} ${textColor} flex items-start gap-4 transition-all`}
+                    className={`p-5 rounded-xl border-2 ${bgColor} ${borderColor} ${textColor} flex items-start gap-4 transition-all shadow-xs`}
                   >
                     <div className="mt-0.5">
-                      {isSelected && isCorrect && <CheckCircle2 className="w-5 h-5 text-green-500" />}
-                      {isSelected && !isCorrect && <XCircle className="w-5 h-5 text-red-500" />}
-                      {!isSelected && isCorrect && <CheckCircle2 className="w-5 h-5 text-green-300" />}
+                      {isSelected && isCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />}
+                      {isSelected && !isCorrect && <XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 stroke-[2.5]" />}
+                      {!isSelected && isCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />}
                       {!isSelected && !isCorrect && <div className="w-5 h-5 rounded-full border-2 border-[#E2E0D9]" />}
                     </div>
                     <div className="text-sm font-medium leading-relaxed">

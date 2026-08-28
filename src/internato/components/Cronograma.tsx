@@ -9031,7 +9031,7 @@ export default function Cronograma({
           </motion.div>
         )}
 
-        {/* VIEW 3: CONFIGURATION WIZARD FOR GENERATOR */}
+        {/* VIEW 3: ASSISTANT HUB FOR CREATING PLANNING */}
         {(activeTab === 'config' || !schedule) && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -9039,492 +9039,127 @@ export default function Cronograma({
             exit={{ opacity: 0, y: -10 }}
             className="max-w-2xl mx-auto"
           >
-            <Card className="border-[#E2E0D9] shadow-md overflow-hidden">
+            <Card className="border-[#E2E0D9] shadow-md overflow-hidden bg-white">
               <div className="bg-[#1A1A1A] p-6 text-white space-y-2">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-amber-400 fill-amber-400" />
-                    <h2 className="text-lg font-bold tracking-tight">Criar Cronograma Inteligente</h2>
+                    <h2 className="text-lg font-bold tracking-tight">Criar Planejamento de Estudos</h2>
                   </div>
                   {schedules.length > 0 && (
                     <button
                       onClick={() => setActiveTab('plan')}
                       className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold border border-white/20 transition-all cursor-pointer"
                     >
-                      Voltar
+                      Voltar ao Plano Ativo
                     </button>
                   )}
                 </div>
                 <p className="text-xs text-stone-300 leading-relaxed">
-                  Gere um planejamento de estudos focado na sua banca ou região de preferência. Insira as disponibilidades para criar seu calendário adaptativo.
+                  Crie seu plano de estudos totalmente personalizado através do nosso assistente guiado passo a passo.
                 </p>
               </div>
 
               <CardContent className="p-6 space-y-6">
                 
-                {/* PROMINENT ASSISTANT WIZARD BANNER */}
-                <div className="bg-gradient-to-r from-stone-900 via-[#1C1C1C] to-stone-900 border border-amber-500/30 p-4.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-white shadow-md">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30 shrink-0">
-                      <Sparkles className="w-5 h-5" />
+                {/* PROMINENT ASSISTANT WIZARD HUB BANNER */}
+                <div className="bg-gradient-to-r from-stone-900 via-[#1C1C1C] to-stone-900 border border-amber-500/40 p-6 rounded-3xl text-white shadow-lg space-y-5">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-amber-500/20 text-amber-400 rounded-2xl border border-amber-500/30 shrink-0">
+                      <Sparkles className="w-6 h-6" />
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-amber-300 font-mono uppercase tracking-wider">Assistente Passo a Passo de Planejamento</h4>
-                      <p className="text-[11px] text-stone-300">
-                        Crie seu cronograma guiado com suporte a ementas da faculdade, cálculo de matérias e contagem total de temas e revisões.
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-bold text-amber-300 font-mono uppercase tracking-wider">
+                        Assistente Guiado Passo a Passo
+                      </h3>
+                      <p className="text-xs text-stone-300 leading-relaxed">
+                        O assistente gerenciará automaticamente as etapas do seu planejamento com calibração inteligente para internato e residência médica.
                       </p>
                     </div>
                   </div>
+
+                  {/* KEY ADVANTAGES */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-stone-200 flex items-center gap-2">
+                      <GraduationCap className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>Ementa & Matérias da Faculdade</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-stone-200 flex items-center gap-2">
+                      <Award className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>53 Matérias por Pesos de Provas</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-stone-200 flex items-center gap-2">
+                      <CalendarIcon className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>Dias e Horas Diárias Ajustáveis</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-stone-200 flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>Ciclos de Revisão Espaçada</span>
+                    </div>
+                  </div>
+
                   <Button
                     onClick={() => setShowPlannerWizard(true)}
-                    className="bg-amber-500 hover:bg-amber-600 text-stone-950 font-extrabold text-xs px-4 py-2.5 rounded-xl shrink-0 shadow-xs cursor-pointer"
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-stone-950 font-black text-xs sm:text-sm py-3.5 h-auto rounded-2xl shadow-md cursor-pointer transition-all flex items-center justify-center gap-2"
                   >
-                    <span>🧙‍♂️ Iniciar Assistente Guiado</span>
+                    <span>🧙‍♂️ Iniciar Assistente Guiado de Planejamento</span>
                   </Button>
                 </div>
-                
+
                 {/* PDF IMPORT OPTION BEFORE GENERATING */}
                 {profile?.email === 'lucas1renck2melo@gmail.com' && (
-                  <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs">
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-extrabold text-stone-900 uppercase tracking-tight">Já possui um cronograma em PDF?</h4>
-                        <p className="text-[10px] text-stone-600">Importe seu PDF existente da faculdade ou cursinho para criar o plano instantaneamente antes de gerar um novo.</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border border-dashed border-amber-300 rounded-xl p-3 bg-white/80 text-center relative hover:bg-white transition-all">
-                    {pdfImporting ? (
-                      <div className="py-2 space-y-2 text-left">
-                        <div className="flex items-center justify-between text-xs font-bold text-amber-900">
-                          <span className="flex items-center gap-1.5 shrink-0">
-                            <RotateCw className="w-3.5 h-3.5 animate-spin text-[#D44E3D]" />
-                            <span>Processando PDF...</span>
-                          </span>
-                          <span className="font-mono text-[11px]">{pdfProgressPercent}%</span>
-                        </div>
-                        <p className="text-[10px] text-amber-700 font-semibold truncate">{pdfProgress || 'Lendo arquivo...'}</p>
-                        <div className="w-full h-1.5 bg-stone-100 rounded-full overflow-hidden shadow-inner border border-stone-200">
-                          <div 
-                            className="h-full bg-gradient-to-r from-amber-400 to-[#D44E3D] transition-all duration-300 ease-out rounded-full"
-                            style={{ width: `${pdfProgressPercent || 5}%` }}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <label className="cursor-pointer block py-1 space-y-1">
-                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-stone-800">
-                          <UploadCloud className="w-4 h-4 text-[#D44E3D]" />
-                          <span>Clique para selecionar o PDF (máx 15MB)</span>
-                        </div>
-                        <p className="text-[9px] text-stone-500 font-mono">Segurança rigorosa: validação estrita de tipo PDF e sanitização</p>
-                        <input
-                          type="file"
-                          accept=".pdf,application/pdf"
-                          onChange={handleImportPdfFile}
-                          className="hidden"
-                        />
-                      </label>
-                    )}
-                  </div>
-                  {pdfError && (
-                    <p className="text-[10px] text-red-600 font-bold bg-red-50 p-2 rounded-lg border border-red-200">{pdfError}</p>
-                  )}
-                </div>
-                )}
-
-                {/* 1. Target Exam Selection with Regional Focus */}
-                <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-2">
-                    <label className="text-xs font-bold text-[#1A1A1A] font-mono uppercase block">1. QUAL SEU FOCO / BANCA ALVO?</label>
-                    <span className="text-[10px] text-stone-500 font-medium">Filtrar por região para personalizar o peso</span>
-                  </div>
-                  
-                  {/* Regional Pills Selection */}
-                  <div className="flex flex-wrap gap-1.5 pb-1">
-                    {[
-                      { id: 'todos', label: '🌍 Todas' },
-                      { id: 'centro-oeste', label: '🌵 Centro-Oeste' },
-                      { id: 'paulistas', label: '🏙️ Paulistas (SP)' },
-                      { id: 'sudeste', label: '☕ Sudeste' },
-                      { id: 'sul', label: '🌲 Sul' },
-                      { id: 'nordeste-norte', label: '☀️ Nordeste/Norte' },
-                      { id: 'nacional', label: '🇧🇷 Nacional' }
-                    ].map((reg) => (
-                      <button
-                        key={reg.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedRegionFilter(reg.id);
-                          // Auto select first exam in the filtered list if current is not in it
-                          const filtered = MEDICAL_EXAMS_DB.filter((exam) => {
-                            if (reg.id === 'todos') return true;
-                            if (reg.id === 'centro-oeste') return exam.region === 'Centro-Oeste';
-                            if (reg.id === 'paulistas') return ['usp-sp', 'unicamp', 'sus-sp', 'combo-paulistas'].includes(exam.id);
-                            if (reg.id === 'sudeste') return exam.region === 'Sudeste' && !['usp-sp', 'unicamp', 'sus-sp', 'combo-paulistas'].includes(exam.id);
-                            if (reg.id === 'sul') return exam.region === 'Sul';
-                            if (reg.id === 'nordeste-norte') return exam.region === 'Nordeste' || exam.region === 'Norte';
-                            if (reg.id === 'nacional') return exam.region === 'Nacional';
-                            return true;
-                          });
-                          if (filtered.length > 0 && !filtered.some(e => e.id === selectedExamId)) {
-                            setSelectedExamId(filtered[0].id);
-                          }
-                        }}
-                        className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all border ${
-                          selectedRegionFilter === reg.id
-                            ? 'bg-[#D44E3D] text-white border-[#D44E3D] shadow-sm font-black'
-                            : 'bg-white text-stone-600 border-[#E2E0D9] hover:bg-stone-50'
-                        }`}
-                      >
-                        {reg.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2 max-h-[280px] overflow-y-auto pr-1">
-                    {MEDICAL_EXAMS_DB.filter((exam) => {
-                      if (selectedRegionFilter === 'todos') return true;
-                      if (selectedRegionFilter === 'centro-oeste') return exam.region === 'Centro-Oeste';
-                      if (selectedRegionFilter === 'paulistas') return ['usp-sp', 'unicamp', 'sus-sp', 'combo-paulistas'].includes(exam.id);
-                      if (selectedRegionFilter === 'sudeste') return exam.region === 'Sudeste' && !['usp-sp', 'unicamp', 'sus-sp', 'combo-paulistas'].includes(exam.id);
-                      if (selectedRegionFilter === 'sul') return exam.region === 'Sul';
-                      if (selectedRegionFilter === 'nordeste-norte') return exam.region === 'Nordeste' || exam.region === 'Norte';
-                      if (selectedRegionFilter === 'nacional') return exam.region === 'Nacional';
-                      return true;
-                    }).map((exam) => (
-                      <button
-                        key={exam.id}
-                        type="button"
-                        onClick={() => setSelectedExamId(exam.id)}
-                        className={`w-full p-3.5 rounded-xl border text-left transition-all flex justify-between items-start gap-3 ${
-                          selectedExamId === exam.id 
-                            ? "border-[#D44E3D] bg-[#D44E3D]/5 shadow-sm" 
-                            : "border-[#E2E0D9] bg-white hover:bg-stone-50/50"
-                        }`}
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <span className={`text-xs font-bold block ${exam.id.startsWith('combo-') ? 'text-[#D44E3D]' : 'text-[#1A1A1A]'}`}>{exam.name}</span>
-                          <span className="text-[10px] text-stone-500 block leading-normal">{exam.description}</span>
-                        </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
-                          {exam.id.startsWith('combo-') && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 bg-amber-500 text-white font-mono text-[8px] uppercase font-black rounded shadow-sm animate-pulse">
-                              🔥 COMBO
-                            </span>
-                          )}
-                          <Badge className="bg-stone-100 hover:bg-stone-100 text-stone-600 text-[9px] font-mono whitespace-nowrap">
-                            {['usp-sp', 'unicamp', 'sus-sp', 'combo-paulistas'].includes(exam.id) ? 'Paulista' : exam.region}
-                          </Badge>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 2. Modality Selection with exact credit disclosures */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-[#1A1A1A] font-mono block">2. PERÍODO DO PLANEJAMENTO</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                    
-                    <button
-                      type="button"
-                      onClick={() => setModality('6meses')}
-                      className={`p-4 rounded-xl border text-left transition-all space-y-1.5 ${
-                        modality === '6meses' 
-                          ? "border-[#D44E3D] bg-[#D44E3D]/5 shadow-sm" 
-                          : "border-[#E2E0D9] bg-white hover:bg-stone-50/50"
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-[#1A1A1A]">Intensivo 6 meses</span>
-                        <Badge className="bg-amber-100 text-amber-800 text-[9px] font-mono">24 Semanas</Badge>
-                      </div>
-                      <p className="text-[10px] text-[#8E8A82]">Preparação rápida de reta final. Foco extremo na alta recorrência.</p>
-                      <p className="text-[10px] font-mono font-bold text-[#D44E3D] pt-1 border-t border-stone-100 mt-2">
-                        Custo real: 5 créditos
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setModality('1ano')}
-                      className={`p-4 rounded-xl border text-left transition-all space-y-1.5 ${
-                        modality === '1ano' 
-                          ? "border-[#D44E3D] bg-[#D44E3D]/5 shadow-sm" 
-                          : "border-[#E2E0D9] bg-white hover:bg-stone-50/50"
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-[#1A1A1A]">Extensivo 1 ano</span>
-                        <Badge className="bg-blue-100 text-blue-800 text-[9px] font-mono">48 Semanas</Badge>
-                      </div>
-                      <p className="text-[10px] text-[#8E8A82]">Curso completo padrão de residência médica. Excelente cobertura.</p>
-                      <p className="text-[10px] font-mono font-bold text-[#D44E3D] pt-1 border-t border-stone-100 mt-2">
-                        Custo real: 8 créditos
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setModality('2anos')}
-                      className={`p-4 rounded-xl border text-left transition-all space-y-1.5 ${
-                        modality === '2anos' 
-                          ? "border-[#D44E3D] bg-[#D44E3D]/5 shadow-sm" 
-                          : "border-[#E2E0D9] bg-white hover:bg-stone-50/50"
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-[#1A1A1A]">Longo Prazo 2 anos</span>
-                        <Badge className="bg-purple-100 text-purple-800 text-[9px] font-mono">96 Semanas</Badge>
-                      </div>
-                      <p className="text-[10px] text-[#8E8A82]">Planejamento regular diluído, ideal para conciliar com internato puxado.</p>
-                      <p className="text-[10px] font-mono font-bold text-[#D44E3D] pt-1 border-t border-stone-100 mt-2">
-                        Custo real: 10 créditos
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setModality('dynamic')}
-                      className={`p-4 rounded-xl border text-left transition-all space-y-1.5 ${
-                        modality === 'dynamic' 
-                          ? "border-[#D44E3D] bg-[#D44E3D]/5 shadow-sm" 
-                          : "border-[#E2E0D9] bg-white hover:bg-stone-50/50"
-                      }`}
-                    >
-                      <div className="flex justify-between items-center text-nowrap gap-1">
-                        <span className="text-xs font-bold text-[#1A1A1A]">Pela Data da Prova</span>
-                        <Badge className="bg-red-100 text-red-800 text-[9px] font-mono">Adaptável</Badge>
-                      </div>
-                      <p className="text-[10px] text-[#8E8A82]">Você define o dia do exame. O plano calcula e reorganiza tudo.</p>
-                      <p className="text-[10px] font-mono font-bold text-[#D44E3D] pt-1 border-t border-stone-100 mt-2">
-                        Custo: {examDate ? getCostLabel('dynamic') : '5 a 10 cr'}
-                      </p>
-                    </button>
-
-                  </div>
-
-                  {modality === 'dynamic' && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-2.5 mt-2"
-                    >
+                  <div className="bg-stone-50 border border-stone-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <CalendarIcon className="w-4 h-4 text-[#D44E3D]" />
-                        <span className="text-xs font-bold text-[#1A1A1A] font-mono uppercase">Selecione a Data Estimada da sua Prova:</span>
+                        <div className="p-2 bg-stone-900 text-white rounded-xl shadow-xs">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-extrabold text-stone-900 uppercase tracking-tight">Atalho: Importar Cronograma em PDF</h4>
+                          <p className="text-[10px] text-stone-600">Importe seu PDF existente da faculdade para criar o plano instantaneamente.</p>
+                        </div>
                       </div>
-                      <input
-                        type="date"
-                        value={examDate}
-                        onChange={(e) => setExamDate(e.target.value)}
-                        min={new Date().toISOString().split('T')[0]}
-                        className="w-full max-w-xs p-2 bg-white border border-stone-200 rounded-lg text-xs font-mono focus:ring-1 focus:ring-[#D44E3D] focus:outline-none"
-                      />
-                      {examDate && (
-                        <p className="text-[11px] text-stone-600 font-medium">
-                          ⚡ Seu cronograma terá <strong className="text-[#D44E3D]">{calculateWeeksToDate(examDate)} semanas</strong> até o dia da prova. Todas as 53 matérias e prioridades acadêmicas serão realocadas perfeitamente para cobrir todo o edital neste tempo!
-                        </p>
+                    </div>
+
+                    <div className="border border-dashed border-stone-300 rounded-xl p-3 bg-white text-center relative hover:bg-stone-50/50 transition-all">
+                      {pdfImporting ? (
+                        <div className="py-2 space-y-2 text-left">
+                          <div className="flex items-center justify-between text-xs font-bold text-stone-900">
+                            <span className="flex items-center gap-1.5 shrink-0">
+                              <RotateCw className="w-3.5 h-3.5 animate-spin text-[#D44E3D]" />
+                              <span>Processando PDF...</span>
+                            </span>
+                            <span className="font-mono text-[11px]">{pdfProgressPercent}%</span>
+                          </div>
+                          <p className="text-[10px] text-stone-700 font-semibold truncate">{pdfProgress || 'Lendo arquivo...'}</p>
+                          <div className="w-full h-1.5 bg-stone-100 rounded-full overflow-hidden shadow-inner border border-stone-200">
+                            <div 
+                              className="h-full bg-gradient-to-r from-amber-400 to-[#D44E3D] transition-all duration-300 ease-out rounded-full"
+                              style={{ width: `${pdfProgressPercent || 5}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer block py-1 space-y-1">
+                          <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-stone-800">
+                            <UploadCloud className="w-4 h-4 text-[#D44E3D]" />
+                            <span>Clique para selecionar o PDF (máx 15MB)</span>
+                          </div>
+                          <p className="text-[9px] text-stone-500 font-mono">Validação estrita de tipo PDF e extração automática</p>
+                          <input
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            onChange={handleImportPdfFile}
+                            className="hidden"
+                          />
+                        </label>
                       )}
-                    </motion.div>
-                  )}
-                </div>
-
-                {/* 2.5. SEMESTRE LETIVO / INTERNATO ATIVO */}
-                <div className="space-y-3 bg-[#FBFBFA] border border-stone-200/60 p-4 rounded-xl">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#1A1A1A] font-mono block">💡 PRIORIZAR MATÉRIAS DO SEMESTRE ACADÊMICO / INTERNATO (Opcional)</label>
-                    <p className="text-[10px] text-[#8E8A82] leading-normal">
-                      Selecione quais grandes áreas você está cursando na faculdade neste semestre. Nosso algoritmo inteligente adaptará o cronograma para priorizar esses temas na primeira metade do seu plano (garantindo notas excelentes nas suas provas acadêmicas), enquanto distribui as demais matérias de forma perfeita para garantir a sua preparação total para a prova de residência médica.
-                    </p>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    {['Clínica Médica', 'Cirurgia Geral', 'Ginecologia e Obstetrícia', 'Pediatria', 'Saúde Coletiva'].map(subject => {
-                      const isSelected = currentSemesterSubjects.includes(subject);
-                      return (
-                        <button
-                          key={subject}
-                          type="button"
-                          onClick={() => {
-                            if (isSelected) {
-                              setCurrentSemesterSubjects(currentSemesterSubjects.filter(s => s !== subject));
-                            } else {
-                              setCurrentSemesterSubjects([...currentSemesterSubjects, subject]);
-                            }
-                          }}
-                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold font-mono transition-all flex items-center gap-1 ${
-                            isSelected 
-                              ? "bg-stone-900 border-stone-900 text-white shadow-sm" 
-                              : "bg-white border-stone-200 text-stone-700 hover:bg-stone-50"
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3.5 h-3.5" />}
-                          {subject}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="pt-2 border-t border-stone-200/60 mt-3">
-                    <label className="flex items-center gap-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={onlyCurrentSemester}
-                        onChange={(e) => setOnlyCurrentSemester(e.target.checked)}
-                        className="w-4 h-4 rounded accent-[#D44E3D] cursor-pointer"
-                      />
-                      <span className="text-xs font-bold text-stone-900">
-                        📌 Criar cronograma <strong>exclusivamente</strong> para as matérias deste semestre da faculdade (ignorar as demais matérias do edital)
-                      </span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* 3. Start Date Selection */}
-                <div className="space-y-3 bg-[#FBFBFA] border border-stone-200/60 p-4 rounded-xl">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CalendarIcon className="w-4 h-4 text-[#D44E3D]" />
-                      <label className="text-xs font-bold text-[#1A1A1A] font-mono block uppercase">
-                        3. DATA DE INÍCIO DO CRONOGRAMA
-                      </label>
                     </div>
-                    {syncStartDate && (
-                      <span className="text-[11px] font-bold text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-md">
-                        {(() => {
-                          const d = new Date(syncStartDate + 'T00:00:00');
-                          if (isNaN(d.getTime())) return '';
-                          const days = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
-                          return days[d.getDay()];
-                        })()}
-                      </span>
+                    {pdfError && (
+                      <p className="text-[10px] text-red-600 font-bold bg-red-50 p-2 rounded-lg border border-red-200">{pdfError}</p>
                     )}
                   </div>
-                  
-                  <p className="text-[10px] text-[#8E8A82] leading-normal">
-                    Selecione o dia em que você deseja começar a estudar. Seu cronograma iniciará no dia da semana dessa data.
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSyncStartDate(getLocalYYYYMMDD())}
-                      className={`text-[11px] font-bold px-3 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                        syncStartDate === getLocalYYYYMMDD()
-                          ? 'bg-[#1A1A1A] text-white border-[#1A1A1A] shadow-xs'
-                          : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
-                      }`}
-                    >
-                      📅 Iniciar Hoje
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSyncStartDate(getNextMondayLocal())}
-                      className={`text-[11px] font-bold px-3 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                        syncStartDate === getNextMondayLocal()
-                          ? 'bg-[#1A1A1A] text-white border-[#1A1A1A] shadow-xs'
-                          : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
-                      }`}
-                    >
-                      🗓️ Próxima Segunda
-                    </button>
-                  </div>
-
-                  <input 
-                    type="date"
-                    value={syncStartDate}
-                    onChange={(e) => setSyncStartDate(e.target.value)}
-                    className="w-full max-w-xs p-2.5 bg-white border border-stone-300 rounded-lg text-xs font-mono font-bold focus:ring-1 focus:ring-[#D44E3D] focus:outline-none shadow-xs"
-                  />
-                  <p className="text-[10px] text-stone-500 font-sans italic">
-                    💡 Dica: Ao escolher Próxima Segunda, seu cronograma terá semanas perfeitamente alinhadas de Segunda a Domingo.
-                  </p>
-                </div>
-
-                {/* 4. Study Days Selection */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-[#1A1A1A] font-mono block">4. QUAIS DIAS DA SEMANA VOCÊ DISPÕE PARA ESTUDO?</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {getWeekdays().map(day => {
-                      const isSelected = studyDays.includes(day);
-                      return (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => handleDayToggle(day)}
-                          className={`w-12 h-10 rounded-lg text-xs font-bold font-mono transition-all border ${
-                            isSelected 
-                              ? "bg-[#D44E3D] text-white border-[#D44E3D]" 
-                              : "bg-white text-stone-600 border-[#E2E0D9] hover:bg-stone-50"
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 5. Hours Per Day */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-bold text-[#1A1A1A] font-mono">5. HORAS DE ESTUDO DIÁRIO</label>
-                    <span className="text-xs font-mono font-bold text-[#D44E3D]">{hoursPerDay} horas/dia</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="2"
-                    max="10"
-                    step="1"
-                    value={hoursPerDay}
-                    onChange={(e) => setHoursPerDay(Number(e.target.value))}
-                    className="w-full accent-[#D44E3D] bg-stone-100 h-2 rounded-full cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] font-mono text-stone-400">
-                    <span>2h (Foco Rápido)</span>
-                    <span>10h (Foco Intenso)</span>
-                  </div>
-                </div>
-
-                {/* SUBMIT */}
-                <div className="pt-4 border-t border-[#E2E0D9] space-y-4">
-                  {availableCredits < getCost() && (
-                    <div className="bg-red-50 border border-red-200/60 rounded-xl p-4 flex gap-3 text-red-800">
-                      <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold">Saldo de Créditos Insuficiente</p>
-                        <p className="text-[10px] leading-relaxed text-red-700">
-                          Sua geração exige <strong>{getCost()} créditos</strong>, mas seu saldo atual é de apenas <strong>{availableCredits} créditos</strong>.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <Button
-                    onClick={handleGenerateSchedule}
-                    disabled={generating || availableCredits < getCost() || studyDays.length === 0}
-                    className="w-full bg-[#D44E3D] hover:bg-[#D44E3D]/90 text-white font-bold h-11 rounded-xl shadow-sm transition-all"
-                  >
-                    {generating ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <RotateCw className="w-4 h-4 animate-spin" />
-                        <span>Calculando algoritmos e pesos de incidência...</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-amber-300 fill-amber-300" />
-                        <span>Gerar Planejamento de Prova ({getCostLabel(modality)})</span>
-                      </div>
-                    )}
-                  </Button>
-                </div>
+                )}
 
               </CardContent>
             </Card>

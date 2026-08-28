@@ -114,10 +114,37 @@ body.samsung-dark {
 }
 
 /* Low-opacity white utility overrides */
-.samsung-dark [class*="bg-white/10"],
-.samsung-dark [class*="bg-white/20"],
-.samsung-dark [class*="bg-white/5"] {
+.samsung-dark [class*="bg-white/"] {
   background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Gradients that end/start in light colors remove gradient image in dark mode so dark background shines through */
+.samsung-dark [class*="to-white"],
+.samsung-dark [class*="from-white"],
+.samsung-dark [class*="via-white"],
+.samsung-dark [class*="to-stone-50"],
+.samsung-dark [class*="from-stone-50"],
+.samsung-dark [class*="to-stone-100"],
+.samsung-dark [class*="from-stone-100"],
+.samsung-dark [class*="to-amber-50"],
+.samsung-dark [class*="from-amber-50"],
+.samsung-dark [class*="to-amber-100"],
+.samsung-dark [class*="from-amber-100"],
+.samsung-dark [class*="to-emerald-50"],
+.samsung-dark [class*="from-emerald-50"],
+.samsung-dark [class*="to-blue-50"],
+.samsung-dark [class*="from-blue-50"],
+.samsung-dark [class*="to-indigo-50"],
+.samsung-dark [class*="from-indigo-50"],
+.samsung-dark [class*="to-purple-50"],
+.samsung-dark [class*="from-purple-50"],
+.samsung-dark [class*="to-red-50"],
+.samsung-dark [class*="from-red-50"],
+.samsung-dark [class*="to-rose-50"],
+.samsung-dark [class*="from-rose-50"],
+.samsung-dark [class*="to-orange-50"],
+.samsung-dark [class*="from-orange-50"] {
+  background-image: none !important;
 }
 
 /* Inset Containers, Sub-cards & Secondary Light Surfaces (wildcards for all hex & light neutral variants) */
@@ -125,16 +152,22 @@ body.samsung-dark {
 .samsung-dark [class*="bg-[#FBF"],
 .samsung-dark [class*="bg-[#F9F"],
 .samsung-dark [class*="bg-[#F8F"],
+.samsung-dark [class*="bg-[#F7F"],
+.samsung-dark [class*="bg-[#F6F"],
 .samsung-dark [class*="bg-[#F5F"],
 .samsung-dark [class*="bg-[#F4F"],
 .samsung-dark [class*="bg-[#F3F"],
 .samsung-dark [class*="bg-[#F2F"],
+.samsung-dark [class*="bg-[#F1F"],
 .samsung-dark [class*="bg-[#F0F"],
 .samsung-dark [class*="bg-[#EAE"],
 .samsung-dark [class*="bg-[#EDE"],
 .samsung-dark [class*="bg-[#E4E"],
 .samsung-dark [class*="bg-[#FFF"],
 .samsung-dark [class*="bg-[#f8f"],
+.samsung-dark [class*="bg-[#faf"],
+.samsung-dark [class*="bg-[#fbf"],
+.samsung-dark [class*="bg-[#f9f"],
 .samsung-dark [class*="bg-stone-50"],
 .samsung-dark [class*="bg-slate-50"],
 .samsung-dark [class*="bg-gray-50"],
@@ -142,6 +175,51 @@ body.samsung-dark {
 .samsung-dark [class*="bg-zinc-50"] {
   background-color: #1C1C24 !important;
   color: #E4E4E8 !important;
+  border-color: #2A2A38 !important;
+}
+
+/* Translucent light surface overrides */
+.samsung-dark [class*="bg-stone-50/"],
+.samsung-dark [class*="bg-slate-50/"],
+.samsung-dark [class*="bg-gray-50/"],
+.samsung-dark [class*="bg-neutral-50/"],
+.samsung-dark [class*="bg-zinc-50/"] {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Light Colored Badges / Pills Overrides for Dark Mode */
+.samsung-dark [class*="bg-amber-50"],
+.samsung-dark [class*="bg-amber-100"] {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+  color: #FCD34D !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+}
+
+.samsung-dark [class*="bg-emerald-50"],
+.samsung-dark [class*="bg-emerald-100"] {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  color: #4ADE80 !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.samsung-dark [class*="bg-indigo-50"],
+.samsung-dark [class*="bg-indigo-100"],
+.samsung-dark [class*="bg-violet-50"],
+.samsung-dark [class*="bg-violet-100"],
+.samsung-dark [class*="bg-blue-50"],
+.samsung-dark [class*="bg-blue-100"] {
+  background-color: rgba(99, 102, 241, 0.15) !important;
+  color: #A5B4FC !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+.samsung-dark [class*="bg-rose-50"],
+.samsung-dark [class*="bg-rose-100"],
+.samsung-dark [class*="bg-red-50"],
+.samsung-dark [class*="bg-red-100"] {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+  color: #FB7185 !important;
+  border-color: rgba(244, 63, 94, 0.3) !important;
 }
 
 /* Badges, Pills, Secondary Controls & Light Neutral Accents */
@@ -227,14 +305,7 @@ body.samsung-dark {
   border-color: #2A2A38 !important;
 }
 
-/* Preserved & Sophisticated Color Accents (Green/Emerald, Red/Rose, Amber, Blue, Purple, Indigo, Sky) */
-.samsung-dark [class*="bg-emerald"],
-.samsung-dark [class*="bg-green"] {
-  background-color: rgba(16, 185, 129, 0.16) !important;
-  color: #4ADE80 !important;
-  border-color: rgba(16, 185, 129, 0.35) !important;
-}
-
+/* Preserved & Sophisticated Color Accents */
 .samsung-dark [class*="text-emerald"],
 .samsung-dark [class*="text-green"] {
   color: #4ADE80 !important;
@@ -243,13 +314,6 @@ body.samsung-dark {
 .samsung-dark [class*="border-emerald"],
 .samsung-dark [class*="border-green"] {
   border-color: rgba(16, 185, 129, 0.35) !important;
-}
-
-.samsung-dark [class*="bg-rose"],
-.samsung-dark [class*="bg-red"] {
-  background-color: rgba(244, 63, 94, 0.16) !important;
-  color: #FB7185 !important;
-  border-color: rgba(244, 63, 94, 0.35) !important;
 }
 
 .samsung-dark [class*="text-rose"],
@@ -264,14 +328,6 @@ body.samsung-dark {
   border-color: rgba(244, 63, 94, 0.35) !important;
 }
 
-.samsung-dark [class*="bg-amber"],
-.samsung-dark [class*="bg-yellow"],
-.samsung-dark [class*="bg-[#FFFDE7]"] {
-  background-color: rgba(245, 158, 11, 0.16) !important;
-  color: #FCD34D !important;
-  border-color: rgba(245, 158, 11, 0.35) !important;
-}
-
 .samsung-dark [class*="text-amber"],
 .samsung-dark [class*="text-yellow"] {
   color: #FCD34D !important;
@@ -280,16 +336,6 @@ body.samsung-dark {
 .samsung-dark [class*="border-amber"],
 .samsung-dark [class*="border-yellow"] {
   border-color: rgba(245, 158, 11, 0.35) !important;
-}
-
-.samsung-dark [class*="bg-blue"],
-.samsung-dark [class*="bg-indigo"],
-.samsung-dark [class*="bg-purple"],
-.samsung-dark [class*="bg-sky"],
-.samsung-dark [class*="bg-violet"] {
-  background-color: rgba(99, 102, 241, 0.16) !important;
-  color: #A5B4FC !important;
-  border-color: rgba(99, 102, 241, 0.35) !important;
 }
 
 .samsung-dark [class*="text-blue"],

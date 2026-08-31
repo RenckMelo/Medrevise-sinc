@@ -62,6 +62,7 @@ interface FlashcardModuleProps {
   userProgress: UserProgress | null;
   userId: string;
   initialTopicIds?: string[];
+  selectedTopic?: Topic | null;
   onProgressUpdate?: () => void;
   availableCredits?: number;
   setAvailableCredits?: React.Dispatch<React.SetStateAction<number>>;
@@ -153,6 +154,7 @@ export default function FlashcardModule({
   userProgress,
   userId,
   initialTopicIds,
+  selectedTopic,
   onProgressUpdate,
   availableCredits,
   setAvailableCredits
@@ -170,6 +172,40 @@ export default function FlashcardModule({
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>(initialTopicIds || []);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [isSelecting, setIsSelecting] = useState(!initialTopicIds || initialTopicIds.length === 0);
+
+  // Helper to resolve topic ID to a valid Topic object even if summary has not been generated yet
+  const getTopicForId = useCallback((tid: string): Topic => {
+    let found = topics.find(t => t.id === tid);
+    if (!found && selectedTopic && selectedTopic.id === tid) {
+      found = selectedTopic;
+    }
+    if (!found) {
+      const titleFromId = tid.startsWith('local_topic_')
+        ? tid.replace(/^local_topic_/, '').replace(/_/g, ' ')
+        : tid;
+      found = {
+        id: tid,
+        title: titleFromId,
+        subjectId: selectedTopic?.subjectId || 'geral',
+        semesterId: selectedTopic?.semesterId || 'cronograma_sem',
+        completed: false
+      } as Topic;
+    }
+    return found;
+  }, [topics, selectedTopic]);
+
+  const displayTopics = useMemo(() => {
+    const list = [...topics];
+    if (selectedTopic && !list.some(t => t.id === selectedTopic.id)) {
+      list.unshift(selectedTopic);
+    }
+    for (const tid of selectedTopicIds) {
+      if (!list.some(t => t.id === tid)) {
+        list.unshift(getTopicForId(tid));
+      }
+    }
+    return list;
+  }, [topics, selectedTopic, selectedTopicIds, getTopicForId]);
 
   // IA Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -274,6 +310,9 @@ export default function FlashcardModule({
 
       if (shuffled.length > 0) {
         setIsSelecting(false);
+      } else if (topicsToFilter.length > 0 || subjectsToFilter.length > 0) {
+        // Automatically open creation / generator panel when 0 cards exist for target topic
+        setIsSelecting(true);
       }
     } catch (err) {
       console.error('Error fetching flashcards:', err);
@@ -282,16 +321,20 @@ export default function FlashcardModule({
     }
   }, [selectedTopicIds, selectedSubjectIds, srsReviewsMap]);
 
-  // Auto-fetch if initialTopicIds provided
+  // Auto-fetch if initialTopicIds or selectedTopic provided
   useEffect(() => {
     if (initialTopicIds && initialTopicIds.length > 0) {
       setSelectedTopicIds(initialTopicIds);
       setActiveTab('deck');
       fetchFlashcards('deck', initialTopicIds);
+    } else if (selectedTopic) {
+      setSelectedTopicIds([selectedTopic.id]);
+      setActiveTab('deck');
+      fetchFlashcards('deck', [selectedTopic.id]);
     } else {
       fetchFlashcards('srs');
     }
-  }, []);
+  }, [initialTopicIds, selectedTopic]);
 
   // Fetch Deep Dives ("Cards Aprofundados")
   const fetchDeepDives = useCallback(async () => {
@@ -540,8 +583,7 @@ export default function FlashcardModule({
       alert('Selecione um tema para analisar a quantidade de flashcards recomendada.');
       return;
     }
-    const topic = topics.find(t => t.id === selectedTopicIds[0]);
-    if (!topic) return;
+    const topic = getTopicForId(selectedTopicIds[0]);
 
     setIsAnalyzingPotential(true);
     try {
@@ -569,7 +611,7 @@ export default function FlashcardModule({
     try {
       const addedCards: Flashcard[] = [];
       for (const tid of selectedTopicIds) {
-        const topic = topics.find(t => t.id === tid);
+        const topic = getTopicForId(tid);
         if (topic) {
           const newCards = await generateFlashcards(topic.title, topic.content || topic.title, countToGenerate, userId);
           if (newCards && Array.isArray(newCards)) {
@@ -584,7 +626,7 @@ export default function FlashcardModule({
                   back,
                   concept,
                   topicId: topic.id,
-                  subjectId: topic.subjectId,
+                  subjectId: topic.subjectId || 'geral',
                   createdAt: new Date().toISOString()
                 });
 
@@ -594,7 +636,7 @@ export default function FlashcardModule({
                   back,
                   concept,
                   topicId: topic.id,
-                  subjectId: topic.subjectId
+                  subjectId: topic.subjectId || 'geral'
                 });
               }
             }
@@ -640,7 +682,7 @@ export default function FlashcardModule({
     try {
       const addedCards: Flashcard[] = [];
       for (const tid of selectedTopicIds) {
-        const topic = topics.find(t => t.id === tid);
+        const topic = getTopicForId(tid);
         if (topic) {
           const newCards = await generateFlashcards(topic.title, topic.content || topic.title, numCardsPerTopic, userId);
           if (newCards && Array.isArray(newCards)) {
@@ -655,7 +697,7 @@ export default function FlashcardModule({
                   back,
                   concept,
                   topicId: topic.id,
-                  subjectId: topic.subjectId,
+                  subjectId: topic.subjectId || 'geral',
                   createdAt: new Date().toISOString()
                 });
 
@@ -665,7 +707,7 @@ export default function FlashcardModule({
                   back,
                   concept,
                   topicId: topic.id,
-                  subjectId: topic.subjectId
+                  subjectId: topic.subjectId || 'geral'
                 });
               }
             }
@@ -1645,7 +1687,7 @@ export default function FlashcardModule({
             <div className="space-y-4">
               <label className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">Temas Específicos</label>
               <div className="flex flex-wrap gap-2 max-h-[220px] overflow-auto pr-2">
-                {topics
+                {displayTopics
                   .filter(t => selectedSubjectIds.length === 0 || selectedSubjectIds.includes(t.subjectId))
                   .map((t, tIdx) => (
                     <Button
@@ -1712,31 +1754,39 @@ export default function FlashcardModule({
                 </div>
 
                 {/* SMART AI TOPIC COVERAGE ANALYZER */}
-                <div className="space-y-2 bg-white p-3.5 rounded-xl border border-primary/20 shadow-2xs flex flex-col justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-primary">
-                      <BarChart2 className="w-4 h-4" />
-                      <span>2. Extração Integral Analisada por IA</span>
+                <div className="space-y-2.5 bg-indigo-50/70 p-4 rounded-xl border border-indigo-200 shadow-2xs flex flex-col justify-between">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-1 text-xs font-bold text-indigo-950">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse" />
+                        <span>2. Extração Integral Analisada por IA</span>
+                      </div>
+                      <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 text-[9px] font-black uppercase px-2 py-0.5">
+                        Análise Grátis
+                      </Badge>
                     </div>
-                    <p className="text-[11px] text-[#8E8A82] leading-relaxed">
-                      A IA lê a extensão médica do tema e calcula a quantidade exata de cards para 100% de cobertura.
+                    <p className="text-[11px] text-indigo-800 leading-relaxed font-medium">
+                      A IA lê o tema médico e calcula a quantidade ideal de flashcards para 100% de cobertura do assunto.
                     </p>
+                    <div className="text-[10px] font-extrabold text-amber-900 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200/80 flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500 shrink-0" />
+                      <span>Preço real em créditos: <strong>2 a 6 créditos</strong> (1-10 cards = 2cr | 11-20 = 3cr | 21-30 = 4cr | 31-40 = 5cr)</span>
+                    </div>
                   </div>
 
                   <Button
                     onClick={handleAnalyzeTopicPotential}
                     disabled={isAnalyzingPotential}
-                    variant="outline"
-                    className="w-full bg-primary/5 hover:bg-primary/10 text-primary border-primary/30 font-bold text-xs uppercase tracking-wider h-10 rounded-lg gap-2 mt-2"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider h-11 rounded-lg gap-2 mt-2 shadow-sm cursor-pointer"
                   >
                     {isAnalyzingPotential ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Analisando Conteúdo do Tema...
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Analisando Densidade Médica...
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 text-primary" />
+                        <Sparkles className="w-4 h-4" />
                         Analisar Cobertura Completa com IA
                       </>
                     )}
@@ -1828,7 +1878,21 @@ export default function FlashcardModule({
                     <Zap className="w-4 h-4 text-amber-500 fill-amber-400" />
                     {potentialAnalysis.creditCost}
                   </span>
-                  <span className="text-[9px] font-bold text-[#8E8A82] block">Tabela Transparente</span>
+                  <span className="text-[9px] font-bold text-amber-800 block">Preço Real por Tabela</span>
+                </div>
+              </div>
+
+              {/* CREDIT COST TRANSPARENCY BANNER */}
+              <div className="p-3 bg-amber-50/90 rounded-xl border border-amber-200 text-[10px] text-amber-900 space-y-1">
+                <span className="font-extrabold uppercase tracking-wider block text-amber-950 flex items-center gap-1">
+                  <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
+                  Tabela Oficial de Créditos por Quantidade:
+                </span>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-amber-900 font-medium">
+                  <span>• 1 a 10 cards: <strong>2 créditos</strong></span>
+                  <span>• 11 a 20 cards: <strong>3 créditos</strong></span>
+                  <span>• 21 a 30 cards: <strong>4 créditos</strong></span>
+                  <span>• 31 a 40 cards: <strong>5 créditos</strong></span>
                 </div>
               </div>
 

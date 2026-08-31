@@ -596,6 +596,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             userProgress={userProgress}
             userId={userId}
             initialTopicIds={selectedTopic ? [selectedTopic.id] : (cronogramaFilterTopics.length > 0 ? cronogramaFilterTopics : undefined)}
+            selectedTopic={selectedTopic}
             onProgressUpdate={loadUserProgress}
             availableCredits={availableCredits}
             setAvailableCredits={setAvailableCredits}

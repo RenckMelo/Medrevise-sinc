@@ -4966,16 +4966,26 @@ th { background: #F8F7F4; font-weight: bold; }
                 Nenhum Resumo Gerado
               </h4>
               <p className="text-sm text-indigo-700 max-w-lg mx-auto">
-                Utilize nossa IA médica para gerar um resumo completo e estruturado para este tópico, perfeitamente adaptado para as suas provas de residência.
+                Você pode criar o resumo completo do tema com IA ou iniciar a geração de flashcards e prática de questões diretamente!
               </p>
             </div>
-            <Button 
-              onClick={() => setShowSummaryWizard(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-xs tracking-widest px-6 py-3.5 rounded-xl shadow-lg shadow-indigo-200 min-h-12 flex items-center justify-center gap-2 cursor-pointer mt-2"
-            >
-              <Sparkles className="w-4 h-4" />
-              Criar Primeiro Resumo
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
+              <Button 
+                onClick={() => setShowSummaryWizard(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-xs tracking-widest px-6 py-3.5 rounded-xl shadow-lg shadow-indigo-200 min-h-12 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                Gerar Resumo Completo
+              </Button>
+              <Button 
+                onClick={handleGenerateFlashcards}
+                disabled={isGeneratingFlashcards}
+                className="bg-[#1A1A1A] hover:bg-black text-white font-black uppercase text-xs tracking-widest px-6 py-3.5 rounded-xl shadow-md min-h-12 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isGeneratingFlashcards ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
+                Gerar Flashcards Direto (2cr)
+              </Button>
+            </div>
           </div>
         )}
 
@@ -5793,8 +5803,7 @@ th { background: #F8F7F4; font-weight: bold; }
           )}
           
           {/* Practice Section - Single Column Focused */}
-          {!isPlaceholder && (
-            <div className="flex flex-col gap-6 mt-16 mb-20">
+          <div className="flex flex-col gap-6 mt-16 mb-20">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card className="border-[#E2E0D9] shadow-none rounded-xl bg-[#FBFBFA] p-6 flex flex-col justify-between">
                   <div>
@@ -5860,7 +5869,6 @@ th { background: #F8F7F4; font-weight: bold; }
                 </Card>
               </div>
             </div>
-          )}
 
           {!isPlaceholder && (
             <div className="mt-12 bg-[#FBFBFA] border border-[#E2E0D9] rounded-2xl p-8 space-y-8">

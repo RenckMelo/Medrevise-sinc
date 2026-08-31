@@ -1344,9 +1344,14 @@ export async function analyzeTopicFlashcardPotential(
   topicTitle: string,
   content: string
 ): Promise<FlashcardPotentialAnalysis> {
+  const hasDetailedContent = content && content.trim().length > 50 && content.trim() !== topicTitle;
+  const contentBody = hasDetailedContent
+    ? content.substring(0, 5000)
+    : `Tema de medicina para residência médica: "${topicTitle}". Utilize seu conhecimento de diretrizes e condutas médicas para este tema.`;
+
   const prompt = `Você é um diretor pedagógico do MedInternato especializado em Análise de Densidade de Conteúdo e Extração de Flashcards para Provas de Residência Médica.
-Examine o texto médico do tema: "${topicTitle}".
-Conteúdo do tema: ${content ? content.substring(0, 5000) : topicTitle}
+Examine o tema médico: "${topicTitle}".
+Conteúdo do tema: ${contentBody}
 
 Sua missão:
 1. Determine o NÚMERO IDEAL DE FLASHCARDS ("estimatedIdealCards") necessário para garantir 100% DE COBERTURA dos pontos cruciais do tema (fisiopatologia, critérios diagnósticos, exames de escolha, tratamento de 1ª linha, complicações e pegadinhas de prova), sem gerar cards redundantes.
@@ -1384,15 +1389,20 @@ Formato de Resposta (JSON estrito):
 }
 
 export async function generateFlashcards(topicTitle: string, content: string, count: number = 10, userId?: string) {
-  const prompt = `Com base no conteúdo médico abaixo, gere ${count} flashcards (frente e verso) para estudo por repetição espaçada sobre o tema "${topicTitle}".
-  Conteúdo: ${content ? content.substring(0, 4000) : topicTitle}
+  const hasDetailedContent = content && content.trim().length > 50 && content.trim() !== topicTitle;
+  const contentBody = hasDetailedContent
+    ? content.substring(0, 4000)
+    : `Gere com base no conhecimento médico atualizado para provas de residência no Brasil sobre o tema "${topicTitle}" (critérios diagnósticos, fisiopatologia, tratamento de 1ª linha, exames padrão-ouro e condutas de emergência).`;
+
+  const prompt = `Com base no tema e conteúdo médico abaixo, gere ${count} flashcards (frente e verso) de alta qualidade para estudo por repetição espaçada sobre o tema "${topicTitle}".
+  Conteúdo/Referência: ${contentBody}
   
   REQUISITOS:
   - Escreva a frente e o verso estritamente em PORTUGUÊS (PORTUGUÊS DO BRASIL).
   - A frente deve ser uma pergunta curta ou conceito direto para completar.
   - O verso deve ser a resposta direta e concisa.
   - Adicione a chave "concept" para tag de diagnóstico de assunto (ex: "Diagnóstico", "Conduta de 1ª Linha", "Exame Padrão-Ouro", "Efeitos Colaterais").
-  - Foque em "pérolas" de prova de residência e condutas médicas cruciais.
+  - Foque em "pérolas" de prova de residência médica e condutas cruciais.
   
   Formato de Resposta (JSON estrito):
   [

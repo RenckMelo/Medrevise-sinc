@@ -1668,41 +1668,124 @@ export default function FlashcardModule({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
-              <label className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">Grandes Matérias</label>
-              <div className="flex flex-wrap gap-2">
-                {subjects.map((s, sIdx) => (
-                  <Button
-                    key={`fc-subj-${s.id}-${sIdx}`}
-                    variant={selectedSubjectIds.includes(s.id) ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => toggleSubject(s.id)}
-                    className="rounded-full text-[10px] uppercase tracking-widest font-bold h-9 border-[#E2E0D9]"
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">Grandes Matérias</label>
+                {selectedSubjectIds.length > 0 && (
+                  <button
+                    onClick={() => setSelectedSubjectIds([])}
+                    className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 hover:text-slate-800 cursor-pointer"
                   >
-                    {s.name}
-                  </Button>
-                ))}
+                    Limpar Filtro ({selectedSubjectIds.length})
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {subjects.map((s, sIdx) => {
+                  const isSubjectSelected = selectedSubjectIds.includes(s.id);
+                  return (
+                    <Button
+                      key={`fc-subj-${s.id}-${sIdx}`}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleSubject(s.id)}
+                      className={cn(
+                        "rounded-full text-[10px] uppercase tracking-widest font-extrabold h-9 transition-all flex items-center gap-1.5 cursor-pointer",
+                        isSubjectSelected
+                          ? "bg-[#1A1A1A] hover:bg-black text-white border-[#1A1A1A] shadow-md ring-2 ring-slate-400 ring-offset-1 scale-[1.02]"
+                          : "bg-white hover:bg-slate-50 text-[#1A1A1A] border-[#E2E0D9]"
+                      )}
+                    >
+                      {isSubjectSelected && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                      <span>{s.name}</span>
+                    </Button>
+                  );
+                })}
               </div>
             </div>
 
             <div className="space-y-4">
-              <label className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">Temas Específicos</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">Temas Específicos</label>
+                {selectedTopicIds.length > 0 && (
+                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                    {selectedTopicIds.length} selecionado{selectedTopicIds.length > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2 max-h-[220px] overflow-auto pr-2">
                 {displayTopics
                   .filter(t => selectedSubjectIds.length === 0 || selectedSubjectIds.includes(t.subjectId))
-                  .map((t, tIdx) => (
-                    <Button
-                      key={`fc-top-${t.id}-${tIdx}`}
-                      variant={selectedTopicIds.includes(t.id) ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => toggleTopic(t.id)}
-                      className="rounded-full text-[9px] uppercase tracking-widest font-bold h-8 border-dashed"
-                    >
-                      {t.title}
-                    </Button>
-                  ))}
+                  .map((t, tIdx) => {
+                    const isTopicSelected = selectedTopicIds.includes(t.id);
+                    return (
+                      <Button
+                        key={`fc-top-${t.id}-${tIdx}`}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleTopic(t.id)}
+                        className={cn(
+                          "rounded-full text-[9px] uppercase tracking-widest font-extrabold h-8 transition-all flex items-center gap-1.5 cursor-pointer",
+                          isTopicSelected
+                            ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-md ring-2 ring-indigo-300 ring-offset-1 scale-[1.02]"
+                            : "bg-white hover:bg-slate-100 text-[#1A1A1A] border-[#E2E0D9] border-dashed hover:border-indigo-300"
+                        )}
+                      >
+                        {isTopicSelected && <Check className="w-3 h-3 text-emerald-300 shrink-0" />}
+                        <span>{t.title}</span>
+                      </Button>
+                    );
+                  })}
               </div>
             </div>
           </div>
+
+          {/* EVIDENCED ACTIVE SELECTED TOPICS BAR */}
+          {selectedTopicIds.length > 0 && (
+            <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 border border-indigo-700 rounded-2xl p-4 sm:p-5 text-white shadow-xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-700/70 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-emerald-500 text-slate-950 font-black text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />
+                    {selectedTopicIds.length} Tema{selectedTopicIds.length > 1 ? 's' : ''} Ativo{selectedTopicIds.length > 1 ? 's' : ''}
+                  </Badge>
+                  <span className="text-xs font-extrabold text-indigo-100 uppercase tracking-wider">
+                    Em Evidência para Seleção
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTopicIds([])}
+                  className="text-[10px] font-black uppercase tracking-widest text-indigo-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Desmarcar Todos
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {selectedTopicIds.map(tid => {
+                  const top = getTopicForId(tid);
+                  return (
+                    <span
+                      key={`evidenced-topic-${tid}`}
+                      className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-950/90 border border-indigo-400 text-white text-xs font-black tracking-wide shadow-md hover:border-emerald-400 transition-all group"
+                    >
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>{top.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleTopic(tid)}
+                        className="p-0.5 hover:bg-red-500/80 rounded-full transition-colors cursor-pointer ml-1 text-indigo-300 group-hover:text-white"
+                        title="Remover tema"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* GENERATION & CREDIT PRICING PANEL */}
           {selectedTopicIds.length > 0 && (

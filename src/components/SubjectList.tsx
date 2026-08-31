@@ -1607,14 +1607,68 @@ export default function SubjectList({ onSwitchMode }: SubjectListProps = {}) {
                 );
               })()}
               <div>
-                <label className="block text-[10px] font-mono uppercase mb-1">Tempo (minutos)</label>
-                <input 
-                  type="text" 
-                  placeholder="0"
-                  value={sessionData.time}
-                  onChange={(e) => setSessionData({...sessionData, time: e.target.value})}
-                  className="w-full p-2 border border-[#141414] font-mono text-sm focus:outline-none"
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] font-mono uppercase font-bold">Tempo (minutos)</label>
+                  <span className="text-[10px] font-mono text-indigo-600 font-bold">
+                    {(parseInt(sessionData.time) || 0) >= 60 
+                      ? `${Math.floor((parseInt(sessionData.time) || 0) / 60)}h ${(parseInt(sessionData.time) || 0) % 60}min`
+                      : `${parseInt(sessionData.time) || 0} min`
+                    }
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-1 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setSessionData({...sessionData, time: Math.max(0, (parseInt(sessionData.time) || 0) - 15).toString()})}
+                    className="px-2 py-1.5 text-xs font-mono border border-[#141414] hover:bg-stone-100 cursor-pointer"
+                  >
+                    -15m
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSessionData({...sessionData, time: Math.max(0, (parseInt(sessionData.time) || 0) - 5).toString()})}
+                    className="px-2 py-1.5 text-xs font-mono border border-[#141414] hover:bg-stone-100 cursor-pointer"
+                  >
+                    -5m
+                  </button>
+                  <input 
+                    type="number" 
+                    placeholder="0"
+                    value={sessionData.time}
+                    onChange={(e) => setSessionData({...sessionData, time: e.target.value})}
+                    className="w-full p-2 border border-[#141414] font-mono text-sm text-center focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSessionData({...sessionData, time: ((parseInt(sessionData.time) || 0) + 5).toString()})}
+                    className="px-2 py-1.5 text-xs font-mono border border-[#141414] hover:bg-stone-100 cursor-pointer"
+                  >
+                    +5m
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSessionData({...sessionData, time: ((parseInt(sessionData.time) || 0) + 15).toString()})}
+                    className="px-2 py-1.5 text-xs font-mono border border-[#141414] hover:bg-stone-100 cursor-pointer"
+                  >
+                    +15m
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-1">
+                  {[15, 30, 45, 60, 90, 120].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setSessionData({...sessionData, time: m.toString()})}
+                      className={`px-2 py-1 text-[10px] font-mono border border-[#141414] cursor-pointer ${
+                        parseInt(sessionData.time) === m ? 'bg-[#141414] text-white font-bold' : 'hover:bg-[#141414]/10'
+                      }`}
+                    >
+                      {m >= 60 ? `${m / 60}h` : `${m}m`}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] font-mono uppercase mb-1">Descrição / Notas</label>

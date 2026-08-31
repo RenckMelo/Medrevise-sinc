@@ -16,6 +16,7 @@ import {
   Settings, 
   Check, 
   AlertCircle,
+  HelpCircle,
   SlidersHorizontal,
   ArrowRight,
   ArrowLeftRight,
@@ -520,6 +521,7 @@ export default function Cronograma({
     topicIdx: number;
     topicTitle: string;
     subjectName?: string;
+    isEditingExisting?: boolean;
   } | null>(null);
   const [completionMinutes, setCompletionMinutes] = useState<number>(45);
   const [completionQuestions, setCompletionQuestions] = useState<number>(10);
@@ -2451,8 +2453,15 @@ export default function Cronograma({
       const updatedWeeks = [...schedule.weeks];
       const targetTopic = updatedWeeks[weekIdx].days[dayName][topicIdx];
 
+      const mins = Number(completionMinutes) || 30;
+      const qCount = Number(completionQuestions) || 0;
+      const fCount = Number(completionFlashcards) || 0;
+
       targetTopic.isCompleted = true;
       targetTopic.completedAt = new Date().toISOString();
+      targetTopic.studyTimeMinutes = mins;
+      targetTopic.questionsCount = qCount;
+      targetTopic.flashcardsCount = fCount;
       delete targetTopic.isExplicitlyUncompleted;
 
       // Recalculate total progress
@@ -2485,10 +2494,6 @@ export default function Cronograma({
       const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
         ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
         : targetTopic.title;
-
-      const mins = Number(completionMinutes) || 30;
-      const qCount = Number(completionQuestions) || 0;
-      const fCount = Number(completionFlashcards) || 0;
 
       if (medReviseSyncMode !== 'internato_only') {
         let foundTopic = await ensureTopicInMedRevise(
@@ -2547,7 +2552,7 @@ export default function Cronograma({
         });
       }
 
-      showToast(`Tópico "${canonicalTitle}" concluído! (${mins} min | ${qCount} questões | ${fCount} flashcards)`, "success");
+      showToast(`Tópico "${canonicalTitle}" ${topicCompletionModal.isEditingExisting ? 'atualizado' : 'concluído'}! (${mins} min | ${qCount} qst | ${fCount} flashcards)`, "success");
       setTopicCompletionModal(null);
     } catch (err: any) {
       console.error('Error confirming topic completion:', err);
@@ -2557,38 +2562,20 @@ export default function Cronograma({
     }
   };
 
-  // Toggle completion of a specific topic in a specific day of a specific week
-  const handleToggleTopic = async (weekIdx: number, dayName: string, topicIdx: number) => {
-    if (!schedule) return;
+  // Unmark a topic completely
+  const handleUnmarkTopic = async (weekIdx: number, dayName: string, topicIdx: number) => {
+    if (!schedule || !user) return;
+    setIsSavingCompletion(true);
 
     try {
       const updatedWeeks = [...schedule.weeks];
       const targetTopic = updatedWeeks[weekIdx].days[dayName][topicIdx];
-      const currentlyDone = isTopicDone(targetTopic);
-      
-      if (!currentlyDone) {
-        // OPEN MODAL FOR MANUAL INPUT (questions, flashcards, time)
-        const dayTopics = updatedWeeks[weekIdx]?.days[dayName] || [];
-        const dayTopicsCount = dayTopics.length || 3;
-        const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
-        const realisticMinutes = Math.max(15, Math.min(60, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
 
-        setCompletionMinutes(realisticMinutes);
-        setCompletionQuestions(10);
-        setCompletionFlashcards(15);
-        setTopicCompletionModal({
-          weekIdx,
-          dayName,
-          topicIdx,
-          topicTitle: targetTopic.title,
-          subjectName: targetTopic.subjectName
-        });
-        return;
-      }
-
-      // UNMARK TOPIC DIRECTLY
       targetTopic.isCompleted = false;
       delete targetTopic.completedAt;
+      delete targetTopic.studyTimeMinutes;
+      delete targetTopic.questionsCount;
+      delete targetTopic.flashcardsCount;
       targetTopic.isPreCompleted = false;
       targetTopic.isExplicitlyUncompleted = true;
 
@@ -2624,6 +2611,57 @@ export default function Cronograma({
         : targetTopic.title;
 
       showToast(`Tópico "${canonicalTitle}" desmarcado.`, "info");
+      setTopicCompletionModal(null);
+    } catch (err: any) {
+      console.error('Error unmarking topic:', err);
+      showToast('Erro ao desmarcar tópico.', 'error');
+    } finally {
+      setIsSavingCompletion(false);
+    }
+  };
+
+  // Toggle completion of a specific topic in a specific day of a specific week
+  const handleToggleTopic = async (weekIdx: number, dayName: string, topicIdx: number) => {
+    if (!schedule) return;
+
+    try {
+      const updatedWeeks = [...schedule.weeks];
+      const targetTopic = updatedWeeks[weekIdx].days[dayName][topicIdx];
+      const currentlyDone = isTopicDone(targetTopic);
+      
+      if (!currentlyDone) {
+        // OPEN MODAL FOR NEW MANUAL INPUT
+        const dayTopics = updatedWeeks[weekIdx]?.days[dayName] || [];
+        const dayTopicsCount = dayTopics.length || 3;
+        const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
+        const realisticMinutes = Math.max(15, Math.min(60, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
+
+        setCompletionMinutes(targetTopic.studyTimeMinutes || realisticMinutes);
+        setCompletionQuestions(targetTopic.questionsCount !== undefined ? targetTopic.questionsCount : 10);
+        setCompletionFlashcards(targetTopic.flashcardsCount !== undefined ? targetTopic.flashcardsCount : 15);
+        setTopicCompletionModal({
+          weekIdx,
+          dayName,
+          topicIdx,
+          topicTitle: targetTopic.title,
+          subjectName: targetTopic.subjectName,
+          isEditingExisting: false
+        });
+        return;
+      }
+
+      // OPEN MODAL FOR EDITING EXISTING COMPLETED TOPIC
+      setCompletionMinutes(targetTopic.studyTimeMinutes || 45);
+      setCompletionQuestions(targetTopic.questionsCount !== undefined ? targetTopic.questionsCount : 10);
+      setCompletionFlashcards(targetTopic.flashcardsCount !== undefined ? targetTopic.flashcardsCount : 15);
+      setTopicCompletionModal({
+        weekIdx,
+        dayName,
+        topicIdx,
+        topicTitle: targetTopic.title,
+        subjectName: targetTopic.subjectName,
+        isEditingExisting: true
+      });
     } catch (err: any) {
       console.error('Error toggling topic completion:', err);
     }
@@ -9673,84 +9711,277 @@ export default function Cronograma({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white border border-[#E2E0D9] shadow-2xl rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-6"
+              className="bg-white border border-[#E2E0D9] shadow-2xl rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 max-h-[90vh] overflow-y-auto"
             >
               <div className="space-y-2 text-center border-b border-[#E2E0D9] pb-4">
-                <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-2 ${
+                  topicCompletionModal.isEditingExisting ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                }`}>
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <h3 className="text-xl font-display font-black text-[#1A1A1A]">
-                  Registro de Conclusão de Tópico
+                  {topicCompletionModal.isEditingExisting ? 'Editar Registro de Conclusão' : 'Registro de Conclusão de Tópico'}
                 </h3>
                 <p className="text-xs text-[#8E8A82] font-medium line-clamp-2">
                   {topicCompletionModal.topicTitle}
                 </p>
               </div>
 
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-primary" />
-                    Tempo Usado de Estudo / Revisão (minutos)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="600"
-                    value={completionMinutes}
-                    onChange={(e) => setCompletionMinutes(Math.max(1, parseInt(e.target.value) || 0))}
-                    className="w-full h-12 px-4 rounded-xl border border-[#E2E0D9] bg-[#FBFBFA] font-bold text-sm text-[#1A1A1A] focus:outline-none focus:border-primary"
-                  />
+              <div className="space-y-6">
+                {/* 1. TEMPO DE ESTUDO */}
+                <div className="space-y-2.5 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-primary" />
+                      Tempo de Estudo / Revisão
+                    </label>
+                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                      {completionMinutes >= 60 
+                        ? `${Math.floor(completionMinutes / 60)}h ${completionMinutes % 60 > 0 ? `${completionMinutes % 60}min` : ''}`
+                        : `${completionMinutes} min`
+                      }
+                    </span>
+                  </div>
+
+                  {/* Steppers + Main Input */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCompletionMinutes(Math.max(5, completionMinutes - 15))}
+                      className="h-11 px-2.5 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      -15m
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionMinutes(Math.max(1, completionMinutes - 5))}
+                      className="h-11 px-2.5 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      -5m
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      max="600"
+                      value={completionMinutes}
+                      onChange={(e) => setCompletionMinutes(Math.max(1, parseInt(e.target.value) || 0))}
+                      className="w-full h-11 text-center font-mono font-bold text-base text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-primary shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCompletionMinutes(completionMinutes + 5)}
+                      className="h-11 px-2.5 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      +5m
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionMinutes(completionMinutes + 15)}
+                      className="h-11 px-2.5 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      +15m
+                    </button>
+                  </div>
+
+                  {/* Quick Preset Pills */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {[15, 30, 45, 60, 90, 120, 180].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setCompletionMinutes(m)}
+                        className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                          completionMinutes === m
+                            ? 'bg-primary text-white border-primary shadow-xs'
+                            : 'bg-white text-stone-700 border-[#E2E0D9] hover:bg-stone-100'
+                        }`}
+                      >
+                        {m >= 60 ? `${m / 60}h` : `${m}m`}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
-                    <HelpCircle className="w-4 h-4 text-amber-600" />
-                    Número de Questões Resolvidas
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="500"
-                    value={completionQuestions}
-                    onChange={(e) => setCompletionQuestions(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full h-12 px-4 rounded-xl border border-[#E2E0D9] bg-[#FBFBFA] font-bold text-sm text-[#1A1A1A] focus:outline-none focus:border-primary"
-                  />
+                {/* 2. NÚMERO DE QUESTÕES */}
+                <div className="space-y-2.5 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
+                      <HelpCircle className="w-4 h-4 text-amber-600" />
+                      Questões Resolvidas
+                    </label>
+                    <span className="text-xs font-mono font-bold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full">
+                      {completionQuestions} questões
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCompletionQuestions(Math.max(0, completionQuestions - 5))}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      -5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionQuestions(Math.max(0, completionQuestions - 1))}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      -1
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      max="500"
+                      value={completionQuestions}
+                      onChange={(e) => setCompletionQuestions(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full h-11 text-center font-mono font-bold text-base text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-amber-500 shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCompletionQuestions(completionQuestions + 1)}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      +1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionQuestions(completionQuestions + 5)}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      +5
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {[0, 5, 10, 15, 20, 30, 50].map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={() => setCompletionQuestions(q)}
+                        className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                          completionQuestions === q
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                            : 'bg-white text-stone-700 border-[#E2E0D9] hover:bg-stone-100'
+                        }`}
+                      >
+                        {q} qst
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
-                    <Brain className="w-4 h-4 text-purple-600" />
-                    Número de Flashcards Revisados
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="500"
-                    value={completionFlashcards}
-                    onChange={(e) => setCompletionFlashcards(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full h-12 px-4 rounded-xl border border-[#E2E0D9] bg-[#FBFBFA] font-bold text-sm text-[#1A1A1A] focus:outline-none focus:border-primary"
-                  />
+                {/* 3. NÚMERO DE FLASHCARDS */}
+                <div className="space-y-2.5 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-purple-600" />
+                      Flashcards Revisados
+                    </label>
+                    <span className="text-xs font-mono font-bold text-purple-700 bg-purple-100 px-2.5 py-1 rounded-full">
+                      {completionFlashcards} cards
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCompletionFlashcards(Math.max(0, completionFlashcards - 5))}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      -5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionFlashcards(Math.max(0, completionFlashcards - 1))}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-[#FFFFFF] font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      -1
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      max="500"
+                      value={completionFlashcards}
+                      onChange={(e) => setCompletionFlashcards(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full h-11 text-center font-mono font-bold text-base text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-purple-500 shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCompletionFlashcards(completionFlashcards + 1)}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      +1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionFlashcards(completionFlashcards + 5)}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      +5
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {[0, 5, 10, 15, 20, 30, 50].map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setCompletionFlashcards(f)}
+                        className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                          completionFlashcards === f
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : 'bg-white text-stone-700 border-[#E2E0D9] hover:bg-stone-100'
+                        }`}
+                      >
+                        {f} cards
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
+              {/* ACTION BUTTONS */}
               <div className="flex items-center gap-3 pt-4 border-t border-[#E2E0D9]">
-                <Button
-                  variant="outline"
-                  onClick={() => setTopicCompletionModal(null)}
-                  disabled={isSavingCompletion}
-                  className="flex-1 h-12 rounded-xl border-[#E2E0D9] text-xs font-bold uppercase tracking-wider cursor-pointer"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={handleConfirmTopicCompletion}
-                  disabled={isSavingCompletion}
-                  className="flex-1 h-12 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs uppercase tracking-wider gap-2 shadow-md shadow-emerald-700/20 cursor-pointer"
-                >
-                  {isSavingCompletion ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  Confirmar e Registrar
-                </Button>
+                {topicCompletionModal.isEditingExisting ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleUnmarkTopic(topicCompletionModal.weekIdx, topicCompletionModal.dayName, topicCompletionModal.topicIdx)}
+                      disabled={isSavingCompletion}
+                      className="flex-1 h-12 rounded-xl border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold uppercase tracking-wider cursor-pointer"
+                    >
+                      Desmarcar Tópico
+                    </Button>
+                    <Button
+                      onClick={handleConfirmTopicCompletion}
+                      disabled={isSavingCompletion}
+                      className="flex-1 h-12 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs uppercase tracking-wider gap-2 shadow-md shadow-emerald-700/20 cursor-pointer"
+                    >
+                      {isSavingCompletion ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      Salvar Alterações
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setTopicCompletionModal(null)}
+                      disabled={isSavingCompletion}
+                      className="flex-1 h-12 rounded-xl border-[#E2E0D9] text-xs font-bold uppercase tracking-wider cursor-pointer"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={handleConfirmTopicCompletion}
+                      disabled={isSavingCompletion}
+                      className="flex-1 h-12 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs uppercase tracking-wider gap-2 shadow-md shadow-emerald-700/20 cursor-pointer"
+                    >
+                      {isSavingCompletion ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      Confirmar e Registrar
+                    </Button>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>

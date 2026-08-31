@@ -464,15 +464,14 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           {/* Samsung Dark Mode Toggle */}
           <button
             onClick={toggleSamsungDarkMode}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0 border ${
+            className={`flex items-center justify-center p-2 rounded-lg transition-all cursor-pointer shadow-2xs shrink-0 border ${
               isSamsungDark
                 ? 'bg-stone-900 text-amber-300 border-amber-400/90 hover:bg-stone-800'
                 : 'bg-white text-stone-800 border-[#E2E0D9] hover:bg-stone-100'
             }`}
-            title="Alternar Modo Escuro Samsung (OLED Pitch Black)"
+            title="Alternar Modo Escuro (OLED Pitch Black)"
           >
-            <Moon className={`w-3.5 h-3.5 ${isSamsungDark ? 'text-amber-300 fill-amber-300' : 'text-stone-700'}`} />
-            <span className="hidden xs:inline">Modo Escuro (Samsung)</span>
+            <Moon className={`w-4 h-4 ${isSamsungDark ? 'text-amber-300 fill-amber-300' : 'text-stone-700'}`} />
           </button>
 
           {onToggleAppMode && (

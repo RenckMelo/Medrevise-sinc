@@ -513,6 +513,19 @@ export default function Cronograma({
   const [pendingStudyArgs, setPendingStudyArgs] = useState<{ scheduleTopic: any; targetView: 'topicDetail' | 'questions' | 'flashcards' } | null>(null);
   const [rememberSyncChoice, setRememberSyncChoice] = useState(true);
 
+  // Manual topic completion details modal states
+  const [topicCompletionModal, setTopicCompletionModal] = useState<{
+    weekIdx: number;
+    dayName: string;
+    topicIdx: number;
+    topicTitle: string;
+    subjectName?: string;
+  } | null>(null);
+  const [completionMinutes, setCompletionMinutes] = useState<number>(45);
+  const [completionQuestions, setCompletionQuestions] = useState<number>(10);
+  const [completionFlashcards, setCompletionFlashcards] = useState<number>(15);
+  const [isSavingCompletion, setIsSavingCompletion] = useState<boolean>(false);
+
   const updateSyncMode = (mode: 'ask' | 'sync' | 'internato_only') => {
     setMedReviseSyncMode(mode);
     try {
@@ -2428,27 +2441,19 @@ export default function Cronograma({
     }
   };
 
-  // Toggle completion of a specific topic in a specific day of a specific week
-  const handleToggleTopic = async (weekIdx: number, dayName: string, topicIdx: number) => {
-    if (!schedule) return;
+  // Handle confirmation of manual topic completion details modal
+  const handleConfirmTopicCompletion = async () => {
+    if (!schedule || !topicCompletionModal || !user) return;
+    const { weekIdx, dayName, topicIdx } = topicCompletionModal;
+    setIsSavingCompletion(true);
 
     try {
       const updatedWeeks = [...schedule.weeks];
       const targetTopic = updatedWeeks[weekIdx].days[dayName][topicIdx];
-      
-      // Determine new completed state based on current effective isTopicDone status
-      const currentlyDone = isTopicDone(targetTopic);
-      const newCompleted = !currentlyDone;
-      
-      targetTopic.isCompleted = newCompleted;
-      if (newCompleted) {
-        targetTopic.completedAt = new Date().toISOString();
-        delete targetTopic.isExplicitlyUncompleted;
-      } else {
-        delete targetTopic.completedAt;
-        targetTopic.isPreCompleted = false;
-        targetTopic.isExplicitlyUncompleted = true;
-      }
+
+      targetTopic.isCompleted = true;
+      targetTopic.completedAt = new Date().toISOString();
+      delete targetTopic.isExplicitlyUncompleted;
 
       // Recalculate total progress
       let totalTopicsCount = 0;
@@ -2464,23 +2469,28 @@ export default function Cronograma({
       const progress = totalTopicsCount > 0 ? Math.round((completedCount / totalTopicsCount) * 100) : 0;
 
       const scheduleRef = doc(db, 'users', user.uid, 'schedules', schedule.id);
+      await updateDoc(scheduleRef, {
+        weeks: updatedWeeks,
+        completedTopicsCount: completedCount,
+        progress
+      });
 
-      // Check if user wants automatic sync to MedRevise or MedInternato only
-      if (medReviseSyncMode === 'internato_only') {
-        const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
-          ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
-          : targetTopic.title;
+      setSchedule({
+        ...schedule,
+        weeks: updatedWeeks,
+        completedTopicsCount: completedCount,
+        progress
+      });
 
-        showToast(
-          `Tópico "${canonicalTitle}" ${newCompleted ? 'concluído' : 'desmarcado'} no cronograma (Modo Apenas MedInternato).`,
-          "info"
-        );
-      } else {
-        // SYNC TO MEDREVISE (topics & studySessions collections)
-        const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
-          ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
-          : targetTopic.title;
+      const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
+        ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
+        : targetTopic.title;
 
+      const mins = Number(completionMinutes) || 30;
+      const qCount = Number(completionQuestions) || 0;
+      const fCount = Number(completionFlashcards) || 0;
+
+      if (medReviseSyncMode !== 'internato_only') {
         let foundTopic = await ensureTopicInMedRevise(
           canonicalTitle,
           targetTopic.subjectName || 'Geral',
@@ -2488,155 +2498,134 @@ export default function Cronograma({
         );
 
         if (foundTopic) {
-          // Guarantee topicId is linked in the schedule topic
           targetTopic.topicId = foundTopic.id;
 
-          if (newCompleted) {
-            // Calculate realistic estimated time for this topic session
-            const dayTopics = updatedWeeks[weekIdx]?.days[dayName] || [];
-            const dayTopicsCount = dayTopics.length || 3;
-            const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
-            const realisticMinutes = Math.max(15, Math.min(45, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
+          // Register study session with explicit user parameters
+          await addDoc(collection(db, 'users', user.uid, 'studySessions'), {
+            topicId: foundTopic.id,
+            subjectId: foundTopic.subjectId,
+            date: new Date().toISOString(),
+            questionsCount: qCount,
+            correctCount: Math.round(qCount * 0.8), // realistic standard estimate
+            flashcardsCount: fCount,
+            flashcardCount: fCount,
+            studyTimeMinutes: mins,
+            durationSeconds: mins * 60,
+            description: targetTopic.type === 'revisao'
+              ? `Revisão concluída via Cronograma (${qCount} qst, ${fCount} flashcards, ${mins} min)`
+              : `Estudo concluído via Cronograma (${qCount} qst, ${fCount} flashcards, ${mins} min)`
+          });
 
-            // Avoid duplicate session creation if there's already a session for this topic today
-            let alreadyHasSessionToday = false;
-            if (Array.isArray(sessions)) {
-              const todayStr = new Date().toISOString().split('T')[0];
-              alreadyHasSessionToday = sessions.some(s => 
-                s.topicId === foundTopic.id && 
-                (s.date || '').startsWith(todayStr)
-              );
-            }
+          // Set topic SM-2 parameters for scheduled reviews
+          const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 0;
+          let nextReps = targetTopic.type === 'revisao' ? Math.max(2, currentReps + 1) : Math.max(1, currentReps === 0 ? 1 : currentReps);
 
-            if (!alreadyHasSessionToday) {
-              // Register study session in MedRevise database
-              await addDoc(collection(db, 'users', user.uid, 'studySessions'), {
-                topicId: foundTopic.id,
-                subjectId: foundTopic.subjectId,
-                date: new Date().toISOString(),
-                questionsCount: 0,
-                correctCount: 0,
-                studyTimeMinutes: realisticMinutes,
-                description: targetTopic.type === 'revisao'
-                  ? 'Revisão concluída via Cronograma Inteligente (MedInternato)'
-                  : 'Estudo concluído via Cronograma Inteligente (MedInternato)'
-              });
-
-              // Set topic SM-2 parameters for scheduled reviews
-              const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 0;
-              
-              // Only increment repetitions if we're actually progressing the SM-2 repetitions
-              let nextReps = currentReps;
-              if (targetTopic.type === 'revisao') {
-                nextReps = Math.max(2, currentReps + 1);
-              } else {
-                // If it's theory study, it should be at least 1, but we don't increment past 1 just for theory checkoff
-                nextReps = Math.max(1, currentReps === 0 ? 1 : currentReps);
-              }
-
-              await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
-                repetitions: nextReps,
-                interval: 1,
-                easinessFactor: 2.5,
-                lastReviewDate: new Date().toISOString(),
-                nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                completed: true
-              });
-            }
-
-            showToast(`Tópico "${canonicalTitle}" concluído e sincronizado ao MedRevise (+${realisticMinutes} min).`, "success");
-          } else {
-            // Unmark topic
-            if (targetTopic.isPreCompleted) {
-              // Preserves previous records! Just clear the flag now that it has been manually unmarked
-              targetTopic.isPreCompleted = false;
-              showToast('Tópico desmarcado no cronograma. O seu registro de estudo anterior ao planejamento foi preservado.', 'success');
-            } else {
-              const currentReps = typeof foundTopic.repetitions === 'number' ? foundTopic.repetitions : 1;
-              const newReps = targetTopic.type === 'revisao' ? Math.max(1, currentReps - 1) : 0;
-
-              await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
-                completed: newReps > 0,
-                repetitions: newReps
-              });
-
-              // Clean up auto-created study session from today when unmarking to avoid duplicate accumulation
-              try {
-                const todayStr = new Date().toISOString().split('T')[0];
-                const sessSnap = await getDocs(
-                  query(
-                    collection(db, 'users', user.uid, 'studySessions'),
-                    where('topicId', '==', foundTopic.id)
-                  )
-                );
-                const cronoSess = sessSnap.docs.filter(d => {
-                  const data = d.data();
-                  return (data.date || '').startsWith(todayStr) && (data.description || '').includes('via Cronograma Inteligente');
-                });
-                for (const docToDelete of cronoSess) {
-                  await deleteDoc(doc(db, 'users', user.uid, 'studySessions', docToDelete.id));
-                }
-              } catch (delErr) {
-                console.warn('Notice removing study session on topic unmark:', delErr);
-              }
-
-              showToast('Tópico desmarcado. A sessão de estudo de hoje foi removida do histórico.', 'info');
-            }
-          }
+          await updateDoc(doc(db, 'users', user.uid, 'topics', foundTopic.id), {
+            repetitions: nextReps,
+            interval: 1,
+            easinessFactor: 2.5,
+            lastReviewDate: new Date().toISOString(),
+            nextReviewDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            completed: true
+          });
         }
       }
 
+      // Record flashcard session if user did flashcards
+      if (fCount > 0) {
+        await addDoc(collection(db, 'users', user.uid, 'flashcardSessions'), {
+          userId: user.uid,
+          mode: 'cronograma',
+          dateISO: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          totalCards: fCount,
+          masteredCount: Math.round(fCount * 0.8),
+          hardCount: Math.round(fCount * 0.2),
+          erredCount: 0,
+          topicTitles: [canonicalTitle],
+          scores: []
+        });
+      }
+
+      showToast(`Tópico "${canonicalTitle}" concluído! (${mins} min | ${qCount} questões | ${fCount} flashcards)`, "success");
+      setTopicCompletionModal(null);
+    } catch (err: any) {
+      console.error('Error confirming topic completion:', err);
+      showToast('Erro ao registrar conclusão do tópico.', 'error');
+    } finally {
+      setIsSavingCompletion(false);
+    }
+  };
+
+  // Toggle completion of a specific topic in a specific day of a specific week
+  const handleToggleTopic = async (weekIdx: number, dayName: string, topicIdx: number) => {
+    if (!schedule) return;
+
+    try {
+      const updatedWeeks = [...schedule.weeks];
+      const targetTopic = updatedWeeks[weekIdx].days[dayName][topicIdx];
+      const currentlyDone = isTopicDone(targetTopic);
+      
+      if (!currentlyDone) {
+        // OPEN MODAL FOR MANUAL INPUT (questions, flashcards, time)
+        const dayTopics = updatedWeeks[weekIdx]?.days[dayName] || [];
+        const dayTopicsCount = dayTopics.length || 3;
+        const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
+        const realisticMinutes = Math.max(15, Math.min(60, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
+
+        setCompletionMinutes(realisticMinutes);
+        setCompletionQuestions(10);
+        setCompletionFlashcards(15);
+        setTopicCompletionModal({
+          weekIdx,
+          dayName,
+          topicIdx,
+          topicTitle: targetTopic.title,
+          subjectName: targetTopic.subjectName
+        });
+        return;
+      }
+
+      // UNMARK TOPIC DIRECTLY
+      targetTopic.isCompleted = false;
+      delete targetTopic.completedAt;
+      targetTopic.isPreCompleted = false;
+      targetTopic.isExplicitlyUncompleted = true;
+
+      // Recalculate total progress
+      let totalTopicsCount = 0;
+      let completedCount = 0;
+      updatedWeeks.forEach(w => {
+        Object.values(w.days).forEach(arr => {
+          arr.forEach(t => {
+            totalTopicsCount++;
+            if (isTopicDone(t)) completedCount++;
+          });
+        });
+      });
+      const progress = totalTopicsCount > 0 ? Math.round((completedCount / totalTopicsCount) * 100) : 0;
+
+      const scheduleRef = doc(db, 'users', user.uid, 'schedules', schedule.id);
       await updateDoc(scheduleRef, {
         weeks: updatedWeeks,
+        completedTopicsCount: completedCount,
         progress
       });
 
       setSchedule({
         ...schedule,
         weeks: updatedWeeks,
+        completedTopicsCount: completedCount,
         progress
       });
 
-      // SYNC COMPLETION TO CALENDAR EVENTS IN FIRESTORE
-      try {
-        const calColRef = collection(db, 'users', user.uid, 'calendarEvents');
-        const calSnap = await getDocs(calColRef);
-        const targetCleanTitle = targetTopic.title.toLowerCase().trim();
+      const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
+        ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
+        : targetTopic.title;
 
-        const updatePromises = calSnap.docs
-          .filter(docSnap => {
-            const data = docSnap.data();
-            if (data.scheduleId && schedule.id && data.scheduleId !== schedule.id) return false;
-
-            // Match exact position metadata if present
-            if (data.cronogramaWeekIdx !== undefined && data.cronogramaDayAbbr !== undefined && data.cronogramaTopicIdx !== undefined) {
-              return data.cronogramaWeekIdx === weekIdx && data.cronogramaDayAbbr === dayName && data.cronogramaTopicIdx === topicIdx;
-            }
-
-            // Fallback for events without position metadata: match title AND date
-            const cronoTitle = (data.cronogramaTopicTitle || '').toLowerCase().trim();
-            const evtTitle = (data.title || '').toLowerCase().trim();
-            const titleMatches = cronoTitle === targetCleanTitle || evtTitle.includes(targetCleanTitle) || targetCleanTitle.includes(cronoTitle);
-
-            if (!titleMatches) return false;
-
-            if (data.start && (targetTopic as any).date) {
-              return String(data.start).substring(0, 10) === String((targetTopic as any).date).substring(0, 10);
-            }
-
-            return false;
-          })
-          .map(docSnap => updateDoc(doc(db, 'users', user.uid, 'calendarEvents', docSnap.id), {
-            completed: targetTopic.isCompleted
-          }));
-
-        await Promise.all(updatePromises);
-      } catch (calSyncErr) {
-        console.warn('Notice syncing topic completion to calendar events:', calSyncErr);
-      }
-
-    } catch (e) {
-      console.error("Erro ao atualizar progresso do tópico:", e);
+      showToast(`Tópico "${canonicalTitle}" desmarcado.`, "info");
+    } catch (err: any) {
+      console.error('Error toggling topic completion:', err);
     }
   };
 
@@ -9675,6 +9664,98 @@ export default function Cronograma({
         topics={topics}
         handleLinkTopic={handleLinkTopic}
       />
+
+      {/* TOPIC COMPLETION MANUAL REGISTRATION MODAL */}
+      <AnimatePresence>
+        {topicCompletionModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-[#E2E0D9] shadow-2xl rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-6"
+            >
+              <div className="space-y-2 text-center border-b border-[#E2E0D9] pb-4">
+                <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-display font-black text-[#1A1A1A]">
+                  Registro de Conclusão de Tópico
+                </h3>
+                <p className="text-xs text-[#8E8A82] font-medium line-clamp-2">
+                  {topicCompletionModal.topicTitle}
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-primary" />
+                    Tempo Usado de Estudo / Revisão (minutos)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="600"
+                    value={completionMinutes}
+                    onChange={(e) => setCompletionMinutes(Math.max(1, parseInt(e.target.value) || 0))}
+                    className="w-full h-12 px-4 rounded-xl border border-[#E2E0D9] bg-[#FBFBFA] font-bold text-sm text-[#1A1A1A] focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4 text-amber-600" />
+                    Número de Questões Resolvidas
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="500"
+                    value={completionQuestions}
+                    onChange={(e) => setCompletionQuestions(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full h-12 px-4 rounded-xl border border-[#E2E0D9] bg-[#FBFBFA] font-bold text-sm text-[#1A1A1A] focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
+                    <Brain className="w-4 h-4 text-purple-600" />
+                    Número de Flashcards Revisados
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="500"
+                    value={completionFlashcards}
+                    onChange={(e) => setCompletionFlashcards(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full h-12 px-4 rounded-xl border border-[#E2E0D9] bg-[#FBFBFA] font-bold text-sm text-[#1A1A1A] focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-4 border-t border-[#E2E0D9]">
+                <Button
+                  variant="outline"
+                  onClick={() => setTopicCompletionModal(null)}
+                  disabled={isSavingCompletion}
+                  className="flex-1 h-12 rounded-xl border-[#E2E0D9] text-xs font-bold uppercase tracking-wider cursor-pointer"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleConfirmTopicCompletion}
+                  disabled={isSavingCompletion}
+                  className="flex-1 h-12 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs uppercase tracking-wider gap-2 shadow-md shadow-emerald-700/20 cursor-pointer"
+                >
+                  {isSavingCompletion ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Confirmar e Registrar
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

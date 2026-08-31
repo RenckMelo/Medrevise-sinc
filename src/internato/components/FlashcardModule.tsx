@@ -989,11 +989,15 @@ export default function FlashcardModule({
   const currentCardSRS = useMemo(() => {
     if (!currentCard) return null;
     const rev = srsReviewsMap[currentCard.id] || { interval: 1, easeFactor: 2.5, repetitions: 0 };
+    const srsErrei = calculateSRS('errei', rev.interval, rev.easeFactor, rev.repetitions);
+    const srsDificil = calculateSRS('dificil', rev.interval, rev.easeFactor, rev.repetitions);
+    const srsBom = calculateSRS('bom', rev.interval, rev.easeFactor, rev.repetitions);
+    const srsFacil = calculateSRS('facil', rev.interval, rev.easeFactor, rev.repetitions);
     return {
-      erreiInterval: '1d',
-      dificilInterval: `${Math.max(1, Math.round(rev.interval * 1.2))}d`,
-      bomInterval: `${rev.repetitions === 0 ? 1 : rev.repetitions === 1 ? 3 : Math.max(1, Math.round(rev.interval * rev.easeFactor))}d`,
-      facilInterval: `${rev.repetitions === 0 ? 4 : Math.max(2, Math.round(rev.interval * rev.easeFactor * 1.3))}d`
+      erreiInterval: `+${srsErrei.nextInterval}d`,
+      dificilInterval: `+${srsDificil.nextInterval}d`,
+      bomInterval: `+${srsBom.nextInterval}d`,
+      facilInterval: `+${srsFacil.nextInterval}d`
     };
   }, [currentCard, srsReviewsMap]);
 
@@ -2011,31 +2015,147 @@ export default function FlashcardModule({
               )}
             </div>
           ) : (
-            /* STANDARD SESSION COMPLETE */
-            <div className="text-center space-y-6 py-8">
-              <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto">
-                <Trophy className="w-8 h-8" />
-              </div>
-
-              <div className="space-y-2">
-                <h2 className="text-3xl font-display font-black text-[#1A1A1A]">Sessão Concluída!</h2>
+            /* STANDARD SESSION COMPLETE - RELATÓRIO COMPLETO DE DESEMPENHO */
+            <div className="space-y-8">
+              {/* SESSION REPORT HEADER */}
+              <div className="text-center space-y-3 border-b border-[#E2E0D9] pb-6">
+                <Badge className="bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full">
+                  Relatório de Desempenho da Sessão
+                </Badge>
+                <h2 className="text-3xl font-display font-black text-[#1A1A1A]">
+                  Sessão Concluída com Sucesso!
+                </h2>
                 <p className="text-xs text-[#8E8A82]">
-                  Você revisou {flashcards.length} flashcards nesta sessão. As datas de revisão foram atualizadas no seu algoritmo SM-2.
+                  {currentSessionScores.length || flashcards.length} flashcards revisados • Próximas revisões agendadas automaticamente pelo algoritmo SM-2.
                 </p>
               </div>
 
-              <div className="flex items-center justify-center gap-4 pt-4">
-                <Button
-                  onClick={() => {
-                    setSessionCompleted(false);
-                    fetchFlashcards('srs');
-                  }}
-                  className="bg-[#1A1A1A] hover:bg-black text-white font-bold text-xs uppercase tracking-widest px-8 h-12 rounded-xl gap-2"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  Nova Sessão
-                </Button>
-              </div>
+              {/* METRICS GRID */}
+              {(() => {
+                const totalReviewed = currentSessionScores.length || flashcards.length;
+                const masteredCount = currentSessionScores.filter(s => s.rating === 'bom' || s.rating === 'facil').length;
+                const hardCount = currentSessionScores.filter(s => s.rating === 'dificil').length;
+                const erredCount = currentSessionScores.filter(s => s.rating === 'errei').length;
+                const retentionPct = totalReviewed > 0 ? Math.round(((masteredCount + hardCount * 0.5) / totalReviewed) * 100) : 100;
+
+                return (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-center space-y-1">
+                        <div className="text-2xl font-display font-black text-emerald-700">{masteredCount}</div>
+                        <div className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-800 flex items-center justify-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Dominados
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl text-center space-y-1">
+                        <div className="text-2xl font-display font-black text-amber-700">{hardCount}</div>
+                        <div className="text-[10px] font-extrabold uppercase tracking-widest text-amber-800 flex items-center justify-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Dificuldade
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-rose-50/70 border border-rose-200 rounded-2xl text-center space-y-1">
+                        <div className="text-2xl font-display font-black text-rose-700">{erredCount}</div>
+                        <div className="text-[10px] font-extrabold uppercase tracking-widest text-rose-800 flex items-center justify-center gap-1">
+                          <XCircle className="w-3.5 h-3.5" /> Errados / Lacunas
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-2xl text-center space-y-1">
+                        <div className="text-2xl font-display font-black text-purple-700">{retentionPct}%</div>
+                        <div className="text-[10px] font-extrabold uppercase tracking-widest text-purple-800 flex items-center justify-center gap-1">
+                          <Trophy className="w-3.5 h-3.5" /> Taxa de Retenção
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* DETAILED CARDS REVIEW BREAKDOWN */}
+                    {currentSessionScores.length > 0 && (
+                      <div className="space-y-3 bg-[#FBFBFA] p-6 rounded-2xl border border-[#E2E0D9]">
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-[#1A1A1A] flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-primary" />
+                          Detalhamento de Cartões desta Sessão
+                        </h3>
+
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                          {currentSessionScores.map((score, idx) => {
+                            let badgeStyle = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+                            let badgeLabel = 'Bom / Fácil';
+                            if (score.rating === 'errei') {
+                              badgeStyle = 'bg-rose-100 text-rose-800 border-rose-300';
+                              badgeLabel = 'Errei (Revisão em 24h)';
+                            } else if (score.rating === 'dificil') {
+                              badgeStyle = 'bg-amber-100 text-amber-800 border-amber-300';
+                              badgeLabel = 'Difícil (Revisão em 2d)';
+                            }
+
+                            return (
+                              <div key={`sess-score-${idx}`} className="p-3 bg-white rounded-xl border border-[#E2E0D9] flex items-center justify-between gap-4 text-xs">
+                                <div className="space-y-0.5 min-w-0 flex-1">
+                                  <p className="font-bold text-[#1A1A1A] truncate">{score.cardFront}</p>
+                                  <p className="text-[10px] text-[#8E8A82] italic truncate">R: {score.cardBack}</p>
+                                </div>
+                                <Badge className={cn('text-[9px] font-extrabold uppercase shrink-0 px-2.5 py-1 rounded-lg border', badgeStyle)}>
+                                  {badgeLabel}
+                                </Badge>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ACTION BUTTONS */}
+                    <div className="flex flex-wrap gap-3 pt-4 border-t border-[#E2E0D9]">
+                      {erredCount > 0 && (
+                        <Button
+                          onClick={() => {
+                            const failedCardIds = new Set(currentSessionScores.filter(s => s.rating === 'errei' || s.rating === 'dificil').map(s => s.cardId));
+                            const failedCards = flashcards.filter(c => failedCardIds.has(c.id));
+                            if (failedCards.length > 0) {
+                              setFlashcards(failedCards);
+                              setCurrentIndex(0);
+                              setIsFlipped(false);
+                              setSessionCompleted(false);
+                            } else {
+                              fetchFlashcards('srs');
+                            }
+                          }}
+                          className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-widest h-12 rounded-xl gap-2 shadow-sm"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          Revisar Cards Errados ({erredCount + hardCount})
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setCurrentIndex(0);
+                          setIsFlipped(false);
+                          setSessionCompleted(false);
+                        }}
+                        className="flex-1 border-[#E2E0D9] text-[#1A1A1A] font-bold text-xs uppercase tracking-widest h-12 rounded-xl gap-2"
+                      >
+                        <RefreshCcw className="w-4 h-4" />
+                        Revisar Todos Novamente
+                      </Button>
+
+                      <Button
+                        onClick={() => {
+                          setSessionCompleted(false);
+                          fetchFlashcards('srs');
+                        }}
+                        className="bg-[#1A1A1A] hover:bg-black text-white font-bold text-xs uppercase tracking-widest h-12 px-6 rounded-xl gap-2"
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                        Voltar aos Decks
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </Card>

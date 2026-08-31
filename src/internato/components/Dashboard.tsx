@@ -33,9 +33,10 @@ export default function Dashboard({
 }: DashboardProps) {
   const [dbStudySessions, setDbStudySessions] = useState<any[]>([]);
   const [dbQuizAttempts, setDbQuizAttempts] = useState<any[]>([]);
+  const [dbFlashcardSessions, setDbFlashcardSessions] = useState<any[]>([]);
   const [isLoadingExtra, setIsLoadingExtra] = useState(false);
 
-  // Real-time listener for studySessions from MedRevise / MedInternato
+  // Real-time listener for studySessions and flashcardSessions
   useEffect(() => {
     if (!userId) return;
     try {
@@ -64,9 +65,21 @@ export default function Dashboard({
         console.warn('Note on listening to quizAttempts:', err);
       });
 
+      const flashcardSessColl = collection(db, 'users', userId, 'flashcardSessions');
+      const unsubFlashcard = onSnapshot(flashcardSessColl, (snapshot) => {
+        const list: any[] = [];
+        snapshot.forEach((d: any) => {
+          list.push({ id: d.id, ...d.data() });
+        });
+        setDbFlashcardSessions(list);
+      }, (err) => {
+        console.warn('Note on listening to flashcardSessions:', err);
+      });
+
       return () => {
         unsubSessions();
         unsubQuiz();
+        unsubFlashcard();
       };
     } catch (e) {
       console.warn('Error setting up dashboard listeners:', e);
@@ -260,17 +273,40 @@ export default function Dashboard({
       }
     });
 
+    // 6. Flashcards stats
+    const srsKeysCount = Object.keys(userProgress?.flashcardReviews || {}).length;
+    const sessionFlashcardSum = dbFlashcardSessions.reduce((acc, sess) => acc + (Number(sess.totalCards) || 0), 0);
+    const studySessionFlashcards = dbStudySessions.reduce((acc, sess) => acc + (Number(sess.flashcardCount || sess.flashcardsCount) || 0), 0);
+    const flashcardsTotalCount = Math.max(srsKeysCount, sessionFlashcardSum + studySessionFlashcards, srsKeysCount + studySessionFlashcards);
+
+    let flashcardsTodayCount = 0;
+    dbFlashcardSessions.forEach(sess => {
+      if (isDateToday(sess.dateISO || sess.createdAt)) {
+        flashcardsTodayCount += (Number(sess.totalCards) || 0);
+      }
+    });
+    const srsReviewsMap = userProgress?.flashcardReviews || {};
+    let srsTodayCount = 0;
+    Object.values(srsReviewsMap).forEach((rev: any) => {
+      if (rev && isDateToday(rev.lastReviewed)) {
+        srsTodayCount++;
+      }
+    });
+    flashcardsTodayCount = Math.max(flashcardsTodayCount, srsTodayCount);
+
     return {
       todayCount: finalTodayCount,
       weekCount: finalWeekCount,
       totalCount: Math.max(attempts.length, allAttemptsList.length),
+      flashcardsTotalCount,
+      flashcardsTodayCount,
       totalStudyTimeSeconds: finalTotalTimeSeconds,
       timeBySubject,
       questionsBySubject,
       sessions: mergedSortedSessions,
       recentAttempts: allAttemptsList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     };
-  }, [userProgress, topics, dbStudySessions, dbQuizAttempts]);
+  }, [userProgress, topics, dbStudySessions, dbQuizAttempts, dbFlashcardSessions]);
 
   const handleDeleteSession = async (sessionItem: any) => {
     if (!userId) return;
@@ -322,7 +358,7 @@ export default function Dashboard({
         )}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-6">
         <Card className="bg-[#141414] text-white border-none shadow-xl rounded-2xl p-4 lg:p-6">
           <div className="flex flex-col gap-2 lg:gap-4">
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-black opacity-60">Questões Hoje</div>
@@ -339,12 +375,24 @@ export default function Dashboard({
         </Card>
         <Card className="bg-white border-[#E2E0D9] shadow-none rounded-2xl p-4 lg:p-6">
           <div className="flex flex-col gap-2 lg:gap-4">
+            <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-black text-purple-700 flex items-center gap-1">
+              <Brain className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+              Flashcards Feitos
+            </div>
+            <div className="text-2xl lg:text-4xl font-black text-[#1A1A1A]">{stats.flashcardsTotalCount}</div>
+            <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-bold text-purple-600 truncate">
+              {stats.flashcardsTodayCount > 0 ? `${stats.flashcardsTodayCount} revisados hoje` : 'Repetição Espaçada'}
+            </div>
+          </div>
+        </Card>
+        <Card className="bg-white border-[#E2E0D9] shadow-none rounded-2xl p-4 lg:p-6">
+          <div className="flex flex-col gap-2 lg:gap-4">
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Tempo Total</div>
             <div className="text-2xl lg:text-4xl font-black text-[#1A1A1A]">{formatTime(stats.totalStudyTimeSeconds)}</div>
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-bold text-[#8E8A82]">Foco: Medicina</div>
           </div>
         </Card>
-        <Card className="bg-white border-[#E2E0D9] shadow-none rounded-2xl p-4 lg:p-6">
+        <Card className="bg-white border-[#E2E0D9] shadow-none rounded-2xl p-4 lg:p-6 col-span-2 lg:col-span-1">
           <div className="flex flex-col gap-2 lg:gap-4">
             <div className="text-[9px] lg:text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Progresso</div>
             <div className="text-2xl lg:text-4xl font-black text-[#1A1A1A]">{progressPercentage}%</div>

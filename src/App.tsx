@@ -501,16 +501,14 @@ export default function App() {
             <button
               onClick={toggleSamsungDarkMode}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 border transition-all text-[10px] sm:text-[11px] font-mono font-bold tracking-wider cursor-pointer shrink-0 rounded-md shadow-2xs",
+                "flex items-center justify-center p-2 border transition-all cursor-pointer shrink-0 rounded-md shadow-2xs",
                 isSamsungDark
                   ? "bg-stone-900 border-amber-400 text-amber-300 hover:bg-stone-800"
                   : "bg-white border-[#141414] text-[#141414] hover:bg-stone-100"
               )}
-              title="Alternar Modo Escuro Samsung (OLED Pitch Black)"
+              title="Alternar Modo Escuro (OLED Pitch Black)"
             >
-              <Moon size={13} className={isSamsungDark ? "text-amber-300 fill-amber-300" : "text-[#141414]"} />
-              <span className="hidden sm:inline">Modo Escuro (Samsung)</span>
-              <span className="sm:hidden">Escuro</span>
+              <Moon size={15} className={isSamsungDark ? "text-amber-300 fill-amber-300" : "text-[#141414]"} />
             </button>
             <button 
               onClick={() => {

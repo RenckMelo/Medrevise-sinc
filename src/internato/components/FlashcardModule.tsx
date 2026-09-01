@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { markdownComponents, cleanAndFixMarkdownTables } from '../utils/markdownUtils';
 import { Subject, Topic, Flashcard, UserProgress, FlashcardDeepDive, FlashcardSessionHistory, FlashcardSessionScore } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -172,6 +174,8 @@ export default function FlashcardModule({
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>(initialTopicIds || []);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [isSelecting, setIsSelecting] = useState(!initialTopicIds || initialTopicIds.length === 0);
+  const [topicSearchQuery, setTopicSearchQuery] = useState('');
+  const [showMethodologyGuide, setShowMethodologyGuide] = useState(false);
 
   // Helper to resolve topic ID to a valid Topic object even if summary has not been generated yet
   const getTopicForId = useCallback((tid: string): Topic => {
@@ -436,8 +440,39 @@ export default function FlashcardModule({
   // Generate Deep Dive for specific card
   const handleGenerateDeepDive = async (card: Flashcard) => {
     if (!card) return;
+
+    // 1. Check if deep dive already exists in state
+    const existingInMemory = deepDives.find(d => d.cardId === card.id);
+    if (existingInMemory) {
+      setSelectedDeepDive(existingInMemory);
+      setActiveTab('deepdives');
+      return;
+    }
+
     setIsGeneratingDeepDive(true);
     try {
+      // 2. Query Firestore in case it was created in another session
+      if (userId) {
+        const q = query(
+          collection(db, 'users', userId, 'flashcardDeepDives'),
+          where('cardId', '==', card.id),
+          limit(1)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const foundDoc = snap.docs[0];
+          const existing: FlashcardDeepDive = {
+            id: foundDoc.id,
+            ...(foundDoc.data() as any)
+          };
+          setDeepDives(prev => [existing, ...prev.filter(x => x.id !== existing.id)]);
+          setSelectedDeepDive(existing);
+          setActiveTab('deepdives');
+          return;
+        }
+      }
+
+      // 3. Generate new deep dive if none exists yet
       const cardTopic = topics.find(t => t.id === card.topicId);
       const topicTitle = cardTopic ? cardTopic.title : (card.concept || 'Geral');
 
@@ -468,6 +503,7 @@ export default function FlashcardModule({
 
       setDeepDives(prev => [createdObj, ...prev]);
       setSelectedDeepDive(createdObj);
+      setActiveTab('deepdives');
     } catch (err: any) {
       alert(`Erro ao aprofundar card com IA: ${err.message || 'Tente novamente.'}`);
     } finally {
@@ -1072,6 +1108,21 @@ export default function FlashcardModule({
             <Button
               variant="outline"
               size="sm"
+              onClick={() => setShowMethodologyGuide(!showMethodologyGuide)}
+              className={cn(
+                "text-xs font-extrabold uppercase tracking-wider h-10 rounded-xl gap-2 transition-all cursor-pointer border",
+                showMethodologyGuide
+                  ? "bg-amber-100 text-amber-950 border-amber-300 shadow-xs"
+                  : "bg-stone-50 text-stone-800 hover:bg-stone-100 border-[#E2E0D9]"
+              )}
+            >
+              <HelpCircle className="w-4 h-4 text-amber-600" />
+              <span>{showMethodologyGuide ? 'Ocultar Guia' : 'Como Usar & Retenção'}</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => {
                 setSelectedTopicIds([]);
                 setSelectedSubjectIds([]);
@@ -1084,6 +1135,104 @@ export default function FlashcardModule({
             </Button>
           </div>
         </div>
+
+        {/* EXPANDABLE METHODOLOGY GUIDE & HOW TO USE */}
+        <AnimatePresence>
+          {showMethodologyGuide && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-gradient-to-br from-slate-900 via-indigo-950 to-stone-900 text-white p-5 sm:p-6 rounded-2xl border border-indigo-800/80 shadow-lg space-y-5 overflow-hidden"
+            >
+              <div className="flex items-center justify-between border-b border-indigo-800/80 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 font-black flex items-center justify-center text-lg shadow-sm">
+                    💡
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                      Guia Prático de Estudo & Lógica Científica de Retenção
+                      <Badge className="bg-amber-400 text-slate-950 font-black text-[9px] uppercase tracking-wider border-none">
+                        SM-2 + Evocação Ativa
+                      </Badge>
+                    </h3>
+                    <p className="text-xs text-indigo-200">
+                      Entenda como maximizar sua taxa de retenção de medicina acima de 90% para o internato e provas.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowMethodologyGuide(false)}
+                  className="text-indigo-300 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                {/* BLOC 1: EVOCAÇÃO ATIVA & COMO ESTUDAR */}
+                <div className="bg-indigo-950/70 p-4 rounded-xl border border-indigo-700/60 space-y-2.5">
+                  <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs uppercase tracking-wider">
+                    <Brain className="w-4 h-4 text-amber-400" />
+                    <span>1. Passo a Passo do Estudo (Evocação Ativa)</span>
+                  </div>
+                  <ul className="space-y-2 text-indigo-100 leading-relaxed">
+                    <li className="flex items-start gap-2">
+                      <span className="bg-indigo-600 text-white font-black text-[10px] rounded-full w-4 h-4 flex items-center justify-center shrink-0 mt-0.5">1</span>
+                      <span><strong>Force a memória antes de virar:</strong> Tente responder à pergunta mentalmente ou em voz alta antes de revelar o verso. Não olhe o verso passivamente.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="bg-indigo-600 text-white font-black text-[10px] rounded-full w-4 h-4 flex items-center justify-center shrink-0 mt-0.5">2</span>
+                      <span><strong>Honestidade na Autoavaliação:</strong> Classifique com precisão seu nível de recuperação. Se hesitou muito ou chutou, use 🟠 <em>Difícil</em> ou 🔴 <em>Errei</em>.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="bg-indigo-600 text-white font-black text-[10px] rounded-full w-4 h-4 flex items-center justify-center shrink-0 mt-0.5">3</span>
+                      <span><strong>Aprofundamento Salvo:</strong> Ao encontrar um card complexo (escores, tabelas como GINA, doses), clique em <em>Aprofundar Card</em> para acessar explicações fisiopatológicas salvas permanentemente.</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* BLOC 2: LÓGICA DOS BOTÕES SRS */}
+                <div className="bg-indigo-950/70 p-4 rounded-xl border border-indigo-700/60 space-y-2.5">
+                  <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs uppercase tracking-wider">
+                    <Target className="w-4 h-4 text-amber-400" />
+                    <span>2. Lógica dos Botões (Algoritmo SM-2)</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-rose-950/80 border border-rose-700/70 p-2.5 rounded-lg space-y-0.5">
+                      <div className="text-rose-300 font-black text-[11px]">🔴 ERREI (1 dia)</div>
+                      <p className="text-[10px] text-rose-100">Zera o progresso. O card reaparecerá amanhã para re-consolidação imediata.</p>
+                    </div>
+                    <div className="bg-amber-950/80 border border-amber-700/70 p-2.5 rounded-lg space-y-0.5">
+                      <div className="text-amber-300 font-black text-[11px]">🟠 DIFÍCIL (~2 dias)</div>
+                      <p className="text-[10px] text-amber-100">Alto esforço de memória. Revisa em intervalo curto para estabilizar a lembrança.</p>
+                    </div>
+                    <div className="bg-blue-950/80 border border-blue-700/70 p-2.5 rounded-lg space-y-0.5">
+                      <div className="text-blue-300 font-black text-[11px]">🔵 BOM (x2.5)</div>
+                      <p className="text-[10px] text-blue-100">Retenção adequada. Expande o intervalo multiplicando pelo fator de facilidade.</p>
+                    </div>
+                    <div className="bg-emerald-950/80 border border-emerald-700/70 p-2.5 rounded-lg space-y-0.5">
+                      <div className="text-emerald-300 font-black text-[11px]">🟢 FÁCIL (x1.5 extra)</div>
+                      <p className="text-[10px] text-emerald-100">Domínio absoluto. Expande o intervalo longamente para otimizar tempo.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOC 3: CURVA DE ESQUECIMENTO DE EBBINGHAUS */}
+              <div className="bg-slate-950/90 p-4 rounded-xl border border-indigo-700/60 space-y-2">
+                <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs uppercase tracking-wider">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>3. Por que Funciona? (Curva de Esquecimento de Ebbinghaus)</span>
+                </div>
+                <p className="text-xs text-indigo-100/90 leading-relaxed">
+                  Estudos em neurociência comprovam que <strong>mais de 70% do conteúdo médico lido passivamente é esquecido em até 48 horas</strong>. O algoritmo de Repetição Espaçada recalcula dinamicamente a data de revisão para o momento exato em que a memória está prestes a falhar. Cada revisão no momento certo achata a curva de esquecimento, consolidando sinapses de longo prazo.
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* TABS SELECTOR */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 bg-[#F5F4F0] p-1.5 rounded-2xl">
@@ -1622,7 +1771,12 @@ export default function FlashcardModule({
                 </div>
 
                 <div className="prose prose-sm max-w-none text-stone-800 space-y-4">
-                  <ReactMarkdown>{generatedSessionSummaryResult.content}</ReactMarkdown>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents as any}
+                  >
+                    {cleanAndFixMarkdownTables(generatedSessionSummaryResult.content)}
+                  </ReactMarkdown>
                 </div>
 
                 <div className="pt-4 border-t border-stone-200 flex justify-end">
@@ -1704,7 +1858,7 @@ export default function FlashcardModule({
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <label className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">Temas Específicos</label>
                 {selectedTopicIds.length > 0 && (
                   <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
@@ -1712,9 +1866,40 @@ export default function FlashcardModule({
                   </span>
                 )}
               </div>
+
+              {/* SEARCH INPUT FOR TOPICS */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-stone-400" />
+                <input
+                  type="text"
+                  value={topicSearchQuery}
+                  onChange={(e) => setTopicSearchQuery(e.target.value)}
+                  placeholder="Buscar tema por nome..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#E2E0D9] rounded-xl text-xs font-semibold placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+                {topicSearchQuery && (
+                  <button
+                    onClick={() => setTopicSearchQuery('')}
+                    className="absolute right-2.5 top-2 text-stone-400 hover:text-stone-700 text-xs font-bold"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
               <div className="flex flex-wrap gap-2 max-h-[220px] overflow-auto pr-2">
                 {displayTopics
-                  .filter(t => selectedSubjectIds.length === 0 || selectedSubjectIds.includes(t.subjectId))
+                  .filter(t => {
+                    const matchesSubject = selectedSubjectIds.length === 0 || 
+                      selectedSubjectIds.includes(t.subjectId) ||
+                      !t.subjectId ||
+                      t.subjectId === 'geral';
+                    const qStr = topicSearchQuery.trim().toLowerCase();
+                    const matchesSearch = !qStr ||
+                      (t.title && t.title.toLowerCase().includes(qStr)) ||
+                      (t.name && t.name.toLowerCase().includes(qStr));
+                    return matchesSubject && matchesSearch;
+                  })
                   .map((t, tIdx) => {
                     const isTopicSelected = selectedTopicIds.includes(t.id);
                     return (
@@ -2454,27 +2639,42 @@ export default function FlashcardModule({
 
             {/* APROFUNDAR CARD BUTTON */}
             <div className="flex items-center justify-center pt-2">
-              <Button
-                variant="outline"
-                disabled={isGeneratingDeepDive}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleGenerateDeepDive(currentCard);
-                }}
-                className="bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 text-purple-900 hover:from-purple-100 hover:to-indigo-100 font-bold text-xs uppercase tracking-wider h-11 rounded-xl gap-2 px-6 shadow-2xs transition-all"
-              >
-                {isGeneratingDeepDive ? (
-                  <>
-                    <Loader2 className="w-4 h-4 text-purple-600 animate-spin" />
-                    <span>Aprofundando Conceito com IA...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 text-purple-600" />
-                    <span>Aprofundar Este Card com IA</span>
-                  </>
-                )}
-              </Button>
+              {(() => {
+                const existingDeepDive = currentCard ? deepDives.find(d => d.cardId === currentCard.id) : null;
+                return (
+                  <Button
+                    variant="outline"
+                    disabled={isGeneratingDeepDive}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleGenerateDeepDive(currentCard);
+                    }}
+                    className={cn(
+                      "font-bold text-xs uppercase tracking-wider h-11 rounded-xl gap-2 px-6 shadow-2xs transition-all cursor-pointer",
+                      existingDeepDive
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-950 hover:bg-emerald-100"
+                        : "bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 text-purple-900 hover:from-purple-100 hover:to-indigo-100"
+                    )}
+                  >
+                    {isGeneratingDeepDive ? (
+                      <>
+                        <Loader2 className="w-4 h-4 text-purple-600 animate-spin" />
+                        <span>Aprofundando Conceito com IA...</span>
+                      </>
+                    ) : existingDeepDive ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Ver Aprofundamento Salvo (Permanente)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-purple-600" />
+                        <span>Aprofundar Este Card com IA</span>
+                      </>
+                    )}
+                  </Button>
+                );
+              })()}
             </div>
 
             {/* NAV PREV / NEXT / SHUFFLE */}
@@ -2584,7 +2784,12 @@ export default function FlashcardModule({
               </div>
 
               <div className="prose prose-sm max-w-none text-stone-800 space-y-4 pt-2">
-                <ReactMarkdown>{selectedDeepDive.expandedAnalysis}</ReactMarkdown>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={markdownComponents as any}
+                >
+                  {cleanAndFixMarkdownTables(selectedDeepDive.expandedAnalysis)}
+                </ReactMarkdown>
               </div>
             </div>
 

@@ -1476,6 +1476,17 @@ ${topicTitle ? `Tema Geral: "${topicTitle}"` : ''}
 Pergunta (Frente): "${cardFront}"
 Resposta (Verso): "${cardBack}"
 
+REGRAS DE FORMATAÇÃO DE TABELAS MARKDOWN:
+- Se houver qualquer tabela, escala (ex: GINA - Escala de Gravidade da Exacerbação de Asma, CURB-65, Wells, NIHSS, Ranson, Child-Pugh, etc.), formate estritamente em sintaxe Markdown GFM válida com cabeçalho e separador "|---|---|". Exemplo:
+| Parâmetro | Leve / Moderada | Grave | Ameaça da Vida |
+|---|---|---|---|
+| Fala | Frases completas | Palavras isoladas | Incapaz de falar |
+| Frequência Respiratória | Aumentada | > 30 irpm | Movimentos tóraco-abdominais paradoxais |
+| Frequência Cardíaca | < 100 bpm | 100-120 bpm | > 120 bpm ou Bradicardia |
+| SatO2 (Ar ambiente) | 90 - 95% | < 90% | < 90% |
+| PEF (Pico de Fluxo) | > 50% do previsto | < 50% do previsto | < 33% |
+- NUNCA use marcadores corrompidos como "|l", "||---", ou linhas desalinhadas.
+
 CRIE UM APROFUNDAMENTO TÉCNICO COMPLETO EM MARKDOWN COM A SEGUINTE ESTRUTURA VISUAL E ACADÊMICA:
 
 # 🔬 APROFUNDAMENTO CLÍNICO: ${concept || cardFront}
@@ -1488,7 +1499,7 @@ CRIE UM APROFUNDAMENTO TÉCNICO COMPLETO EM MARKDOWN COM A SEGUINTE ESTRUTURA VI
 
 ## 2. 📋 DIAGNÓSTICO, EXAMES & ESCORES ASSOCIADOS
 - Descreva a propedêutica de 1ª linha e padrão-ouro.
-- Se houver escore de risco, critérios ou escala associada (ex: Wells, CURB-65, CHADS-VASc, NIHSS, Ranson, Child-Pugh, MELD, etc.), apresente a **TABELA COMPLETA** com critérios, pontos e condutas.
+- Se houver escore de risco, critérios ou escala associada (ex: GINA, Wells, CURB-65, CHADS-VASc, NIHSS, Ranson, Child-Pugh, MELD, etc.), apresente a **TABELA COMPLETA** com critérios, pontos e condutas.
 
 ## 3. 💊 TRATAMENTO, CONDUTA E POSOLOGIA COMPLETA
 - Farmacologia detalhada com Doses exatas (mg/kg), vias, posologias, duração do tratamento e ajustes em falência renal ou hepática.

@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 
 import { db, collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove, addDoc, setDoc, getDoc, increment, orderBy, limit, deleteDoc } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
-import { explainQuestion, generateQuestions } from '../services/geminiService';
+import { explainQuestion, generateQuestions, analyzeBancaYearAvailability } from '../services/geminiService';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -353,9 +353,245 @@ export default function QuestionModule({
   };
 
   // METODOLOGIAS DE SIMULADOS DE PESO OFICIAL E IA
-  const [simuladoMode, setSimuladoMode] = useState<'custom' | 'ai-errors' | 'official-ratio'>('custom');
+  const [simuladoMode, setSimuladoMode] = useState<'custom' | 'banca-year' | 'ai-errors' | 'official-ratio'>('custom');
   const [selectedPresetId, setSelectedPresetId] = useState<string>('ses-df');
   const [totalPresetQuestions, setTotalPresetQuestions] = useState<number>(20);
+
+  // SELEÇÃO E MATRIZ POR BANCA & ANO
+  const [bancaYearSelection, setBancaYearSelection] = useState<Record<string, number>>({});
+  const [bancaYearCounts, setBancaYearCounts] = useState<Record<string, number>>({});
+  const [bancaYearAnsweredCounts, setBancaYearAnsweredCounts] = useState<Record<string, number>>({});
+  const [aiArchiveYearCounts, setAiArchiveYearCounts] = useState<Record<string, number>>({});
+  const [loadingBancaYearCounts, setLoadingBancaYearCounts] = useState(false);
+  const [runningAudit, setRunningAudit] = useState(false);
+  const [auditExecuted, setAuditExecuted] = useState(false);
+  const [bancaSearchTerm, setBancaSearchTerm] = useState('');
+
+  const handleRunAvailabilityAudit = async () => {
+    setRunningAudit(true);
+    try {
+      // 1. Audit local database counts
+      let qDocs: Question[] = [];
+      if (selectedTopicIds.length > 0) {
+        for (let i = 0; i < selectedTopicIds.length; i += 10) {
+          const chunk = selectedTopicIds.slice(i, i + 10);
+          const q = query(collection(db, 'questions'), where('topicId', 'in', chunk), limit(200));
+          const snap = await getDocs(q);
+          qDocs.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as Question)));
+        }
+      } else if (selectedSubjectIds.length > 0) {
+        for (let i = 0; i < selectedSubjectIds.length; i += 10) {
+          const chunk = selectedSubjectIds.slice(i, i + 10);
+          const q = query(collection(db, 'questions'), where('subjectId', 'in', chunk), limit(200));
+          const snap = await getDocs(q);
+          qDocs.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as Question)));
+        }
+      } else {
+        const q = query(collection(db, 'questions'), limit(250));
+        const snap = await getDocs(q);
+        qDocs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Question));
+      }
+
+      const localCounts: Record<string, number> = {};
+      const answeredCounts: Record<string, number> = {};
+      const userAnsIds = userProgress?.answeredQuestionIds || [];
+
+      for (const qObj of qDocs) {
+        const { banca, year } = parseBancaAndYear(qObj.source);
+        if (banca && year) {
+          const key = `${banca.toUpperCase()}_${year}`;
+          localCounts[key] = (localCounts[key] || 0) + 1;
+          if (userAnsIds.includes(qObj.id)) {
+            answeredCounts[key] = (answeredCounts[key] || 0) + 1;
+          }
+        }
+      }
+      setBancaYearCounts(localCounts);
+      setBancaYearAnsweredCounts(answeredCounts);
+
+      // 2. Audit AI / Official archive (cost: 5 credits)
+      const selectedTopicTitles = topics.filter(t => selectedTopicIds.includes(t.id)).map(t => t.title);
+      const selectedSubjectNames = subjects.filter(s => selectedSubjectIds.includes(s.id)).map(s => s.name);
+
+      const { availabilityMap } = await analyzeBancaYearAvailability(selectedTopicTitles, selectedSubjectNames);
+      setAiArchiveYearCounts(availabilityMap);
+      setAuditExecuted(true);
+    } catch (err: any) {
+      console.error("Audit error:", err);
+      alert(err?.message || "Erro ao executar auditoria de disponibilidade de acervo.");
+    } finally {
+      setRunningAudit(false);
+    }
+  };
+
+  const getBancaYearTotalAvailable = (key: string) => {
+    const local = bancaYearCounts[key] || 0;
+    const ai = aiArchiveYearCounts[key] || 0;
+    return Math.max(local, ai);
+  };
+
+  const getBancaYearUnanswered = (key: string) => {
+    const total = getBancaYearTotalAvailable(key);
+    const answered = bancaYearAnsweredCounts[key] || 0;
+    return Math.max(0, total - answered);
+  };
+
+  const selectAllAvailableGlobal = (bancasToApply?: string[]) => {
+    const next: Record<string, number> = { ...bancaYearSelection };
+    const targetBancas = bancasToApply && bancasToApply.length > 0 ? bancasToApply : ALL_NATIONAL_BANCAS;
+    targetBancas.forEach(banca => {
+      [2026, 2025, 2024, 2023, 2022, 2021].forEach(year => {
+        const key = `${banca.toUpperCase()}_${year}`;
+        const avail = getBancaYearTotalAvailable(key);
+        if (avail > 0) {
+          next[key] = avail;
+        }
+      });
+    });
+    setBancaYearSelection(next);
+  };
+
+  const selectUnansweredGlobal = (bancasToApply?: string[]) => {
+    const next: Record<string, number> = { ...bancaYearSelection };
+    const targetBancas = bancasToApply && bancasToApply.length > 0 ? bancasToApply : ALL_NATIONAL_BANCAS;
+    targetBancas.forEach(banca => {
+      [2026, 2025, 2024, 2023, 2022, 2021].forEach(year => {
+        const key = `${banca.toUpperCase()}_${year}`;
+        const unans = getBancaYearUnanswered(key);
+        if (unans > 0) {
+          next[key] = unans;
+        } else {
+          delete next[key];
+        }
+      });
+    });
+    setBancaYearSelection(next);
+  };
+
+  const candidatePreferredBancas = React.useMemo(() => {
+    let focus = (userProgress as any)?.settings?.residencyFocus;
+    if (!focus) {
+      try {
+        focus = safeLocalStorageGet('user_residency_focus') || '';
+      } catch (e) {}
+    }
+    if (!focus || !focus.trim()) {
+      focus = "Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)";
+    }
+    const knownBancas = [
+      'ENARE', 'SES-DF', 'SES-GO', 'SUS-GO', 'UFG', 'UnB', 'HBDF',
+      'USP', 'UNIFESP', 'UNICAMP', 'SUS-SP', 'PSU-MG', 'AMRIGS', 'AMP',
+      'SURCE', 'ISCMBP', 'FCMSCSP', 'UERJ', 'IAMSPE'
+    ];
+    const upper = focus.toUpperCase();
+    const matched = knownBancas.filter(b => upper.includes(b.toUpperCase()));
+    if (matched.length > 0) return Array.from(new Set(matched));
+    
+    const parts = focus.split(/[,;\/]+/).map(s => s.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : ['ENARE', 'SES-DF', 'SES-GO', 'UFG', 'UnB'];
+  }, [userProgress]);
+
+  const ALL_NATIONAL_BANCAS = [
+    'ENARE', 'SES-DF', 'SES-GO', 'USP', 'UNIFESP', 'UNICAMP', 'SUS-SP',
+    'PSU-MG', 'AMRIGS', 'AMP', 'SURCE', 'UFG', 'UnB', 'HBDF', 'UERJ', 'IAMSPE'
+  ];
+
+  const parseBancaAndYear = (source?: string): { banca: string; year: number | null } => {
+    if (!source) return { banca: 'Geral', year: null };
+    const yearMatch = source.match(/(20\d\d)/);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
+    const upper = source.toUpperCase();
+    const knownBancas = [
+      'ENARE', 'SES-DF', 'SES-GO', 'SUS-GO', 'UFG', 'UnB', 'HBDF',
+      'USP', 'UNIFESP', 'UNICAMP', 'SUS-SP', 'PSU-MG', 'AMRIGS', 'AMP',
+      'SURCE', 'ISCMBP', 'FCMSCSP', 'UERJ', 'IAMSPE'
+    ];
+    for (const b of knownBancas) {
+      if (upper.includes(b.toUpperCase())) {
+        return { banca: b, year };
+      }
+    }
+    const match = source.match(/^([A-Za-z0-9\s()\/,-]+)/);
+    const banca = match && match[1].trim() ? match[1].trim() : 'Outras';
+    return { banca, year };
+  };
+
+  const setBancaYearCount = (banca: string, year: number, val: number) => {
+    const key = `${banca.toUpperCase()}_${year}`;
+    const count = Math.max(0, val);
+    setBancaYearSelection(prev => {
+      const next = { ...prev };
+      if (count === 0) {
+        delete next[key];
+      } else {
+        next[key] = count;
+      }
+      return next;
+    });
+  };
+
+  const applyPreferredBancasPreset = (qtyPerYear: number = 2) => {
+    const next: Record<string, number> = { ...bancaYearSelection };
+    candidatePreferredBancas.forEach(banca => {
+      [2026, 2025, 2024, 2023, 2022].forEach(year => {
+        const key = `${banca.toUpperCase()}_${year}`;
+        next[key] = (next[key] || 0) + qtyPerYear;
+      });
+    });
+    setBancaYearSelection(next);
+  };
+
+  const totalBancaYearSelectedCount = Object.values(bancaYearSelection).reduce((a, b) => a + (b || 0), 0);
+
+  useEffect(() => {
+    if (simuladoMode === 'banca-year') {
+      let isMounted = true;
+      const loadCounts = async () => {
+        setLoadingBancaYearCounts(true);
+        try {
+          let qDocs: Question[] = [];
+          if (selectedTopicIds.length > 0) {
+            for (let i = 0; i < selectedTopicIds.length; i += 10) {
+              const chunk = selectedTopicIds.slice(i, i + 10);
+              const q = query(collection(db, 'questions'), where('topicId', 'in', chunk), limit(200));
+              const snap = await getDocs(q);
+              qDocs.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as Question)));
+            }
+          } else if (selectedSubjectIds.length > 0) {
+            for (let i = 0; i < selectedSubjectIds.length; i += 10) {
+              const chunk = selectedSubjectIds.slice(i, i + 10);
+              const q = query(collection(db, 'questions'), where('subjectId', 'in', chunk), limit(200));
+              const snap = await getDocs(q);
+              qDocs.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as Question)));
+            }
+          } else {
+            const q = query(collection(db, 'questions'), limit(250));
+            const snap = await getDocs(q);
+            qDocs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Question));
+          }
+
+          const counts: Record<string, number> = {};
+          for (const qObj of qDocs) {
+            const { banca, year } = parseBancaAndYear(qObj.source);
+            if (banca && year) {
+              const key = `${banca.toUpperCase()}_${year}`;
+              counts[key] = (counts[key] || 0) + 1;
+            }
+          }
+          if (isMounted) {
+            setBancaYearCounts(counts);
+          }
+        } catch (err) {
+          console.error("Error loading banca year counts:", err);
+        } finally {
+          if (isMounted) setLoadingBancaYearCounts(false);
+        }
+      };
+
+      loadCounts();
+      return () => { isMounted = false; };
+    }
+  }, [simuladoMode, selectedTopicIds, selectedSubjectIds]);
 
   const EXAM_PRESETS = [
     {
@@ -958,6 +1194,108 @@ export default function QuestionModule({
         
         const results = await Promise.all(promises);
         fetched = results.flat();
+      } else if (simuladoMode === 'banca-year') {
+        setGenerationStatus('Analisando matriz de bancas e anos solicitados...');
+        setGenerationProgress(10);
+
+        const activeSpecs: { banca: string; year: number; count: number }[] = [];
+        Object.entries(bancaYearSelection).forEach(([key, val]) => {
+          if (val && val > 0) {
+            const parts = key.split('_');
+            const banca = parts[0];
+            const year = parseInt(parts[1], 10);
+            if (banca && !isNaN(year)) {
+              activeSpecs.push({ banca, year, count: val });
+            }
+          }
+        });
+
+        if (activeSpecs.length === 0) {
+          alert('Por favor, selecione ao menos 1 questão de alguma banca e ano na matriz.');
+          setLoading(false);
+          return;
+        }
+
+        let candidatePool: Question[] = [];
+        if (selectedTopicIds.length > 0) {
+          for (let i = 0; i < selectedTopicIds.length; i += 10) {
+            const chunk = selectedTopicIds.slice(i, i + 10);
+            const q = query(collection(db, 'questions'), where('topicId', 'in', chunk), limit(200));
+            const snap = await getDocs(q);
+            candidatePool.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as Question)));
+          }
+        } else if (selectedSubjectIds.length > 0) {
+          for (let i = 0; i < selectedSubjectIds.length; i += 10) {
+            const chunk = selectedSubjectIds.slice(i, i + 10);
+            const q = query(collection(db, 'questions'), where('subjectId', 'in', chunk), limit(200));
+            const snap = await getDocs(q);
+            candidatePool.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as Question)));
+          }
+        } else {
+          const q = query(collection(db, 'questions'), limit(300));
+          const snap = await getDocs(q);
+          candidatePool = snap.docs.map(d => ({ id: d.id, ...d.data() } as Question));
+        }
+
+        let totalSpecs = activeSpecs.length;
+        let currentSpecIdx = 0;
+
+        for (const spec of activeSpecs) {
+          currentSpecIdx++;
+          const specPct = Math.round(10 + (currentSpecIdx / totalSpecs) * 85);
+          setGenerationStatus(`Obtendo ${spec.count} questão(ões) de ${spec.banca} (${spec.year})...`);
+          setGenerationProgress(specPct);
+
+          const matched = candidatePool.filter(q => {
+            const parsed = parseBancaAndYear(q.source);
+            return parsed.banca.toUpperCase() === spec.banca.toUpperCase() && parsed.year === spec.year;
+          });
+
+          if (matched.length >= spec.count) {
+            fetched.push(...matched.slice(0, spec.count));
+          } else {
+            fetched.push(...matched);
+            const needed = spec.count - matched.length;
+
+            let targetTid = selectedTopicIds[0] || (topics[0]?.id || '');
+            let targetSid = selectedSubjectIds[0] || (subjects[0]?.id || '');
+            const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(targetTid, topics, subjects);
+
+            const existingTexts = fetched.map(q => q.text);
+            try {
+              const newQuestions = await generateQuestions(
+                topicTitle || 'Concurso de Residência Médica',
+                subjectName || 'Clínica Médica',
+                needed,
+                existingTexts,
+                userId,
+                spec.banca,
+                spec.year
+              );
+
+              if (newQuestions && Array.isArray(newQuestions)) {
+                for (const qData of newQuestions) {
+                  const docRef = await addDoc(collection(db, 'questions'), {
+                    ...qData,
+                    topicId: topicId || targetTid,
+                    subjectId: subjectId || targetSid,
+                    source: qData.source || `${spec.banca} (${spec.year})`
+                  });
+                  fetched.push({
+                    id: docRef.id,
+                    ...qData,
+                    topicId: topicId || targetTid,
+                    subjectId: subjectId || targetSid,
+                    source: qData.source || `${spec.banca} (${spec.year})`
+                  } as Question);
+                }
+              }
+            } catch (genErr) {
+              console.warn(`Error generating questions for ${spec.banca} (${spec.year}):`, genErr);
+            }
+          }
+        }
+        setGenerationProgress(100);
       } else {
         // Fallback basic fetch with caching support
         const cached = safeLocalStorageGet('questions_fallback');
@@ -2112,7 +2450,7 @@ export default function QuestionModule({
               
               <div className="space-y-3 max-w-md mx-auto">
                 <h3 className="text-lg font-display font-bold text-[#1A1A1A]">
-                  Gerando questões estruturadas...
+                  Buscando questões estruturadas...
                 </h3>
                 <p className="text-sm text-[#8E8A82] font-semibold">
                   {generationStatus}
@@ -2142,14 +2480,14 @@ export default function QuestionModule({
                     <div>
                       <h4 className="font-bold text-amber-900 text-sm">Banco de dados vazio para este tema</h4>
                       <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                        Você ainda não possui nenhuma questão gerada para este tópico. Escolha abaixo a quantidade de questões que deseja que nosso preceptor IA crie agora mesmo!
+                        Você ainda não possui nenhuma questão buscada para este tópico. Escolha abaixo a quantidade de questões que deseja buscar do acervo agora mesmo!
                       </p>
                     </div>
                   </div>
 
                   <div className="space-y-3">
                     <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
-                      Quantidade de questões a serem geradas:
+                      Quantidade de questões a serem buscadas:
                     </span>
                     <div className="grid grid-cols-4 gap-3">
                       {[5, 10, 15, 20].map((qty) => (
@@ -2173,14 +2511,14 @@ export default function QuestionModule({
 
                   <div className="pt-4 border-t border-[#E2E0D9] flex flex-col sm:flex-row gap-4 items-center justify-between">
                     <p className="text-[10px] text-[#8E8A82] font-semibold max-w-md leading-normal uppercase">
-                      Custo estimado: {Math.max(3, Math.ceil((numQuestionsPerTopic / 5) * 3))} créditos de simulação de preceptor.
+                      Custo estimado: {Math.max(3, Math.ceil((numQuestionsPerTopic / 5) * 3))} créditos de busca no acervo.
                     </p>
                     <Button 
                       onClick={() => handleGenerateTopicQuestions(numQuestionsPerTopic)}
                       className="bg-primary text-white text-xs uppercase tracking-widest font-black px-8 h-12 rounded-xl gap-2 w-full sm:w-auto"
                     >
                       <Sparkles className="w-4 h-4" />
-                      Gerar {numQuestionsPerTopic} Questões e Começar
+                      Buscar {numQuestionsPerTopic} Questões e Começar
                     </Button>
                   </div>
                 </div>
@@ -2192,7 +2530,7 @@ export default function QuestionModule({
                     <div>
                       <h4 className="font-bold text-emerald-900 text-sm">Questões encontradas no seu banco de dados</h4>
                       <p className="text-xs text-emerald-700 mt-1 leading-relaxed">
-                        Encontramos um total de <strong className="font-black">{existingCount}</strong> questões já geradas para o tópico <strong>"{topicObj?.title}"</strong>. Escolha como gostaria de prosseguir abaixo.
+                        Encontramos um total de <strong className="font-black">{existingCount}</strong> questões já prontas no acervo para o tópico <strong>"{topicObj?.title}"</strong>. Escolha como gostaria de prosseguir abaixo.
                       </p>
                     </div>
                   </div>
@@ -2262,7 +2600,7 @@ export default function QuestionModule({
                                 return <option key={`existing-qty-${qty}`} value={qty}>{qty} questões (todas prontas)</option>;
                               } else {
                                 const diff = qty - existingCount;
-                                return <option key={`existing-qty-${qty}`} value={qty}>{qty} questões ({existingCount} prontas + {diff} geradas via IA)</option>;
+                                return <option key={`existing-qty-${qty}`} value={qty}>{qty} questões ({existingCount} prontas + {diff} buscadas via IA)</option>;
                               }
                             })}
                             {existingCount > 0 && ![5, 10, 15, 20, 25, 30].includes(existingCount) && (
@@ -2289,7 +2627,7 @@ export default function QuestionModule({
                           ) : (
                             <>
                               <Sparkles className="w-4 h-4 text-amber-300" />
-                              Iniciar {selectedCountFromExisting} ({existingCount} prontas + gerar {selectedCountFromExisting - existingCount} com IA)
+                              Iniciar {selectedCountFromExisting} ({existingCount} prontas + buscar {selectedCountFromExisting - existingCount} com IA)
                             </>
                           )}
                         </Button>
@@ -2301,17 +2639,17 @@ export default function QuestionModule({
                       <div className="space-y-2">
                         <h4 className="font-display font-black text-sm text-primary uppercase tracking-wider flex items-center gap-1.5">
                           <Sparkles className="w-4 h-4" />
-                          2. Gerar mais com IA
+                          2. Buscar mais com IA
                         </h4>
                         <p className="text-xs text-[#8E8A82] leading-normal font-semibold">
-                          Deseja testar casos inéditos? Gere mais questões com nosso preceptor de IA e junte ao seu simulado.
+                          Deseja testar questões de bancas oficiais? Busque mais questões na íntegra palavra por palavra com nosso motor de IA.
                         </p>
                       </div>
 
                       <div className="space-y-4 pt-4 border-t border-primary/10">
                         <div className="space-y-2">
                           <label className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
-                            Gerar mais quantas questões:
+                            Buscar mais quantas questões:
                           </label>
                           <div className="grid grid-cols-4 gap-2">
                             {[5, 10, 15, 20].map((qty) => (
@@ -2337,7 +2675,7 @@ export default function QuestionModule({
                           className="w-full bg-primary text-white text-[10px] uppercase tracking-widest font-black h-11 rounded-xl gap-1.5"
                         >
                           <Sparkles className="w-3.5 h-3.5" />
-                          Gerar +{numQuestionsPerTopic} e Iniciar
+                          Buscar +{numQuestionsPerTopic} e Iniciar
                         </Button>
                       </div>
                     </div>
@@ -2628,7 +2966,7 @@ export default function QuestionModule({
           {/* SELETOR DE METODOLOGIA DO SIMULADO */}
           <div className="space-y-4">
             <span className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">Metodologia do Simulado</span>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               
               {/* 1. Custom / Personalizado */}
               <button
@@ -2653,7 +2991,37 @@ export default function QuestionModule({
                 </div>
               </button>
 
-              {/* 2. Erros Históricos IA */}
+              {/* 2. Seleção Granular por Banca & Ano */}
+              <button
+                type="button"
+                onClick={() => setSimuladoMode('banca-year')}
+                className={cn(
+                  "p-5 text-left rounded-2xl border transition-all flex flex-col justify-between gap-4 h-32 bg-white relative overflow-hidden",
+                  simuladoMode === 'banca-year'
+                    ? "border-purple-600 ring-2 ring-purple-600/10 shadow-sm"
+                    : "border-[#E2E0D9] hover:border-purple-500/40"
+                )}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className="p-1.5 rounded-xl bg-purple-50 border border-purple-100">
+                    <Building2 className="w-4 h-4 text-purple-600" />
+                  </div>
+                  {simuladoMode === 'banca-year' ? (
+                    <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full shrink-0">Ativo</Badge>
+                  ) : (
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-full shrink-0 gap-0.5">
+                      <Sparkles className="w-2.5 h-2.5 fill-amber-600 text-amber-600" />
+                      Bancas Foco
+                    </Badge>
+                  )}
+                </div>
+                <div className="space-y-0.5">
+                  <h4 className="text-[11px] uppercase tracking-wider font-black text-[#1A1A1A]">Matriz por Banca & Ano</h4>
+                  <p className="text-[9px] text-[#8E8A82] leading-normal font-medium">Veja disponibilidade e defina quantidades por ano com destaque para suas bancas preferidas.</p>
+                </div>
+              </button>
+
+              {/* 3. Erros Históricos IA */}
               <button
                 type="button"
                 onClick={() => setSimuladoMode('ai-errors')}
@@ -2672,11 +3040,11 @@ export default function QuestionModule({
                 </div>
                 <div className="space-y-0.5">
                   <h4 className="text-[11px] uppercase tracking-wider font-black text-[#1A1A1A]">Erros do Último Mês (IA)</h4>
-                  <p className="text-[9px] text-[#8E8A82] leading-normal font-medium">Reúne de forma autônoma e inteligente as matérias onde você mais cometeu erros recentemente.</p>
+                  <p className="text-[9px] text-[#8E8A82] leading-normal font-medium">Reúne de forma autônoma as matérias onde você mais cometeu erros recentemente.</p>
                 </div>
               </button>
 
-              {/* 3. Banca Real / Distribuição oficial */}
+              {/* 4. Banca Real / Distribuição oficial */}
               <button
                 type="button"
                 onClick={() => setSimuladoMode('official-ratio')}
@@ -3160,6 +3528,496 @@ export default function QuestionModule({
             </div>
           )}
 
+          {/* MODO: MATRIZ POR BANCA & ANO */}
+          {simuladoMode === 'banca-year' && (
+            <div className="bg-[#FAF8F5] p-6 sm:p-8 rounded-2xl border border-purple-200/80 space-y-8 animate-fade-in">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-purple-100 pb-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-xl bg-purple-100 border border-purple-200 text-purple-700 shrink-0">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm uppercase tracking-widest font-black text-purple-950">Matriz Granular por Banca & Ano</h3>
+                      <Badge className="bg-purple-600 text-white text-[8px] uppercase tracking-wider font-extrabold px-2 py-0.5">Fidelidade Verbatim 100%</Badge>
+                    </div>
+                    <p className="text-[10px] text-purple-800/80 font-medium mt-0.5">
+                      Audite a quantidade exata de questões disponíveis por banca e ano e recupere questões reais idênticas às aplicadas nas provas oficiais.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => applyPreferredBancasPreset(2)}
+                    className="h-9 text-xs font-bold border-amber-300 bg-amber-50/80 text-amber-900 hover:bg-amber-100/80 gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-600" />
+                    +2 de Cada Ano (Bancas Foco)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => selectAllAvailableGlobal(candidatePreferredBancas)}
+                    className="h-9 text-xs font-bold bg-purple-700 hover:bg-purple-800 text-white gap-1.5 shadow-sm"
+                  >
+                    ➕ Adicionar Todas Disponíveis (Que Já Tenho / Acervo)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => selectUnansweredGlobal(candidatePreferredBancas)}
+                    className="h-9 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white gap-1.5 shadow-sm"
+                  >
+                    🎯 Selecionar Apenas Não Feitas (Que Não Fiz Ainda)
+                  </Button>
+                  {Object.keys(bancaYearSelection).length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setBancaYearSelection({})}
+                      className="h-9 text-xs font-medium text-stone-500 hover:text-red-600 gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Limpar Seleção
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* CARD DE AUDITORIA DE DISPONIBILIDADE COM CUSTO DE CRÉDITOS */}
+              <div className="p-5 rounded-xl bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-purple-700/50">
+                <div className="space-y-1.5 max-w-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 rounded bg-purple-500/30 text-purple-200">
+                      <Search className="w-4 h-4 text-purple-300" />
+                    </span>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-purple-100">
+                      Auditoria de Disponibilidade do Acervo Oficial por Banca & Ano
+                    </h4>
+                    <Badge className="bg-amber-400 text-purple-950 font-black text-[9px] px-2 py-0.5 gap-1">
+                      <Sparkles className="w-3 h-3 text-purple-950 fill-purple-950" />
+                      Custo: 5 Créditos
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-purple-200/90 leading-relaxed">
+                    Executa uma varredura profunda no acervo local e nos arquivos oficiais da IA para mapear o número exato de questões reais aplicadas entre 2021 e 2026 para os tópicos selecionados.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    onClick={handleRunAvailabilityAudit}
+                    disabled={runningAudit}
+                    className="h-10 px-5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-purple-950 font-black text-xs rounded-xl shadow-lg transition-all gap-2 disabled:opacity-50"
+                  >
+                    {runningAudit ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Auditando Acervo (5 cr)...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="w-4 h-4" />
+                        {auditExecuted ? 'Refazer Auditoria de Disponibilidade (5 cr)' : 'Auditar Quantidade Disponível (5 cr)'}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* BANNER DE FIEL REPRODUÇÃO VERBATIM DESSAS QUESTÕES */}
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 flex items-start gap-3">
+                <div className="p-1.5 rounded-lg bg-emerald-600 text-white shrink-0 mt-0.5">
+                  <BookCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h5 className="text-xs font-black text-emerald-950 uppercase tracking-wide">
+                    📜 Garantia de Fidelidade Verbatim Exata às Provas Oficiais
+                  </h5>
+                  <p className="text-[11px] text-emerald-900/90 font-medium leading-relaxed mt-0.5">
+                    Todas as questões obtidas neste modo são recuperadas na íntegra palavra por palavra exatamente como foram aplicadas na prova original da banca no ano selecionado (caso clínico, exames laboratoriais, valores de referência e alternativas A, B, C, D sem nenhum resumo ou alteração), permitindo conferência posterior com qualquer caderno de provas em PDF ou gabarito oficial.
+                  </p>
+                </div>
+              </div>
+
+              {/* Banner de Destaque das Bancas de Preferência do Candidato */}
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-300/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-500 text-white shrink-0 shadow-sm">
+                    <Trophy className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase text-amber-950 tracking-wider">Suas Bancas de Preferência (Foco do Perfil)</span>
+                      <Badge className="bg-amber-500 text-white text-[8px] font-extrabold">Prioridade Alta</Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      {candidatePreferredBancas.map(banca => (
+                        <Badge key={banca} className="bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-[10px] px-2 py-0.5 gap-1 shadow-2xs">
+                          <Sparkles className="w-3 h-3 text-amber-600 fill-amber-600" />
+                          {banca}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => applyPreferredBancasPreset(5)}
+                  className="h-9 px-4 text-xs font-black bg-amber-500 hover:bg-amber-600 text-white shadow shrink-0 gap-1.5"
+                >
+                  🎯 Selecionar 5 de Cada Ano (Bancas Foco)
+                </Button>
+              </div>
+
+              {/* Filtro e busca de bancas */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-stone-400" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar banca (ex: ENARE, SES-DF, USP)..."
+                    value={bancaSearchTerm}
+                    onChange={(e) => setBancaSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  />
+                </div>
+                <div className="text-[10px] font-bold text-stone-500 flex items-center gap-2">
+                  {runningAudit ? (
+                    <span className="flex items-center gap-1 text-purple-600 font-extrabold">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Auditando acervo com IA...
+                    </span>
+                  ) : auditExecuted ? (
+                    <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-1 rounded-md font-extrabold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Auditoria de acervo concluída (5 cr cobrados)
+                    </span>
+                  ) : (
+                    <span className="bg-amber-100/80 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-md font-bold">
+                      💡 Dica: Clique em "Auditar Quantidade Disponível (5 cr)" para visualizar o total exato por ano/banca
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* GRUPO 1: BANCAS DE PREFERÊNCIA DO CANDIDATO */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <h4 className="text-xs uppercase tracking-wider font-black text-amber-950">
+                      ⭐ Bancas de Sua Preferência (Evidenciadas do Perfil)
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
+                    {candidatePreferredBancas.length} bancas prioritárias
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {candidatePreferredBancas
+                    .filter(banca => banca.toLowerCase().includes(bancaSearchTerm.toLowerCase()))
+                    .map(banca => {
+                      const years = [2026, 2025, 2024, 2023, 2022, 2021];
+                      const bancaTotalSelected = years.reduce((acc, year) => {
+                        const key = `${banca.toUpperCase()}_${year}`;
+                        return acc + (bancaYearSelection[key] || 0);
+                      }, 0);
+
+                      return (
+                        <div
+                          key={banca}
+                          className="p-4 rounded-xl border border-amber-300 ring-2 ring-amber-400/20 bg-gradient-to-br from-amber-50/50 to-white flex flex-col justify-between gap-3 shadow-sm"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-amber-100 pb-2.5 gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="p-1 rounded-md bg-amber-500 text-white shrink-0">
+                                <Sparkles className="w-3.5 h-3.5 fill-white" />
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <h5 className="text-xs font-black text-stone-900">{banca}</h5>
+                                <Badge className="bg-amber-500 text-white text-[8px] font-extrabold uppercase px-1.5 py-0.2">
+                                  Banca Foco
+                                </Badge>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => selectAllAvailableGlobal([banca])}
+                                className="text-[9px] font-extrabold text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200 px-2 py-0.5 rounded border border-purple-300 transition-colors"
+                              >
+                                + Todas Disp.
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => selectUnansweredGlobal([banca])}
+                                className="text-[9px] font-extrabold text-emerald-800 hover:text-emerald-950 bg-emerald-100/80 hover:bg-emerald-200 px-2 py-0.5 rounded border border-emerald-300 transition-colors"
+                              >
+                                🎯 Não Feitas
+                              </button>
+                              {bancaTotalSelected > 0 && (
+                                <Badge className="bg-purple-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full">
+                                  {bancaTotalSelected} selecionada{bancaTotalSelected > 1 ? 's' : ''}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Grid de anos */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {years.map(year => {
+                              const key = `${banca.toUpperCase()}_${year}`;
+                              const currentVal = bancaYearSelection[key] || 0;
+                              const localAvail = bancaYearCounts[key] || 0;
+                              const aiAvail = aiArchiveYearCounts[key] || 0;
+                              const totalAvail = getBancaYearTotalAvailable(key);
+                              const unansAvail = getBancaYearUnanswered(key);
+                              const hasAudit = auditExecuted;
+
+                              return (
+                                <div
+                                  key={year}
+                                  className={cn(
+                                    "p-2 rounded-lg border text-xs flex flex-col justify-between gap-1.5 transition-all",
+                                    currentVal > 0
+                                      ? "bg-purple-50/90 border-purple-400 ring-1 ring-purple-300"
+                                      : "bg-white/80 border-stone-200"
+                                  )}
+                                >
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-extrabold text-[11px] text-stone-800">{year}</span>
+                                      {hasAudit ? (
+                                        <span className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-purple-100 text-purple-900 border border-purple-200">
+                                          {totalAvail} disp.
+                                        </span>
+                                      ) : (
+                                        <span className={cn(
+                                          "text-[8px] font-bold px-1 py-0.2 rounded",
+                                          localAvail > 0 ? "bg-emerald-100 text-emerald-800" : "bg-purple-100 text-purple-700"
+                                        )}>
+                                          {localAvail > 0 ? `${localAvail} local` : 'IA Verbatim'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {hasAudit && (
+                                      <div className="flex items-center gap-1 justify-between mt-0.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => setBancaYearCount(banca, year, totalAvail)}
+                                          className="text-[8px] font-black text-purple-800 hover:text-purple-950 bg-purple-50 hover:bg-purple-100 px-1 py-0.2 rounded border border-purple-200"
+                                          title="Adicionar todas as disponíveis deste ano"
+                                        >
+                                          +Todas ({totalAvail})
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setBancaYearCount(banca, year, unansAvail)}
+                                          className="text-[8px] font-black text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 px-1 py-0.2 rounded border border-emerald-300"
+                                          title="Selecionar apenas as que não fiz ainda"
+                                        >
+                                          🎯 Não Feita ({unansAvail})
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center justify-between bg-stone-50 border border-stone-200 rounded-md p-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setBancaYearCount(banca, year, currentVal - 1)}
+                                      disabled={currentVal <= 0}
+                                      className="w-5 h-5 flex items-center justify-center rounded text-stone-700 hover:bg-stone-200 disabled:opacity-30 disabled:hover:bg-transparent font-black"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="50"
+                                      value={currentVal || 0}
+                                      onChange={(e) => setBancaYearCount(banca, year, parseInt(e.target.value, 10) || 0)}
+                                      className="w-8 text-center text-[11px] font-black focus:outline-none bg-transparent"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => setBancaYearCount(banca, year, currentVal + 1)}
+                                      className="w-5 h-5 flex items-center justify-center rounded bg-purple-600 text-white hover:bg-purple-700 font-black text-xs"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* GRUPO 2: OUTRAS BANCAS NACIONAIS */}
+              <div className="space-y-4 pt-4 border-t border-purple-100">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-stone-600" />
+                  <h4 className="text-xs uppercase tracking-wider font-black text-stone-800">
+                    🏛️ Outras Grandes Bancas Nacionais de Concurso
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {ALL_NATIONAL_BANCAS
+                    .filter(b => !candidatePreferredBancas.includes(b))
+                    .filter(banca => banca.toLowerCase().includes(bancaSearchTerm.toLowerCase()))
+                    .map(banca => {
+                      const years = [2026, 2025, 2024, 2023, 2022, 2021];
+                      const bancaTotalSelected = years.reduce((acc, year) => {
+                        const key = `${banca.toUpperCase()}_${year}`;
+                        return acc + (bancaYearSelection[key] || 0);
+                      }, 0);
+
+                      return (
+                        <div
+                          key={banca}
+                          className="p-4 rounded-xl border border-stone-200 hover:border-purple-300 bg-white flex flex-col justify-between gap-3 shadow-sm transition-all"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-stone-100 pb-2.5 gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="p-1 rounded-md bg-stone-100 text-stone-600 shrink-0">
+                                <Building2 className="w-3.5 h-3.5" />
+                              </div>
+                              <h5 className="text-xs font-black text-stone-900">{banca}</h5>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => selectAllAvailableGlobal([banca])}
+                                className="text-[9px] font-extrabold text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200 px-2 py-0.5 rounded border border-purple-300 transition-colors"
+                              >
+                                + Todas Disp.
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => selectUnansweredGlobal([banca])}
+                                className="text-[9px] font-extrabold text-emerald-800 hover:text-emerald-950 bg-emerald-100/80 hover:bg-emerald-200 px-2 py-0.5 rounded border border-emerald-300 transition-colors"
+                              >
+                                🎯 Não Feitas
+                              </button>
+                              {bancaTotalSelected > 0 && (
+                                <Badge className="bg-purple-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full">
+                                  {bancaTotalSelected} selecionada{bancaTotalSelected > 1 ? 's' : ''}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Grid de anos */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {years.map(year => {
+                              const key = `${banca.toUpperCase()}_${year}`;
+                              const currentVal = bancaYearSelection[key] || 0;
+                              const localAvail = bancaYearCounts[key] || 0;
+                              const aiAvail = aiArchiveYearCounts[key] || 0;
+                              const totalAvail = getBancaYearTotalAvailable(key);
+                              const unansAvail = getBancaYearUnanswered(key);
+                              const hasAudit = auditExecuted;
+
+                              return (
+                                <div
+                                  key={year}
+                                  className={cn(
+                                    "p-2 rounded-lg border text-xs flex flex-col justify-between gap-1.5 transition-all",
+                                    currentVal > 0
+                                      ? "bg-purple-50/90 border-purple-400 ring-1 ring-purple-300"
+                                      : "bg-stone-50/50 border-stone-200"
+                                  )}
+                                >
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-extrabold text-[11px] text-stone-800">{year}</span>
+                                      {hasAudit ? (
+                                        <span className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-purple-100 text-purple-900 border border-purple-200">
+                                          {totalAvail} disp.
+                                        </span>
+                                      ) : (
+                                        <span className={cn(
+                                          "text-[8px] font-bold px-1 py-0.2 rounded",
+                                          localAvail > 0 ? "bg-emerald-100 text-emerald-800" : "bg-purple-100 text-purple-700"
+                                        )}>
+                                          {localAvail > 0 ? `${localAvail} local` : 'IA Verbatim'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {hasAudit && (
+                                      <div className="flex items-center gap-1 justify-between mt-0.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => setBancaYearCount(banca, year, totalAvail)}
+                                          className="text-[8px] font-black text-purple-800 hover:text-purple-950 bg-purple-50 hover:bg-purple-100 px-1 py-0.2 rounded border border-purple-200"
+                                          title="Adicionar todas as disponíveis deste ano"
+                                        >
+                                          +Todas ({totalAvail})
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setBancaYearCount(banca, year, unansAvail)}
+                                          className="text-[8px] font-black text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 px-1 py-0.2 rounded border border-emerald-300"
+                                          title="Selecionar apenas as que não fiz ainda"
+                                        >
+                                          🎯 Não Feita ({unansAvail})
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center justify-between bg-white border border-stone-200 rounded-md p-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setBancaYearCount(banca, year, currentVal - 1)}
+                                      disabled={currentVal <= 0}
+                                      className="w-5 h-5 flex items-center justify-center rounded text-stone-700 hover:bg-stone-100 disabled:opacity-30 disabled:hover:bg-transparent font-black"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="50"
+                                      value={currentVal || 0}
+                                      onChange={(e) => setBancaYearCount(banca, year, parseInt(e.target.value, 10) || 0)}
+                                      className="w-8 text-center text-[11px] font-black focus:outline-none bg-transparent"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => setBancaYearCount(banca, year, currentVal + 1)}
+                                      className="w-5 h-5 flex items-center justify-center rounded bg-purple-600 text-white hover:bg-purple-700 font-black text-xs"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-[#E2E0D9]">
             <div className="flex flex-wrap gap-6">
               <label className="flex items-center gap-3 cursor-pointer group">
@@ -3196,7 +4054,9 @@ export default function QuestionModule({
             </div>
 
             <Button onClick={fetchQuestions} className="bg-[#1A1A1A] text-white text-[11px] uppercase tracking-widest font-black px-10 h-12 rounded-xl gap-3">
-              Iniciar Simulado
+              {simuladoMode === 'banca-year' && totalBancaYearSelectedCount > 0
+                ? `Iniciar Simulado (${totalBancaYearSelectedCount} q.)`
+                : 'Iniciar Simulado'}
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
@@ -3323,17 +4183,32 @@ export default function QuestionModule({
                 <div className="text-center py-8 space-y-2">
                   <HelpCircle className="w-10 h-10 text-stone-300 mx-auto" />
                   <p className="text-xs text-[#8E8A82] font-medium">Nenhum tópico selecionado no filtro acima.</p>
-                  <p className="text-[10px] text-stone-400">Marque matérias ou tópicos específicos para ver estatísticas e gerar novas questões.</p>
+                  <p className="text-[10px] text-stone-400">Marque matérias ou tópicos específicos para ver estatísticas e buscar novas questões.</p>
                 </div>
               )}
 
-              {/* SEÇÃO DE GERAR NOVAS QUESTÕES IA */}
+              {/* BANNER DE FIEL REPRODUÇÃO VERBATIM DESSAS QUESTÕES */}
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 flex items-start gap-3">
+                <div className="p-1.5 rounded-lg bg-emerald-600 text-white shrink-0 mt-0.5">
+                  <BookCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h5 className="text-xs font-black text-emerald-950 uppercase tracking-wide">
+                    📜 Garantia de Fidelidade Verbatim Exata às Provas Oficiais
+                  </h5>
+                  <p className="text-[11px] text-emerald-900/90 font-medium leading-relaxed mt-0.5">
+                    Todas as questões obtidas neste modo são recuperadas na íntegra palavra por palavra exatamente como foram aplicadas na prova original da banca no ano selecionado (caso clínico, exames laboratoriais, valores de referência e alternativas A, B, C, D sem nenhum resumo ou alteração), permitindo conferência posterior com qualquer caderno de provas em PDF ou gabarito oficial.
+                  </p>
+                </div>
+              </div>
+
+              {/* SEÇÃO DE BUSCAR NOVAS QUESTÕES IA */}
               {uniqueTids.length > 0 && (
                 <div className="space-y-6 pt-6 border-t border-[#E2E0D9] bg-[#FAF9F5] p-6 rounded-2xl border">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="space-y-1">
                       <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Quantidade de Novas Questões por Tópico</span>
-                      <p className="text-[10px] text-stone-500 font-medium">Selecione quantas questões a IA deve gerar para cada um dos {uniqueTids.length} tópicos selecionados</p>
+                      <p className="text-[10px] text-stone-500 font-medium">Selecione quantas questões a IA deve buscar para cada um dos {uniqueTids.length} tópicos selecionados</p>
                     </div>
 
                     <div className="flex gap-2 shrink-0">
@@ -3361,7 +4236,7 @@ export default function QuestionModule({
                       className="w-full bg-primary text-white text-[11px] uppercase tracking-widest font-black px-10 h-14 rounded-2xl gap-3 shadow-lg shadow-primary/20"
                     >
                       {isGeneratingMore ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                      Gerar {totalGenCount} {totalGenCount === 1 ? 'Questão Nova' : 'Questões Novas'} {uniqueTids.length > 1 ? `(${numQuestionsPerTopic} por tópico)` : ''}
+                      Buscar {totalGenCount} {totalGenCount === 1 ? 'Questão' : 'Questões'} {uniqueTids.length > 1 ? `(${numQuestionsPerTopic} por tópico)` : ''}
                     </Button>
                     
                     <div className="flex flex-wrap items-center justify-center gap-2 text-[10px] uppercase tracking-wider font-extrabold text-[#8E8A82]">

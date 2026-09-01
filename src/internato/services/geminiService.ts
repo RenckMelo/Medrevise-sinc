@@ -1206,7 +1206,8 @@ export async function generateQuestions(
   count: number = 10, 
   existingQuestions: string[] = [], 
   userId?: string,
-  targetExam?: string
+  targetExam?: string,
+  targetYear?: number
 ) {
   const safeTopicTitle = sanitizeTopicTitle(topicTitle, 'Tópico de Estudo');
   const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
@@ -1220,7 +1221,11 @@ export async function generateQuestions(
   let examFocusText = `Você DEVE priorizar com 100% de rigidez as seguintes bancas de residência médica de interesse do candidato: **${residencyFocus}** (2022 a 2026).`;
 
   if (targetExam && targetExam !== 'all') {
-    examFocusText = `Você DEVE priorizar com 100% de rigidez a banca de residência médica: **${targetExam}** (2022 a 2026).`;
+    if (targetYear) {
+      examFocusText = `Você DEVE priorizar com 100% de rigidez a banca de residência médica: **${targetExam}** especificamente do ano **${targetYear}**. O campo "source" DEVE ser rigorosamente "${targetExam} (${targetYear})".`;
+    } else {
+      examFocusText = `Você DEVE priorizar com 100% de rigidez a banca de residência médica: **${targetExam}** (2022 a 2026).`;
+    }
   }
 
   let remaining = count;
@@ -1229,11 +1234,17 @@ export async function generateQuestions(
     
     const chunkPrompt = `Você é uma autoridade em concursos de residência médica no Brasil e um banco de dados de exames de seleção médica.
     Sua tarefa é recuperar e fornecer exatamente ${currentChunkSize} questões autênticas, completas e de alto nível para exames de residência médica sobre o tema "${topicTitle}" (${area}).
+    ${targetExam && targetExam !== 'all' ? `BANCA ESPECÍFICA SOLICITADA: **${targetExam}** ${targetYear ? `(ANO ${targetYear})` : ''}` : ''}
     
+    EXIGÊNCIA DE REPRODUÇÃO 100% VERBATIM E RIGOROSAMENTE IDÊNTICA À PROVA OFICIAL:
+    - As questões recuperadas DEVEM ser rigorosamente IDÊNTICAS e NA ÍNTEGRA às questões reais que efetivamente caíram na prova oficial de residência médica da banca e ano solicitados.
+    - O enunciado ("text"), as dados do paciente, sinais vitais, comorbidades, achados de exames laboratoriais/imagem, a pergunta e cada uma das alternativas em "options" (A, B, C, D) DEVEM SER COPIADOS PALAVRA POR PALAVRA do gabarito/caderno de prova oficial.
+    - GARANTIA DE BUSCA POSTERIOR: Se o aluno copiar qualquer trecho do enunciado ou das alternativas e pesquisar na internet ou em PDFs oficiais da banca, ele DEVE encontrar exatamente a mesma questão idêntica com as mesmas opções.
+
     ORDEM DE PRIORIDADE E CASCATA DE DECISÃO OBRIGATÓRIA (INDIQUE O RESULTADO EXATO NO CAMPO "source"):
     1ª PRIORIDADE (Bancas Selecionadas - Últimos 5 Anos):
-    - Recupere exaustivamente questões reais das bancas prioritárias selecionadas pelo candidato: **${residencyFocus}** (anos 2022 a 2026).
-    - Formato obrigatorio do "source": "SIGLA DA BANCA (ANO)" -> Ex: "SES-DF (2024)", "ENARE (2025)", "SES-GO (2023)".
+    - Recupere exaustivamente questões reais das bancas prioritárias selecionadas pelo candidato: **${targetExam && targetExam !== 'all' ? targetExam : residencyFocus}** (anos 2022 a 2026).
+    - Formato obrigatorio do "source": "SIGLA DA BANCA (ANO)" -> Ex: "${targetExam || 'SES-DF'} (${targetYear || 2024})".
 
     2ª PRIORIDADE (Se a 1ª Falhar - Bancas Selecionadas nos Últimos 10 Anos):
     - SE E SOMENTE SE você constatar com certeza absoluta que NÃO HÁ NENHUMA OUTRA questão disponível deste tema nos últimos 5 anos nas bancas prioritárias, busque questões reais dessas MESMAS bancas prioritárias nos últimos 10 anos (anos 2016 a 2021).
@@ -1258,7 +1269,7 @@ export async function generateQuestions(
     4. EXPLICAÇÃO DIDÁTICA E EXCLUSÃO DE ALTERNATIVAS: O campo "explanation" DEVE conter um comentário técnico completo em PORTUGUÊS garantindo o entendimento total da questão, explicando fundamentadamente por que a alternativa correta é a verdadeira E detalhando a exclusão exata/motivo do erro de cada uma das alternativas incorretas (ex: "Alternativa A incorreta pois...", "Alternativa B correta por...").
 
     REQUISITOS ADICIONAIS:
-    1. DIVERSIDADE REAL DE ORIGEM E ANO: Cada questão gerada/recuperada DEVE possuir a sua banca e o seu ano ESPECÍFICOS e REAIS (ex: varie entre ENARE, SES-DF, SES-GO, UFG, UnB, USP, UNIFESP, UNICAMP, PSU-MG, AMRIGS e anos entre 2021 e 2026). É ESTRITAMENTE PROIBIDO atribuir a mesma banca e o mesmo ano fixo (como ENARE 2023) a todas as questões de um lote, a menos que o candidato tenha selecionado um filtro específico de banca única.
+    1. DIVERSIDADE REAL DE ORIGEM E ANO: Cada questão gerada/recuperada DEVE possuir a sua banca e o seu ano ESPECÍFICOS e REAIS (ex: varie entre ENARE, SES-DF, SES-GO, UFG, UnB, USP, UNIFESP, UNICAMP, PSU-MG, AMRIGS e anos entre 2021 e 2026). É ESTRITAMENTE PROIBIDO atribuir a mesma banca e o mesmo ano fixo a todas as questões de um lote, a menos que o candidato tenha selecionado um filtro específico de banca única.
     2. Evite repetir enunciados parecidos com: ${currentExisting.join(', ')}.
     3. Estatísticas Regionais ("regionalIncidenceStats") e Termômetro ("heatLevel"): Frequência aproximada de cobrança do tema e termômetro ('baixo', 'medio', 'alto', 'extremo').
     4. Pegadinhas ("frequentMistakesExplanation"): Detalhes do distrator da banca em português.
@@ -1271,7 +1282,7 @@ export async function generateQuestions(
         "options": ["Alternativa A completa", "Alternativa B completa", "Alternativa C completa", "Alternativa D completa"],
         "correctOptionIndex": 0,
         "explanation": "Comentário técnico minucioso e fundamentado em português...",
-        "source": "SIGLA DA BANCA REAL (ANO REAL DA QUESTÃO)",
+        "source": "${targetExam ? `${targetExam} (${targetYear || 2024})` : 'SIGLA DA BANCA REAL (ANO REAL DA QUESTÃO)'}",
         "regionalIncidenceStats": {
           "SES-DF": 12,
           "SES-GO": 8,
@@ -1326,6 +1337,51 @@ export async function generateQuestions(
   await recordUsage(creditsRecorded);
 
   return allQuestions;
+}
+
+export async function analyzeBancaYearAvailability(
+  topicTitles: string[] = [],
+  subjectNames: string[] = []
+): Promise<{ availabilityMap: Record<string, number>; cost: number }> {
+  const auditCost = 5;
+  await checkUsageLimit(auditCost);
+
+  const topicsStr = topicTitles.length > 0 ? topicTitles.join(', ') : 'Geral (Todos os Tópicos Selecionados)';
+  const subjectsStr = subjectNames.length > 0 ? subjectNames.join(', ') : 'Grandes Áreas da Medicina';
+
+  const prompt = `Você é um auditor sênior dos arquivos e acervos oficiais de provas de residência médica no Brasil.
+Sua missão é auditar a disponibilidade e quantidade exata de questões oficiais reais de concursos anteriores aplicadas entre 2021 e 2026 para os temas:
+Temas: ${topicsStr}
+Áreas: ${subjectsStr}
+
+Bancas a Auditar:
+ENARE, SES-DF, SES-GO, USP, UNIFESP, UNICAMP, SUS-SP, PSU-MG, AMRIGS, AMP, SURCE, UFG, UnB, HBDF, UERJ, IAMSPE.
+
+Retorne APENAS um objeto JSON em que cada chave é no formato exatamente "SIGLA_ANO" (exemplo: "ENARE_2025", "SES-DF_2024", "SES-GO_2023", "USP_2024", "UFG_2025") e o valor é um número inteiro (ex: 8, 12, 15, 6) indicando quantas questões reais oficiais caíram nessa prova para esses temas.
+
+Exemplo de formato de resposta JSON:
+{
+  "ENARE_2026": 12,
+  "ENARE_2025": 16,
+  "ENARE_2024": 14,
+  "SES-DF_2025": 10,
+  "SES-DF_2024": 12,
+  "SES-GO_2025": 8,
+  "USP_2024": 15
+}`;
+
+  try {
+    const response = await callGemini('generateJson', prompt);
+    let availabilityMap: Record<string, number> = {};
+    if (response && typeof response === 'object' && !Array.isArray(response)) {
+      availabilityMap = response;
+    }
+    await recordUsage(auditCost);
+    return { availabilityMap, cost: auditCost };
+  } catch (err: any) {
+    console.error("Error analyzing banca year availability:", err);
+    throw new Error(err?.message || "Erro ao realizar auditoria de acervo de bancas.");
+  }
 }
 
 export function calculateFlashcardCreditCost(cardsCount: number): number {

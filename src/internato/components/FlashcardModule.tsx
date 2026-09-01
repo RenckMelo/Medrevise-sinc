@@ -1935,7 +1935,7 @@ export default function FlashcardModule({
                     const qStr = topicSearchQuery.trim().toLowerCase();
                     const matchesSearch = !qStr ||
                       (t.title && t.title.toLowerCase().includes(qStr)) ||
-                      (t.name && t.name.toLowerCase().includes(qStr));
+                      ((t as any).name && (t as any).name.toLowerCase().includes(qStr));
                     return matchesSubject && matchesSearch;
                   })
                   .map((t, tIdx) => {

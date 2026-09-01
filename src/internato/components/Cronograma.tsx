@@ -31,7 +31,8 @@ import {
   RefreshCw,
   Link as LinkIcon,
   Trash2,
-  X
+  X,
+  GraduationCap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, collection, doc, addDoc, updateDoc, getDocs, getDoc, where, query, limit, deleteDoc, writeBatch, onSnapshot } from '../firebase';
@@ -2459,9 +2460,9 @@ export default function Cronograma({
 
       targetTopic.isCompleted = true;
       targetTopic.completedAt = new Date().toISOString();
-      targetTopic.studyTimeMinutes = mins;
-      targetTopic.questionsCount = qCount;
-      targetTopic.flashcardsCount = fCount;
+      (targetTopic as any).studyTimeMinutes = mins;
+      (targetTopic as any).questionsCount = qCount;
+      (targetTopic as any).flashcardsCount = fCount;
       delete targetTopic.isExplicitlyUncompleted;
 
       // Recalculate total progress
@@ -2489,7 +2490,7 @@ export default function Cronograma({
         weeks: updatedWeeks,
         completedTopicsCount: completedCount,
         progress
-      });
+      } as any);
 
       const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
         ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
@@ -2573,9 +2574,9 @@ export default function Cronograma({
 
       targetTopic.isCompleted = false;
       delete targetTopic.completedAt;
-      delete targetTopic.studyTimeMinutes;
-      delete targetTopic.questionsCount;
-      delete targetTopic.flashcardsCount;
+      delete (targetTopic as any).studyTimeMinutes;
+      delete (targetTopic as any).questionsCount;
+      delete (targetTopic as any).flashcardsCount;
       targetTopic.isPreCompleted = false;
       targetTopic.isExplicitlyUncompleted = true;
 
@@ -2604,7 +2605,7 @@ export default function Cronograma({
         weeks: updatedWeeks,
         completedTopicsCount: completedCount,
         progress
-      });
+      } as any);
 
       const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
         ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
@@ -2636,9 +2637,9 @@ export default function Cronograma({
         const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
         const realisticMinutes = Math.max(15, Math.min(60, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
 
-        setCompletionMinutes(targetTopic.studyTimeMinutes || realisticMinutes);
-        setCompletionQuestions(targetTopic.questionsCount !== undefined ? targetTopic.questionsCount : 10);
-        setCompletionFlashcards(targetTopic.flashcardsCount !== undefined ? targetTopic.flashcardsCount : 15);
+        setCompletionMinutes((targetTopic as any).studyTimeMinutes || realisticMinutes);
+        setCompletionQuestions((targetTopic as any).questionsCount !== undefined ? (targetTopic as any).questionsCount : 10);
+        setCompletionFlashcards((targetTopic as any).flashcardsCount !== undefined ? (targetTopic as any).flashcardsCount : 15);
         setTopicCompletionModal({
           weekIdx,
           dayName,
@@ -2651,9 +2652,9 @@ export default function Cronograma({
       }
 
       // OPEN MODAL FOR EDITING EXISTING COMPLETED TOPIC
-      setCompletionMinutes(targetTopic.studyTimeMinutes || 45);
-      setCompletionQuestions(targetTopic.questionsCount !== undefined ? targetTopic.questionsCount : 10);
-      setCompletionFlashcards(targetTopic.flashcardsCount !== undefined ? targetTopic.flashcardsCount : 15);
+      setCompletionMinutes((targetTopic as any).studyTimeMinutes || 45);
+      setCompletionQuestions((targetTopic as any).questionsCount !== undefined ? (targetTopic as any).questionsCount : 10);
+      setCompletionFlashcards((targetTopic as any).flashcardsCount !== undefined ? (targetTopic as any).flashcardsCount : 15);
       setTopicCompletionModal({
         weekIdx,
         dayName,

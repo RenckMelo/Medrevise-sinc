@@ -130,20 +130,25 @@ async function callGemini(action: 'generateContent' | 'generateJson', prompt: st
       }
 
       const responseText = await response.text();
+      const trimmedText = (responseText || '').trim();
+      const isHtmlResponse = /^\s*<(!doctype|html|head|body|\?xml)/i.test(trimmedText) || 
+                             trimmedText.toLowerCase().includes('<title>') ||
+                             trimmedText.toLowerCase().includes('inactivity timeout');
 
       if (!response.ok) {
         let errorMsg = `HTTP error! status: ${response.status}`;
-        if (responseText && responseText.trim()) {
-          const trimmed = responseText.trim();
-          if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html') || trimmed.startsWith('<!DOCTYPE')) {
-            errorMsg = `HTTP HTML Error: received unexpected HTML page instead of JSON (status: ${response.status})`;
+        if (isHtmlResponse) {
+          if (trimmedText.toLowerCase().includes('inactivity timeout') || response.status === 504 || response.status === 502) {
+            errorMsg = 'O servidor de IA excedeu o tempo limite de resposta (Inactivity Timeout). Por favor, tente gerar novamente em instantes.';
           } else {
-            try {
-              const errorData = JSON.parse(responseText);
-              errorMsg = errorData.error || errorMsg;
-            } catch (e) {
-              errorMsg = responseText.substring(0, 150);
-            }
+            errorMsg = `O servidor de IA retornou uma página inesperada (status: ${response.status}). Tente novamente.`;
+          }
+        } else if (trimmedText) {
+          try {
+            const errorData = JSON.parse(trimmedText);
+            errorMsg = errorData.error || errorMsg;
+          } catch (e) {
+            errorMsg = trimmedText.substring(0, 150);
           }
         }
 
@@ -158,9 +163,8 @@ async function callGemini(action: 'generateContent' | 'generateJson', prompt: st
         throw new Error(errorMsg);
       }
 
-      const trimmedText = responseText.trim();
-      if (trimmedText.startsWith('<!doctype') || trimmedText.startsWith('<html') || trimmedText.startsWith('<!DOCTYPE')) {
-        throw new Error(`Unexpected HTML response body instead of valid JSON data (maybe offline or server restart): ${trimmedText.substring(0, 100)}`);
+      if (isHtmlResponse) {
+        throw new Error('O servidor de IA retornou uma página HTML em vez de dados JSON. Por favor, tente novamente.');
       }
 
       const data = JSON.parse(responseText);
@@ -1346,83 +1350,166 @@ export async function analyzeTopicFlashcardPotential(
 ): Promise<FlashcardPotentialAnalysis> {
   const hasDetailedContent = content && content.trim().length > 50 && content.trim() !== topicTitle;
   const contentBody = hasDetailedContent
-    ? content.substring(0, 5000)
+    ? content.substring(0, 2500)
     : `Tema de medicina para residência médica: "${topicTitle}". Utilize seu conhecimento de diretrizes e condutas médicas para este tema.`;
 
-  const prompt = `Você é um diretor pedagógico do MedInternato especializado em Análise de Densidade de Conteúdo e Extração de Flashcards para Provas de Residência Médica.
-Examine o tema médico: "${topicTitle}".
-Conteúdo do tema: ${contentBody}
+  const prompt = `Analise este tema de medicina para extração de flashcards de residência médica: "${topicTitle}".
+Conteúdo/Resumo: ${contentBody}
 
 Sua missão:
-1. Determine o NÚMERO IDEAL DE FLASHCARDS ("estimatedIdealCards") necessário para garantir 100% DE COBERTURA dos pontos cruciais do tema (fisiopatologia, critérios diagnósticos, exames de escolha, tratamento de 1ª linha, complicações e pegadinhas de prova), sem gerar cards redundantes.
-2. Liste os principais grupos de conceitos encontrados ("coreMedicalConcepts"), por exemplo: ["Diagnóstico e Critérios", "Tratamento de 1ª Linha", "Exames Complementares", "Sinais de Alarme"].
-3. Escreva um resumo analítico direto ("analysisSummary") de 2 a 3 frases explicando por que esse número exato de cards foi recomendado para este tema específico.
+1. Recomende o NÚMERO IDEAL DE FLASHCARDS ("estimatedIdealCards") entre 15 e 35 para cobrir 100% dos pontos cruciais do tema sem redundâncias.
+2. Liste de 3 a 5 grupos de conceitos principais ("coreMedicalConcepts").
+3. Escreva um resumo analítico ("analysisSummary") de 2 a 3 frases explicando a densidade pedagógica do assunto.
 
 Formato de Resposta (JSON estrito):
 {
-  "estimatedIdealCards": 25,
-  "coreMedicalConcepts": ["Conceito 1", "Conceito 2", "Conceito 3"],
-  "analysisSummary": "Explicação pedagógica da densidade do tema..."
+  "estimatedIdealCards": 20,
+  "coreMedicalConcepts": ["Diagnóstico e Critérios", "Tratamento de 1ª Linha", "Exames Complementares", "Condutas de Emergência"],
+  "analysisSummary": "Recomendamos cerca de 20 flashcards para cobrir critérios diagnósticos, esquemas terapêuticos e condutas de emergência para este tema."
 }`;
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Timeout de análise")), 8000)
+  );
 
   try {
     await checkUsageLimit();
-    const result = await callGemini('generateJson', prompt);
-    const estimatedIdealCards = typeof result.estimatedIdealCards === 'number' ? Math.max(5, Math.min(60, result.estimatedIdealCards)) : 20;
+    const geminiPromise = callGemini('generateJson', prompt);
+    const result: any = await Promise.race([geminiPromise, timeoutPromise]);
+
+    const estimatedIdealCards = typeof result?.estimatedIdealCards === 'number'
+      ? Math.max(5, Math.min(60, result.estimatedIdealCards))
+      : 20;
     const creditCost = calculateFlashcardCreditCost(estimatedIdealCards);
 
     return {
       estimatedIdealCards,
       creditCost,
-      coreMedicalConcepts: Array.isArray(result.coreMedicalConcepts) ? result.coreMedicalConcepts : ['Conceitos do Tema'],
-      analysisSummary: result.analysisSummary || `Recomendamos ${estimatedIdealCards} flashcards para cobertura integral deste tema.`
+      coreMedicalConcepts: Array.isArray(result?.coreMedicalConcepts) && result.coreMedicalConcepts.length > 0
+        ? result.coreMedicalConcepts
+        : ['Diagnóstico e Critérios', 'Tratamento de 1ª Linha', 'Exames Complementares', 'Condutas de Emergência'],
+      analysisSummary: result?.analysisSummary || `Recomendamos ${estimatedIdealCards} flashcards para cobertura integral deste tema.`
     };
   } catch (err) {
-    console.error('Error analyzing flashcard potential:', err);
+    console.warn('[Flashcard Analysis] Usando estimativa rápida por fallback:', err);
+    const textLength = (content || '').length;
+    const estimatedIdealCards = textLength > 3000 ? 25 : textLength > 1000 ? 20 : 15;
     return {
-      estimatedIdealCards: 20,
-      creditCost: calculateFlashcardCreditCost(20),
-      coreMedicalConcepts: ['Conceitos do Tema'],
-      analysisSummary: 'Recomendamos cerca de 20 flashcards para garantir a cobertura integral das principais condutas médicas.'
+      estimatedIdealCards,
+      creditCost: calculateFlashcardCreditCost(estimatedIdealCards),
+      coreMedicalConcepts: ['Diagnóstico e Critérios', 'Tratamento de 1ª Linha', 'Exames Complementares', 'Condutas de Emergência'],
+      analysisSummary: `Análise concluída: recomendamos ${estimatedIdealCards} flashcards para cobrir 100% das diretrizes e condutas deste tema.`
     };
   }
 }
 
-export async function generateFlashcards(topicTitle: string, content: string, count: number = 10, userId?: string) {
+export interface FlashcardProgressUpdate {
+  current: number;
+  total: number;
+  message: string;
+  newCards?: any[];
+}
+
+export async function generateFlashcards(
+  topicTitle: string,
+  content: string,
+  count: number = 10,
+  userId?: string,
+  onProgress?: (update: FlashcardProgressUpdate) => void
+) {
   const hasDetailedContent = content && content.trim().length > 50 && content.trim() !== topicTitle;
   const contentBody = hasDetailedContent
-    ? content.substring(0, 4000)
-    : `Gere com base no conhecimento médico atualizado para provas de residência no Brasil sobre o tema "${topicTitle}" (critérios diagnósticos, fisiopatologia, tratamento de 1ª linha, exames padrão-ouro e condutas de emergência).`;
+    ? content.substring(0, 3500)
+    : `Gere com base no conhecimento médico atualizado para provas de residência no Brasil sobre o tema "${topicTitle}".`;
 
-  const prompt = `Com base no tema e conteúdo médico abaixo, gere ${count} flashcards (frente e verso) de alta qualidade para estudo por repetição espaçada sobre o tema "${topicTitle}".
-  Conteúdo/Referência: ${contentBody}
-  
-  REQUISITOS:
-  - Escreva a frente e o verso estritamente em PORTUGUÊS (PORTUGUÊS DO BRASIL).
-  - A frente deve ser uma pergunta curta ou conceito direto para completar.
-  - O verso deve ser a resposta direta e concisa.
-  - Adicione a chave "concept" para tag de diagnóstico de assunto (ex: "Diagnóstico", "Conduta de 1ª Linha", "Exame Padrão-Ouro", "Efeitos Colaterais").
-  - Foque em "pérolas" de prova de residência médica e condutas cruciais.
-  
-  Formato de Resposta (JSON estrito):
-  [
-    {
-      "front": "Pergunta em português...",
-      "back": "Resposta em português...",
-      "concept": "Conceito Médico (ex: Tratamento de 1ª linha)"
+  await checkUsageLimit();
+
+  const chunkSize = 5;
+  const totalSteps = Math.ceil(count / chunkSize);
+  const allGeneratedCards: any[] = [];
+
+  for (let step = 0; step < totalSteps; step++) {
+    const cardsNeeded = Math.min(chunkSize, count - allGeneratedCards.length);
+    if (cardsNeeded <= 0) break;
+
+    const currentStart = allGeneratedCards.length + 1;
+    const currentEnd = allGeneratedCards.length + cardsNeeded;
+
+    if (onProgress) {
+      onProgress({
+        current: allGeneratedCards.length,
+        total: count,
+        message: `Gerando cards ${currentStart} a ${currentEnd} de ${count} para "${topicTitle}"...`
+      });
     }
-  ]`;
 
-  try {
-    await checkUsageLimit();
-    const result = await callGemini('generateJson', prompt);
-    const cost = calculateFlashcardCreditCost(count);
-    await recordUsage(cost);
-    return result;
-  } catch (error) {
-    console.error('Error generating flashcards:', error);
-    throw error;
+    const previousFronts = allGeneratedCards
+      .map(c => c.front || c.question || c.concept)
+      .filter(Boolean)
+      .slice(-8);
+
+    const antiRepeatInstruction = previousFronts.length > 0
+      ? `IMPORTANTE: Não repita os seguintes conceitos ou perguntas já gerados: ${JSON.stringify(previousFronts)}.`
+      : '';
+
+    const prompt = `Com base no tema e conteúdo médico abaixo, gere estritamente ${cardsNeeded} flashcards inéditos (frente e verso) para estudo por repetição espaçada sobre o tema "${topicTitle}".
+Conteúdo/Referência: ${contentBody}
+${antiRepeatInstruction}
+
+REQUISITOS:
+- Escreva a frente e o verso estritamente em PORTUGUÊS (PORTUGUÊS DO BRASIL).
+- A frente deve ser uma pergunta curta ou conceito direto para completar.
+- O verso deve ser a resposta direta e concisa.
+- Adicione a chave "concept" para tag de diagnóstico de assunto (ex: "Diagnóstico", "Conduta de 1ª Linha", "Exame Padrão-Ouro", "Efeitos Colaterais").
+- Foque em "pérolas" de prova de residência médica e condutas cruciais.
+
+Formato de Resposta (JSON estrito):
+[
+  {
+    "front": "Pergunta em português...",
+    "back": "Resposta em português...",
+    "concept": "Conceito Médico (ex: Tratamento de 1ª linha)"
   }
+]`;
+
+    try {
+      const stepResult: any = await callGemini('generateJson', prompt, "gemini-3.1-flash-lite");
+      let batchCards: any[] = [];
+      if (Array.isArray(stepResult)) {
+        batchCards = stepResult;
+      } else if (stepResult && Array.isArray(stepResult.flashcards)) {
+        batchCards = stepResult.flashcards;
+      } else if (stepResult && Array.isArray(stepResult.cards)) {
+        batchCards = stepResult.cards;
+      }
+
+      if (batchCards.length > 0) {
+        allGeneratedCards.push(...batchCards);
+        if (onProgress) {
+          onProgress({
+            current: allGeneratedCards.length,
+            total: count,
+            message: `${allGeneratedCards.length} de ${count} flashcards gerados!`,
+            newCards: batchCards
+          });
+        }
+      }
+    } catch (stepErr: any) {
+      console.warn(`[Flashcard Stream Step ${step + 1}/${totalSteps}] Erro:`, stepErr);
+      if (allGeneratedCards.length === 0 && step === totalSteps - 1) {
+        throw stepErr;
+      }
+    }
+
+    if (step < totalSteps - 1) {
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  const cost = calculateFlashcardCreditCost(allGeneratedCards.length || count);
+  await recordUsage(cost);
+
+  return allGeneratedCards;
 }
 
 export async function generateFlashcardDiagnosticReport(

@@ -213,6 +213,7 @@ export default function FlashcardModule({
 
   // IA Generation state
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgressMessage, setGenerationProgressMessage] = useState<string>('');
   const [numCardsPerTopic, setNumCardsPerTopic] = useState(10);
 
   // AI Coverage Potential Analysis State
@@ -643,44 +644,62 @@ export default function FlashcardModule({
 
     setIsGenerating(true);
     setShowPotentialModal(false);
+    setGenerationProgressMessage(`Iniciando geração inteligente de ${countToGenerate} flashcards...`);
 
     try {
       const addedCards: Flashcard[] = [];
       for (const tid of selectedTopicIds) {
         const topic = getTopicForId(tid);
         if (topic) {
-          const newCards = await generateFlashcards(topic.title, topic.content || topic.title, countToGenerate, userId);
-          if (newCards && Array.isArray(newCards)) {
-            for (const cardData of newCards) {
-              const front = cardData.front || cardData.question || cardData.pergunta || '';
-              const back = cardData.back || cardData.answer || cardData.resposta || '';
-              const concept = cardData.concept || topic.title;
+          await generateFlashcards(
+            topic.title,
+            topic.content || topic.title,
+            countToGenerate,
+            userId,
+            async (update) => {
+              setGenerationProgressMessage(update.message);
+              if (update.newCards && Array.isArray(update.newCards)) {
+                const stepBatch: Flashcard[] = [];
+                for (const cardData of update.newCards) {
+                  const front = cardData.front || cardData.question || cardData.pergunta || '';
+                  const back = cardData.back || cardData.answer || cardData.resposta || '';
+                  const concept = cardData.concept || topic.title;
 
-              if (front && back) {
-                const docRef = await addDoc(collection(db, 'flashcards'), {
-                  front,
-                  back,
-                  concept,
-                  topicId: topic.id,
-                  subjectId: topic.subjectId || 'geral',
-                  createdAt: new Date().toISOString()
-                });
+                  if (front && back) {
+                    try {
+                      const docRef = await addDoc(collection(db, 'flashcards'), {
+                        front,
+                        back,
+                        concept,
+                        topicId: topic.id,
+                        subjectId: topic.subjectId || 'geral',
+                        createdAt: new Date().toISOString()
+                      });
 
-                addedCards.push({
-                  id: docRef.id,
-                  front,
-                  back,
-                  concept,
-                  topicId: topic.id,
-                  subjectId: topic.subjectId || 'geral'
-                });
+                      const newCardItem: Flashcard = {
+                        id: docRef.id,
+                        front,
+                        back,
+                        concept,
+                        topicId: topic.id,
+                        subjectId: topic.subjectId || 'geral'
+                      };
+                      stepBatch.push(newCardItem);
+                      addedCards.push(newCardItem);
+                    } catch (dbErr) {
+                      console.error("Erro ao salvar card no Firestore:", dbErr);
+                    }
+                  }
+                }
+                if (stepBatch.length > 0) {
+                  setFlashcards(prev => [...prev, ...stepBatch]);
+                }
               }
             }
-          }
+          );
         }
       }
 
-      setFlashcards(prev => [...prev, ...addedCards]);
       setIsSelecting(false);
 
       if (setAvailableCredits) {
@@ -690,12 +709,12 @@ export default function FlashcardModule({
       if (addedCards.length > 0) {
         setCurrentIndex(0);
         setIsFlipped(false);
-        alert(`Sucesso! ${addedCards.length} flashcards extraídos e adicionados ao seu deck.`);
       }
     } catch (err: any) {
       alert(`Erro ao gerar flashcards: ${err.message || 'Tente novamente.'}`);
     } finally {
       setIsGenerating(false);
+      setGenerationProgressMessage('');
     }
   };
 
@@ -715,43 +734,61 @@ export default function FlashcardModule({
     }
 
     setIsGenerating(true);
+    setGenerationProgressMessage(`Iniciando geração de ${totalCardsCount} flashcards...`);
     try {
       const addedCards: Flashcard[] = [];
       for (const tid of selectedTopicIds) {
         const topic = getTopicForId(tid);
         if (topic) {
-          const newCards = await generateFlashcards(topic.title, topic.content || topic.title, numCardsPerTopic, userId);
-          if (newCards && Array.isArray(newCards)) {
-            for (const cardData of newCards) {
-              const front = cardData.front || cardData.question || cardData.pergunta || '';
-              const back = cardData.back || cardData.answer || cardData.resposta || '';
-              const concept = cardData.concept || topic.title;
+          await generateFlashcards(
+            topic.title,
+            topic.content || topic.title,
+            numCardsPerTopic,
+            userId,
+            async (update) => {
+              setGenerationProgressMessage(update.message);
+              if (update.newCards && Array.isArray(update.newCards)) {
+                const stepBatch: Flashcard[] = [];
+                for (const cardData of update.newCards) {
+                  const front = cardData.front || cardData.question || cardData.pergunta || '';
+                  const back = cardData.back || cardData.answer || cardData.resposta || '';
+                  const concept = cardData.concept || topic.title;
 
-              if (front && back) {
-                const docRef = await addDoc(collection(db, 'flashcards'), {
-                  front,
-                  back,
-                  concept,
-                  topicId: topic.id,
-                  subjectId: topic.subjectId || 'geral',
-                  createdAt: new Date().toISOString()
-                });
+                  if (front && back) {
+                    try {
+                      const docRef = await addDoc(collection(db, 'flashcards'), {
+                        front,
+                        back,
+                        concept,
+                        topicId: topic.id,
+                        subjectId: topic.subjectId || 'geral',
+                        createdAt: new Date().toISOString()
+                      });
 
-                addedCards.push({
-                  id: docRef.id,
-                  front,
-                  back,
-                  concept,
-                  topicId: topic.id,
-                  subjectId: topic.subjectId || 'geral'
-                });
+                      const newCardItem: Flashcard = {
+                        id: docRef.id,
+                        front,
+                        back,
+                        concept,
+                        topicId: topic.id,
+                        subjectId: topic.subjectId || 'geral'
+                      };
+                      stepBatch.push(newCardItem);
+                      addedCards.push(newCardItem);
+                    } catch (dbErr) {
+                      console.error("Erro ao salvar card no Firestore:", dbErr);
+                    }
+                  }
+                }
+                if (stepBatch.length > 0) {
+                  setFlashcards(prev => [...prev, ...stepBatch]);
+                }
               }
             }
-          }
+          );
         }
       }
 
-      setFlashcards(prev => [...prev, ...addedCards]);
       setIsSelecting(false);
 
       if (setAvailableCredits) {
@@ -766,6 +803,7 @@ export default function FlashcardModule({
       alert(`Erro ao gerar flashcards com IA: ${err.message || 'Tente novamente.'}`);
     } finally {
       setIsGenerating(false);
+      setGenerationProgressMessage('');
     }
   };
 
@@ -2061,6 +2099,21 @@ export default function FlashcardModule({
                   </Button>
                 </div>
               </div>
+
+              {/* PROGRESS BANNER FOR REALTIME INCREMENTAL CREATION */}
+              {isGenerating && (
+                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex items-center gap-3 animate-in fade-in">
+                  <Loader2 className="w-5 h-5 text-amber-600 animate-spin shrink-0" />
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-black text-amber-950 uppercase tracking-wider">
+                      {generationProgressMessage || 'Gerando flashcards com IA (gemini-3.1-flash-lite)...'}
+                    </p>
+                    <p className="text-[11px] font-medium text-amber-800">
+                      Atualizando seu deck em tempo real à medida que novos cards são criados!
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* ACTION ROW */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-[#E2E0D9]">

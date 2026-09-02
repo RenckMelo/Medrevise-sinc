@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { markdownComponents, cleanAndFixMarkdownTables } from '../utils/markdownUtils';
@@ -326,8 +326,26 @@ export default function FlashcardModule({
     }
   }, [selectedTopicIds, selectedSubjectIds, srsReviewsMap]);
 
-  // Auto-fetch if initialTopicIds or selectedTopic provided
+  // Stable topic selection key to prevent unnecessary auto-fetching when parent re-renders
+  const topicIdsKey = useMemo(() => {
+    if (initialTopicIds && initialTopicIds.length > 0) {
+      return `init_${[...initialTopicIds].sort().join(',')}`;
+    }
+    if (selectedTopic) {
+      return `sel_${selectedTopic.id}`;
+    }
+    return 'srs_default';
+  }, [initialTopicIds, selectedTopic]);
+
+  const lastFetchedKeyRef = useRef<string | null>(null);
+
+  // Auto-fetch if initialTopicIds or selectedTopic provided (only when topic selection key changes)
   useEffect(() => {
+    if (lastFetchedKeyRef.current === topicIdsKey) {
+      return;
+    }
+    lastFetchedKeyRef.current = topicIdsKey;
+
     if (initialTopicIds && initialTopicIds.length > 0) {
       setSelectedTopicIds(initialTopicIds);
       setActiveTab('deck');
@@ -339,7 +357,7 @@ export default function FlashcardModule({
     } else {
       fetchFlashcards('srs');
     }
-  }, [initialTopicIds, selectedTopic]);
+  }, [topicIdsKey, initialTopicIds, selectedTopic, fetchFlashcards]);
 
   // Fetch Deep Dives ("Cards Aprofundados")
   const fetchDeepDives = useCallback(async () => {
@@ -850,7 +868,7 @@ export default function FlashcardModule({
   };
 
   // Apply SRS Rating to current card
-  const handleRateCard = async (rating: ReviewRating) => {
+  const handleRateCard = (rating: ReviewRating) => {
     if (!currentCard) return;
 
     const prevRev = srsReviewsMap[currentCard.id] || {
@@ -860,46 +878,39 @@ export default function FlashcardModule({
     };
 
     const srs = calculateSRS(rating, prevRev.interval, prevRev.easeFactor, prevRev.repetitions);
+    const reviewData = {
+      nextReview: srs.nextDateISO,
+      interval: srs.nextInterval,
+      easeFactor: srs.newEase,
+      repetitions: srs.newReps,
+      lastRating: rating,
+      lastReviewed: new Date().toISOString()
+    };
 
-    // Save to Firestore userProgress
+    // 1. Optimistically update local SRS map immediately
+    const updatedReviewsMap = {
+      ...srsReviewsMap,
+      [currentCard.id]: reviewData
+    };
+    setSrsReviewsMap(updatedReviewsMap);
+
+    // 2. Save to Firestore asynchronously in background without blocking UI
     if (userId) {
-      try {
-        const progressRef = doc(db, 'users', userId, 'progress', 'main');
-        const reviewData = {
-          nextReview: srs.nextDateISO,
-          interval: srs.nextInterval,
-          easeFactor: srs.newEase,
-          repetitions: srs.newReps,
-          lastRating: rating,
-          lastReviewed: new Date().toISOString()
-        };
-
-        await setDoc(progressRef, {
-          flashcardReviews: {
-            ...srsReviewsMap,
-            [currentCard.id]: reviewData
-          }
-        }, { merge: true });
-
-        // Also update parent user doc for fallback
-        try {
-          await setDoc(doc(db, 'users', userId), {
-            flashcardReviews: {
-              ...srsReviewsMap,
-              [currentCard.id]: reviewData
-            }
-          }, { merge: true });
-        } catch (_) {}
-
-        if (onProgressUpdate) {
-          onProgressUpdate();
-        }
-      } catch (err) {
+      const progressRef = doc(db, 'users', userId, 'progress', 'main');
+      setDoc(progressRef, { flashcardReviews: updatedReviewsMap }, { merge: true }).catch(err => {
         console.error('Error saving SRS review:', err);
+      });
+
+      setDoc(doc(db, 'users', userId), { flashcardReviews: updatedReviewsMap }, { merge: true }).catch(() => {});
+
+      if (onProgressUpdate) {
+        try {
+          onProgressUpdate();
+        } catch (_) {}
       }
     }
 
-    // Save rating to current session
+    // 3. Save rating to current session
     setSessionRatings(prev => ({ ...prev, [currentCard.id]: rating }));
 
     const scoreEntry: FlashcardSessionScore = {
@@ -918,12 +929,10 @@ export default function FlashcardModule({
       setDiagnosticScores(prev => [...prev, { card: currentCard, rating }]);
     }
 
-    // Advance to next card or finish session
+    // 4. Advance to next card immediately (zero latency)
     if (currentIndex + 1 < flashcards.length) {
       setIsFlipped(false);
-      setTimeout(() => {
-        setCurrentIndex(prev => prev + 1);
-      }, 150);
+      setCurrentIndex(prev => prev + 1);
     } else {
       // Finished deck
       saveSessionToFirestore(updatedSessionScores, activeTab);
@@ -2571,6 +2580,7 @@ export default function FlashcardModule({
           {/* FLIP CARD */}
           <div className="relative h-[420px] sm:h-[460px] perspective-1000 max-w-2xl mx-auto w-full">
             <motion.div
+              key={`card-motion-${currentCard.id}-${currentIndex}`}
               className="w-full h-full relative preserve-3d cursor-pointer"
               animate={{ rotateY: isFlipped ? 180 : 0 }}
               transition={{ duration: 0.5, type: 'spring', stiffness: 240, damping: 22 }}

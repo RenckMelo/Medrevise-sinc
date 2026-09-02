@@ -410,7 +410,7 @@ export default function QuestionModule({
       setBancaYearAnsweredCounts(answeredCounts);
 
       // 2. Audit AI / Official archive (cost: 5 credits)
-      const selectedTopicTitles = topics.filter(t => selectedTopicIds.includes(t.id)).map(t => t.title);
+      const selectedTopicTitles = topics.filter(t => selectedTopicIds.includes(t.id)).map(t => t.title || (t as any).name || (t as any).titulo || t.id);
       const selectedSubjectNames = subjects.filter(s => selectedSubjectIds.includes(s.id)).map(s => s.name);
 
       const { availabilityMap } = await analyzeBancaYearAvailability(selectedTopicTitles, selectedSubjectNames);
@@ -3146,7 +3146,7 @@ export default function QuestionModule({
                           )}
                         >
                           {isTopicSelected && <Check className="w-3 h-3 text-emerald-300 shrink-0" />}
-                          <span>{t.title}</span>
+                          <span>{t.title || (t as any).name || (t as any).titulo || t.id}</span>
                         </Button>
                       );
                     })}

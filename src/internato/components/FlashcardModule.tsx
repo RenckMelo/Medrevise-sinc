@@ -177,6 +177,18 @@ export default function FlashcardModule({
   const [topicSearchQuery, setTopicSearchQuery] = useState('');
   const [showMethodologyGuide, setShowMethodologyGuide] = useState(false);
 
+  // Helper to safely extract topic title from any legacy or current data structure
+  const getTopicTitle = (topic: any): string => {
+    if (!topic) return 'Tópico Indefinido';
+    if (typeof topic === 'string') return topic;
+    const str = topic.title || topic.name || topic.titulo || topic.topic || topic.topicName;
+    if (str && typeof str === 'string' && str.trim().length > 0) return str.trim();
+    if (topic.id && typeof topic.id === 'string' && topic.id.startsWith('local_topic_')) {
+      return topic.id.replace(/^local_topic_/, '').replace(/_/g, ' ');
+    }
+    return topic.id || 'Tópico Indefinido';
+  };
+
   // Helper to resolve topic ID to a valid Topic object even if summary has not been generated yet
   const getTopicForId = useCallback((tid: string): Topic => {
     let found = topics.find(t => t.id === tid);
@@ -190,18 +202,37 @@ export default function FlashcardModule({
       found = {
         id: tid,
         title: titleFromId,
+        name: titleFromId,
         subjectId: selectedTopic?.subjectId || 'geral',
         semesterId: selectedTopic?.semesterId || 'cronograma_sem',
         completed: false
       } as Topic;
     }
-    return found;
+    const resolvedTitle = getTopicTitle(found);
+    return {
+      ...found,
+      title: resolvedTitle,
+      name: (found as any).name || resolvedTitle,
+      content: found.content || (found as any).description || (found as any).conteudo || resolvedTitle
+    } as Topic;
   }, [topics, selectedTopic]);
 
   const displayTopics = useMemo(() => {
-    const list = [...topics];
+    const list = topics.map(t => {
+      const title = getTopicTitle(t);
+      return {
+        ...t,
+        title,
+        name: (t as any).name || title
+      };
+    });
     if (selectedTopic && !list.some(t => t.id === selectedTopic.id)) {
-      list.unshift(selectedTopic);
+      const selTitle = getTopicTitle(selectedTopic);
+      list.unshift({
+        ...selectedTopic,
+        title: selTitle,
+        name: (selectedTopic as any).name || selTitle
+      });
     }
     for (const tid of selectedTopicIds) {
       if (!list.some(t => t.id === tid)) {
@@ -643,10 +674,12 @@ export default function FlashcardModule({
       return;
     }
     const topic = getTopicForId(selectedTopicIds[0]);
+    const topicTitle = getTopicTitle(topic);
+    const topicContent = topic.content || (topic as any).description || (topic as any).conteudo || topicTitle;
 
     setIsAnalyzingPotential(true);
     try {
-      const result = await analyzeTopicFlashcardPotential(topic.title, topic.content || topic.title);
+      const result = await analyzeTopicFlashcardPotential(topicTitle, topicContent);
       setPotentialAnalysis(result);
       setShowPotentialModal(true);
     } catch (err: any) {

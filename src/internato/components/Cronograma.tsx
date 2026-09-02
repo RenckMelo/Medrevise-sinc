@@ -2379,9 +2379,32 @@ export default function Cronograma({
       console.warn("Notice: lookup topic in Firestore:", err);
     }
 
-    // 3. Find or create Subject in MedRevise
+    // 3. Find or create Semester & Subject in MedRevise for this planning
+    const semName = schedule?.exam ? `Planejamento - ${schedule.exam}` : 'Planejamento de Estudos';
+    let targetSemester = (semesters || []).find(
+      s => s.name?.toLowerCase().trim() === semName.toLowerCase().trim() ||
+           s.name?.toLowerCase().trim() === schedule?.exam?.toLowerCase().trim()
+    );
+
+    if (!targetSemester) {
+      try {
+        const semRef = await addDoc(collection(db, 'users', user.uid, 'semesters'), {
+          name: semName,
+          number: (semesters?.length || 0) + 1,
+          createdAt: new Date().toISOString()
+        });
+        targetSemester = { id: semRef.id, name: semName, number: (semesters?.length || 0) + 1 };
+        if (setSemesters) setSemesters(prev => [...prev, targetSemester!]);
+      } catch (err) {
+        targetSemester = { id: 'cronograma_sem', name: semName, number: 1 };
+      }
+    }
+
     const targetSubjectName = subjectNameHint || 'Geral';
     let foundSubject = (subjects || []).find(
+      s => s.name?.toLowerCase().trim() === targetSubjectName.toLowerCase().trim() &&
+           s.semesterId === targetSemester!.id
+    ) || (subjects || []).find(
       s => s.name?.toLowerCase().trim() === targetSubjectName.toLowerCase().trim()
     );
 
@@ -2390,22 +2413,22 @@ export default function Cronograma({
         const subjectsRef = collection(db, 'users', user.uid, 'subjects');
         const newSubjRef = await addDoc(subjectsRef, {
           name: targetSubjectName,
-          semesterId: 'cronograma_sem',
+          semesterId: targetSemester.id,
           icon: 'BookOpen',
-          color: 'bg-blue-100 text-[#0066cc]',
+          color: 'bg-indigo-100 text-indigo-700',
           createdAt: new Date().toISOString()
         });
         foundSubject = {
           id: newSubjRef.id,
           name: targetSubjectName,
-          semesterId: 'cronograma_sem',
+          semesterId: targetSemester.id,
           icon: 'BookOpen',
-          color: 'bg-blue-100 text-[#0066cc]'
+          color: 'bg-indigo-100 text-indigo-700'
         };
-        if (setSubjects) setSubjects(prev => [...prev, foundSubject]);
+        if (setSubjects) setSubjects(prev => [...prev, foundSubject!]);
       } catch (err) {
         console.warn("Notice creating subject in Firestore:", err);
-        foundSubject = { id: 'cronograma_subj', name: targetSubjectName };
+        foundSubject = { id: 'cronograma_subj', name: targetSubjectName, semesterId: targetSemester.id };
       }
     }
 
@@ -2416,7 +2439,7 @@ export default function Cronograma({
         title: cleanTitle,
         name: cleanTitle,
         subjectId: foundSubject.id,
-        semesterId: 'cronograma_sem',
+        semesterId: targetSemester.id,
         references: "",
         historicalIncidence: 15,
         importanceDegree: 'medio',
@@ -2429,7 +2452,7 @@ export default function Cronograma({
         title: cleanTitle,
         name: cleanTitle,
         subjectId: foundSubject.id,
-        semesterId: 'cronograma_sem',
+        semesterId: targetSemester.id,
         references: "",
         historicalIncidence: 15,
         importanceDegree: 'medio',
@@ -3941,6 +3964,139 @@ export default function Cronograma({
     }
   };
 
+  // Helper to bulk create the Planning Semester, its Grande Área Subjects, and all its Topics in MedRevise
+  const syncScheduleStructureToMedRevise = async (schedToSync?: StudySchedule) => {
+    const targetSched = schedToSync || schedule || previewSchedule;
+    if (!user || !targetSched) return null;
+
+    try {
+      const examName = targetSched.exam || 'Planejamento de Estudos';
+      const semesterName = `Planejamento - ${examName}`;
+
+      // 1. Create or find Planning Semester
+      let targetSemester = (semesters || []).find(
+        s => s.name?.toLowerCase().trim() === semesterName.toLowerCase().trim() ||
+             s.name?.toLowerCase().trim() === examName.toLowerCase().trim()
+      );
+
+      if (!targetSemester) {
+        const semRef = await addDoc(collection(db, 'users', user.uid, 'semesters'), {
+          name: semesterName,
+          number: (semesters?.length || 0) + 1,
+          createdAt: new Date().toISOString()
+        });
+        targetSemester = {
+          id: semRef.id,
+          name: semesterName,
+          number: (semesters?.length || 0) + 1
+        };
+        if (setSemesters) setSemesters(prev => [...prev, targetSemester!]);
+      }
+
+      // 2. Extract areas and topics
+      const areaMap = new Map<string, Set<string>>();
+      if (targetSched.weeks) {
+        targetSched.weeks.forEach(w => {
+          if (!w.days) return;
+          Object.values(w.days).forEach(dayTopics => {
+            if (Array.isArray(dayTopics)) {
+              dayTopics.forEach(t => {
+                if (!t.title) return;
+                const cleanTitle = t.title
+                  .replace(/^Revisão Ativa \+ Flashcards: /, '')
+                  .replace(/^⚡ \[QUESTÕES AVANÇADAS\] /, '')
+                  .replace(/^🔄 \[REVISÃO DE REFORÇO\] /, '')
+                  .trim();
+                if (!cleanTitle) return;
+
+                const areaName = t.subjectName || (t as any).area || 'Geral';
+                if (!areaMap.has(areaName)) {
+                  areaMap.set(areaName, new Set());
+                }
+                areaMap.get(areaName)!.add(cleanTitle);
+              });
+            }
+          });
+        });
+      }
+
+      let createdTopicsCount = 0;
+
+      // 3. Process each Grande Área as a Subject
+      for (const [areaName, topicTitlesSet] of Array.from(areaMap.entries())) {
+        let subject = (subjects || []).find(
+          s => s.name?.toLowerCase().trim() === areaName.toLowerCase().trim() &&
+               s.semesterId === targetSemester!.id
+        ) || (subjects || []).find(
+          s => s.name?.toLowerCase().trim() === areaName.toLowerCase().trim()
+        );
+
+        if (!subject) {
+          const newSubjRef = await addDoc(collection(db, 'users', user.uid, 'subjects'), {
+            name: areaName,
+            semesterId: targetSemester.id,
+            icon: 'BookOpen',
+            color: 'bg-indigo-100 text-indigo-700',
+            createdAt: new Date().toISOString()
+          });
+          subject = {
+            id: newSubjRef.id,
+            name: areaName,
+            semesterId: targetSemester.id,
+            icon: 'BookOpen',
+            color: 'bg-indigo-100 text-indigo-700'
+          };
+          if (setSubjects) setSubjects(prev => [...prev, subject!]);
+        }
+
+        // 4. Process each topic under this subject and semester
+        for (const topicTitle of Array.from(topicTitlesSet)) {
+          let existingTopic = (topics || []).find(
+            top => (top.title?.toLowerCase().trim() === topicTitle.toLowerCase().trim() ||
+                    top.name?.toLowerCase().trim() === topicTitle.toLowerCase().trim()) &&
+                   top.subjectId === subject!.id
+          ) || (topics || []).find(
+            top => (top.title?.toLowerCase().trim() === topicTitle.toLowerCase().trim() ||
+                    top.name?.toLowerCase().trim() === topicTitle.toLowerCase().trim())
+          );
+
+          if (!existingTopic) {
+            const newTopicRef = await addDoc(collection(db, 'users', user.uid, 'topics'), {
+              title: topicTitle,
+              name: topicTitle,
+              subjectId: subject.id,
+              semesterId: targetSemester.id,
+              references: "",
+              historicalIncidence: 15,
+              importanceDegree: 'medio',
+              completed: false,
+              createdAt: new Date().toISOString()
+            });
+
+            const createdTopic = {
+              id: newTopicRef.id,
+              title: topicTitle,
+              name: topicTitle,
+              subjectId: subject.id,
+              semesterId: targetSemester.id,
+              references: "",
+              historicalIncidence: 15,
+              importanceDegree: 'medio',
+              completed: false
+            };
+            if (setTopics) setTopics(prev => [...prev, createdTopic]);
+            createdTopicsCount++;
+          }
+        }
+      }
+
+      return targetSemester;
+    } catch (err: any) {
+      console.error("Error syncing schedule structure:", err);
+      return null;
+    }
+  };
+
   // Save the customized preview schedule to Firestore and activate it as the current schedule
   const saveAndActivateSchedule = async () => {
     if (!previewSchedule) return;
@@ -3980,6 +4136,9 @@ export default function Cronograma({
 
       const docRef = await addDoc(collection(db, 'users', user.uid, 'schedules'), cleanScheduleToSave);
       const created: StudySchedule = { id: docRef.id, ...cleanScheduleToSave } as StudySchedule;
+
+      // Automatically sync structure (Semester -> Subjects per Grande Área -> Topics)
+      await syncScheduleStructureToMedRevise(created);
 
       setSchedules(prev => [created, ...prev]);
       setSchedule(created);
@@ -5612,44 +5771,44 @@ export default function Cronograma({
           </div>
         </div>
 
-        <div className="flex items-center gap-1 bg-[#F4F3EF] p-1 rounded-xl border border-[#E2E0D9] text-xs font-bold">
-          <button
-            onClick={() => updateSyncMode('ask')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-              medReviseSyncMode === 'ask' 
-                ? 'bg-white text-[#D44E3D] shadow-2xs font-extrabold' 
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
-            title="Sempre perguntar antes de criar o semestre/matéria no MedRevise"
-          >
-            Perguntar Antes
-          </button>
+          <div className="flex items-center gap-1 bg-[#F4F3EF] p-1 rounded-xl border border-[#E2E0D9] text-xs font-bold">
+            <button
+              onClick={() => updateSyncMode('ask')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                medReviseSyncMode === 'ask' 
+                  ? 'bg-white text-[#D44E3D] shadow-2xs font-extrabold' 
+                  : 'text-stone-500 hover:text-stone-900'
+              }`}
+              title="Sempre perguntar antes de criar o semestre/matéria no MedRevise"
+            >
+              Perguntar Antes
+            </button>
 
-          <button
-            onClick={() => updateSyncMode('sync')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-              medReviseSyncMode === 'sync' 
-                ? 'bg-white text-emerald-700 shadow-2xs font-extrabold' 
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
-            title="Criar matérias e semestres no MedRevise automaticamente"
-          >
-            Sincronizar
-          </button>
+            <button
+              onClick={() => updateSyncMode('sync')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                medReviseSyncMode === 'sync' 
+                  ? 'bg-white text-emerald-700 shadow-2xs font-extrabold' 
+                  : 'text-stone-500 hover:text-stone-900'
+              }`}
+              title="Criar matérias e semestres no MedRevise automaticamente"
+            >
+              Sincronizar
+            </button>
 
-          <button
-            onClick={() => updateSyncMode('internato_only')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-              medReviseSyncMode === 'internato_only' 
-                ? 'bg-white text-amber-800 shadow-2xs font-extrabold' 
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
-            title="Manter o planejamento 100% contido no MedInternato sem criar no MedRevise"
-          >
-            Apenas MedInternato
-          </button>
+            <button
+              onClick={() => updateSyncMode('internato_only')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                medReviseSyncMode === 'internato_only' 
+                  ? 'bg-white text-amber-800 shadow-2xs font-extrabold' 
+                  : 'text-stone-500 hover:text-stone-900'
+              }`}
+              title="Manter o planejamento 100% contido no MedInternato sem criar no MedRevise"
+            >
+              Apenas MedInternato
+            </button>
+          </div>
         </div>
-      </div>
 
       {/* SEGMENTED TAB NAVIGATION */}
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">

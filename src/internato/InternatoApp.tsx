@@ -149,8 +149,16 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
     const topColRef = collection(db, 'users', userId, 'topics');
     const unsub = onSnapshot(topColRef, (snapshot) => {
       const list: Topic[] = [];
-      snapshot.forEach(doc => {
-        list.push({ id: doc.id, ...doc.data() } as Topic);
+      snapshot.forEach(docSnap => {
+        const rawData = docSnap.data() || {};
+        const effectiveTitle = rawData.title || rawData.name || rawData.titulo || rawData.topic || rawData.topicName || docSnap.id;
+        list.push({
+          id: docSnap.id,
+          ...rawData,
+          title: effectiveTitle,
+          name: rawData.name || effectiveTitle,
+          content: rawData.content || rawData.description || rawData.conteudo || rawData.summary || ''
+        } as Topic);
       });
       setTopics(list);
     }, (err) => {

@@ -268,9 +268,13 @@ export default function FlashcardModule({
 
 
   // Local state for SRS reviews map
+  const [localSrsReviews, setLocalSrsReviews] = useState<Record<string, any>>({});
   const srsReviewsMap = useMemo(() => {
-    return userProgress?.flashcardReviews || {};
-  }, [userProgress]);
+    return {
+      ...(userProgress?.flashcardReviews || {}),
+      ...localSrsReviews
+    };
+  }, [userProgress, localSrsReviews]);
 
   // Load Flashcards
   const fetchFlashcards = useCallback(async (mode: 'srs' | 'deck' | 'diagnostic' = 'deck', filterTopicIds?: string[], filterSubjectIds?: string[]) => {
@@ -892,7 +896,10 @@ export default function FlashcardModule({
       ...srsReviewsMap,
       [currentCard.id]: reviewData
     };
-    setSrsReviewsMap(updatedReviewsMap);
+    setLocalSrsReviews(prev => ({
+      ...prev,
+      [currentCard.id]: reviewData
+    }));
 
     // 2. Save to Firestore asynchronously in background without blocking UI
     if (userId) {

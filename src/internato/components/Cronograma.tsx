@@ -881,11 +881,18 @@ export default function Cronograma({
   const getCleanTopicTitle = (title: string): string => {
     if (!title) return '';
     return title
-      .replace(/^⚡\s*\[[^\]]+\]\s*/i, '')
-      .replace(/^🔄\s*\[[^\]]+\]\s*/i, '')
-      .replace(/^Revisão Ativa \+ Flashcards:\s*/i, '')
-      .replace(/^REVISÃO R\d:\s*/i, '')
-      .replace(/^REVISÃO R\d\s*/i, '')
+      .replace(/^[⚡🔄📖💡📝🎯]\s*/gi, '')
+      .replace(/^\[[^\]]+\]\s*/gi, '')
+      .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
+      .replace(/^Revisão\s*(Ativa|24h|7d|30d|R\d+|de Reforço|Ebbinghaus|Sistemática|Ativa \+ Flashcards)?[\s:\-\–\—]*/gi, '')
+      .replace(/^Revisão[\s:\-\–\—]*/gi, '')
+      .replace(/^REVISÃO R\d:\s*/gi, '')
+      .replace(/^REVISÃO R\d\s*/gi, '')
+      .replace(/^SIMULADO DE RETA FINAL\s*/gi, '')
+      .replace(/^MANUTENÇÃO EBBINGHAUS\s*/gi, '')
+      .replace(/^QUESTÕES AVANÇADAS\s*/gi, '')
+      .replace(/^REVISÃO DE REFORÇO\s*/gi, '')
+      .replace(/^\[[^\]]+\]\s*/gi, '')
       .trim();
   };
 
@@ -1159,115 +1166,167 @@ export default function Cronograma({
       }
     }
 
+    const isCompletedVal = Boolean(planTopic.isCompleted) && Boolean(planTopic.completedAt);
+
+    // Explicit manual checkmark on this specific schedule card (checked after or on schedule creation date)
+    if (isCompletedVal && planTopic.completedAt) {
+      const completedAtTime = new Date(planTopic.completedAt).getTime();
+      if (!isNaN(completedAtTime) && schedStartOfDay !== null && completedAtTime >= schedStartOfDay) {
+        return true;
+      }
+    }
+
     // Check if topic was studied in MedRevise database
     const found = getMatchedDbTopic(planTopic.title, planTopic.topicId, planTopic.type);
-    
-    // Check if there is a recorded study in MedRevise
+
+    // If no matching DB topic, fallback to explicit completion flag
+    if (!found) {
+      return isCompletedVal;
+    }
+
     let studyTime: number | null = null;
-    if (found) {
-      const hasRecordedStudy = !!(
-        found.completed === true ||
-        found.completed === 'true' ||
-        (typeof found.repetitions === 'number' && found.repetitions > 0) ||
-        (found.lastReviewDate && typeof found.lastReviewDate === 'string' && found.lastReviewDate.trim().length > 0)
-      );
-      if (hasRecordedStudy) {
-        const studyDateRaw = found.lastReviewDate || found.updatedAt || found.completedAt || found.createdAt;
-        if (studyDateRaw) {
-          const studyDate = new Date(studyDateRaw);
-          if (!isNaN(studyDate.getTime())) {
-            studyTime = studyDate.getTime();
-          }
+    const hasRecordedStudy = !!(
+      found.completed === true ||
+      found.completed === 'true' ||
+      (typeof found.repetitions === 'number' && found.repetitions > 0) ||
+      (found.lastReviewDate && typeof found.lastReviewDate === 'string' && found.lastReviewDate.trim().length > 0)
+    );
+    if (hasRecordedStudy) {
+      const studyDateRaw = found.lastReviewDate || found.updatedAt || found.completedAt || found.createdAt;
+      if (studyDateRaw) {
+        const studyDate = new Date(studyDateRaw);
+        if (!isNaN(studyDate.getTime())) {
+          studyTime = studyDate.getTime();
         }
       }
     }
 
-    // Determine if the study in MedRevise occurred BEFORE schedule creation date
+    // Determine if the initial study in MedRevise occurred BEFORE schedule creation date
     const studyOccurredBeforeSchedule = !!(
       studyTime !== null && 
       schedStartOfDay !== null && 
       studyTime < schedStartOfDay
     );
 
-    const isCompletedVal = Boolean(planTopic.isCompleted);
-
-    // If studied BEFORE schedule creation:
+    // If initial study was before schedule creation, prior study does NOT auto-complete topic in new schedule
     if (studyOccurredBeforeSchedule) {
-      // It is ONLY completed if the user manually toggled it in this schedule after schedule creation date
-      if (isCompletedVal && planTopic.completedAt) {
-        const completedAtTime = new Date(planTopic.completedAt).getTime();
-        if (!isNaN(completedAtTime) && schedStartOfDay !== null && completedAtTime >= schedStartOfDay) {
-          return true;
-        }
-      }
-      // Prior study before schedule creation does NOT auto-complete topic in new schedule
       return false;
     }
 
-    // Standard explicit completion flag (manual checkmark in schedule)
-    if (isCompletedVal) return true;
+    // If no study recorded on/after schedule creation date, not completed
+    if (studyTime === null || (schedStartOfDay !== null && studyTime < schedStartOfDay)) {
+      return false;
+    }
 
-    // Check if studied in MedRevise on or after schedule creation date
-    if (found && studyTime !== null) {
-      if (schedStartOfDay !== null && studyTime < schedStartOfDay) {
-        return false;
+    // --- REVISION CARDS (type === 'revisao') ---
+    if (planTopic.type === 'revisao') {
+      // Revisions are NEVER auto-completed by the initial theory study alone!
+      // A revision card is only completed if:
+      // 1. Manually checked off in this schedule card
+      if (isCompletedVal) return true;
+
+      // 2. Or there are recorded REVISION sessions in `sessions` for this topic on/after schedule creation date
+      // AND after the initial theory study time
+      if (Array.isArray(sessions) && schedStartOfDay !== null) {
+        const revisionSessions = (sessions as any[]).filter(s => {
+          if (s.topicId !== found.id) return false;
+          if (!s.date) return false;
+          const sessionTime = new Date(s.date).getTime();
+          if (isNaN(sessionTime) || sessionTime < schedStartOfDay) return false;
+          // Check if session is a revision session (type 'revisao', 'flashcards', 'questoes' or logged after initial study)
+          const isRevType = s.type === 'revisao' || s.type === 'flashcards' || s.type === 'questoes' || s.type === 'review';
+          const isAfterInitialStudy = studyTime !== null && sessionTime > (studyTime + 3600000); // 1 hour buffer after initial study
+          return isRevType || isAfterInitialStudy;
+        });
+
+        if (revisionSessions.length > 0) {
+          const cleanPlanTitle = getCleanTopicTitle(planTopic.title).toLowerCase().trim();
+          let revOccurrences: any[] = [];
+          if (targetSched && Array.isArray(targetSched.weeks)) {
+            targetSched.weeks.forEach(w => {
+              if (w && w.days && typeof w.days === 'object') {
+                const dayKeys = targetSched.studyDays && targetSched.studyDays.length > 0
+                  ? getOrderedDaysForWeek(targetSched.studyDays, (targetSched as any).startDate)
+                  : Object.keys(w.days);
+                dayKeys.forEach(dayKey => {
+                  const arr = w.days[dayKey];
+                  if (Array.isArray(arr)) {
+                    arr.forEach(t => {
+                      if (t.type === 'revisao') {
+                        const cleanTTitle = getCleanTopicTitle(t.title).toLowerCase().trim();
+                        if ((t.topicId && planTopic.topicId && t.topicId === planTopic.topicId) || (cleanTTitle.length > 0 && cleanTTitle === cleanPlanTitle)) {
+                          revOccurrences.push(t);
+                        }
+                      }
+                    });
+                  }
+                });
+              }
+            });
+          }
+          let revIdx = revOccurrences.findIndex(occ => occ === planTopic);
+          if (revIdx === -1) {
+            revIdx = revOccurrences.findIndex(occ => occ.title === planTopic.title);
+          }
+          if (revIdx !== -1) {
+            return revisionSessions.length >= (revIdx + 1);
+          }
+        }
       }
 
-      // Find all chronological occurrences of this topic inside the schedule
-      let occurrenceIndex = -1;
-      const occurrences: any[] = [];
-      
-      if (targetSched && Array.isArray(targetSched.weeks)) {
-        const orderedDays = getOrderedDaysForWeek(targetSched.studyDays, (targetSched as any).startDate);
-        targetSched.weeks.forEach(w => {
-          orderedDays.forEach(dayName => {
-            const arr = w.days[dayName];
+      // Default for revisions: NOT completed if only initial theory study exists
+      return false;
+    }
+
+    // --- THEORETICAL STUDY CARDS (type === 'estudo') ---
+    const cleanPlanTitle = getCleanTopicTitle(planTopic.title).toLowerCase().trim();
+    let estudoOccurrences: any[] = [];
+    if (targetSched && Array.isArray(targetSched.weeks)) {
+      targetSched.weeks.forEach(w => {
+        if (w && w.days && typeof w.days === 'object') {
+          const dayKeys = targetSched.studyDays && targetSched.studyDays.length > 0
+            ? getOrderedDaysForWeek(targetSched.studyDays, (targetSched as any).startDate)
+            : Object.keys(w.days);
+          dayKeys.forEach(dayKey => {
+            const arr = w.days[dayKey];
             if (Array.isArray(arr)) {
               arr.forEach(t => {
-                const isMatch = getCleanTopicTitle(t.title) === getCleanTopicTitle(planTopic.title) || 
-                                (t.topicId && planTopic.topicId && t.topicId === planTopic.topicId);
-                if (isMatch) {
-                  occurrences.push(t);
+                if (t.type === 'estudo' || !t.type) {
+                  const cleanTTitle = getCleanTopicTitle(t.title).toLowerCase().trim();
+                  if ((t.topicId && planTopic.topicId && t.topicId === planTopic.topicId) || (cleanTTitle.length > 0 && cleanTTitle === cleanPlanTitle)) {
+                    estudoOccurrences.push(t);
+                  }
                 }
               });
             }
           });
-        });
-      }
-      
-      occurrenceIndex = occurrences.findIndex(occ => occ === planTopic);
-
-      // If we could not find the exact occurrence referentially, fallback to checking if the card is manually checked
-      if (occurrenceIndex === -1) {
-        return isCompletedVal;
-      }
-
-      // Calculate total study sessions for this topic registered in MedRevise since schedule start
-      let sessionsCountAfterSchedule = 0;
-      const hasSessionsData = Array.isArray(sessions);
-      if (hasSessionsData && schedStartOfDay !== null) {
-        sessionsCountAfterSchedule = (sessions as any[]).filter(s => {
-          if (s.topicId !== found.id) return false;
-          if (!s.date) return false;
-          const sessionTime = new Date(s.date).getTime();
-          return !isNaN(sessionTime) && sessionTime >= schedStartOfDay;
-        }).length;
-      }
-
-      // Calculate the cumulative sessions needed to complete all occurrences up to this occurrenceIndex
-      let cumulativeRequired = 0;
-      for (let i = 0; i <= occurrenceIndex; i++) {
-        const occ = occurrences[i];
-        if (isRevisionTopic(occ)) {
-          cumulativeRequired += 2;
-        } else {
-          cumulativeRequired += 1;
         }
-      }
-
-      // This specific occurrence is completed if the number of actual sessions is enough to cover the cumulative requirement
-      return sessionsCountAfterSchedule >= cumulativeRequired || isCompletedVal;
+      });
     }
+
+    let estudoIdx = estudoOccurrences.findIndex(occ => occ === planTopic);
+    if (estudoIdx === -1) {
+      estudoIdx = estudoOccurrences.findIndex(occ => occ.title === planTopic.title);
+    }
+
+    // Count theory study sessions on/after schedule creation date
+    let theorySessionsCount = 0;
+    if (Array.isArray(sessions) && schedStartOfDay !== null) {
+      theorySessionsCount = (sessions as any[]).filter(s => {
+        if (s.topicId !== found.id) return false;
+        if (!s.date) return false;
+        const sessionTime = new Date(s.date).getTime();
+        return !isNaN(sessionTime) && sessionTime >= schedStartOfDay;
+      }).length;
+    }
+
+    if (theorySessionsCount === 0 && studyTime !== null && schedStartOfDay !== null && studyTime >= schedStartOfDay) {
+      theorySessionsCount = 1;
+    }
+
+    const requiredTheorySessions = (estudoIdx !== -1 ? estudoIdx : 0) + 1;
+
+    return theorySessionsCount >= requiredTheorySessions || isCompletedVal;
 
     return false;
   };
@@ -3075,7 +3134,7 @@ export default function Cronograma({
                     subjectName: topic.subjectName,
                     incidence: topic.historicalIncidence || 15,
                     importanceDegree: topic.importanceDegree || 'medio',
-                    isCompleted: !!topic.isCompleted
+                    isCompleted: false
                   });
                 }
               });
@@ -3175,7 +3234,7 @@ export default function Cronograma({
                 subjectName: topicData.subjectName,
                 historicalIncidence: topicData.incidence,
                 isPriority: topicData.incidence >= 23 || selectedCollegeTopics.includes(topicData.title),
-                isCompleted: topicData.isCompleted,
+                isCompleted: false,
                 review24h: false,
                 review7d: false,
                 review30d: false,
@@ -3202,7 +3261,7 @@ export default function Cronograma({
               subjectName: revisionTopicData.subjectName,
               historicalIncidence: revisionTopicData.incidence,
               isPriority: selectedCollegeTopics.includes(revisionTopicData.title),
-              isCompleted: revisionTopicData.isCompleted,
+              isCompleted: false,
               review24h: false,
               review7d: false,
               review30d: false,
@@ -6713,14 +6772,12 @@ export default function Cronograma({
                                     key={`sorted-topic-${sortedIdx}-${topic.title}-${tType}`} 
                                     className={`p-5 rounded-2xl border transition-all duration-300 hover:shadow-sm ${borderLeftClass} ${
                                       isTopicDone(topic) 
-                                        ? hasDbStudy ? "bg-indigo-100/70 border-indigo-300/90 text-stone-800" : "bg-stone-50/70 border-stone-200/60 opacity-80" 
-                                        : hasDbStudy
-                                          ? "bg-indigo-100/80 border-indigo-400/90 ring-2 ring-indigo-500/30 hover:border-indigo-600 shadow-xs"
-                                          : isRescheduled
-                                            ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400 shadow-3xs"
-                                            : tType === 'revisao'
-                                              ? "bg-purple-50/10 border-purple-150/30 hover:bg-purple-50/20"
-                                              : "bg-white border-[#E2E0D9] hover:border-stone-400"
+                                        ? "bg-stone-50/70 border-stone-200/60 opacity-80" 
+                                        : isRescheduled
+                                          ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400 shadow-3xs"
+                                          : tType === 'revisao'
+                                            ? "bg-purple-50/10 border-purple-150/30 hover:bg-purple-50/20"
+                                            : "bg-white border-[#E2E0D9] hover:border-stone-400"
                                     }`}
                                   >
                                     <div className="flex items-start justify-between gap-4">
@@ -6755,25 +6812,7 @@ export default function Cronograma({
                                               <RefreshCw className="w-2.5 h-2.5 text-amber-700" /> Atraso Recalculado
                                             </span>
                                           )}
-                                          {(() => {
-                                            const dbTopicMatch = getMatchedDbTopic(topic.title, topic.topicId, topic.type);
-                                            const hasDbStudy = !!(
-                                              dbTopicMatch && (
-                                                dbTopicMatch.completed === true ||
-                                                dbTopicMatch.completed === 'true' ||
-                                                (typeof dbTopicMatch.repetitions === 'number' && dbTopicMatch.repetitions > 0) ||
-                                                (dbTopicMatch.lastReviewDate && String(dbTopicMatch.lastReviewDate).trim().length > 0)
-                                              )
-                                            );
-                                            if (hasDbStudy && !isTopicDone(topic)) {
-                                              return (
-                                                <span className="bg-indigo-600 text-white border border-indigo-700 px-2 py-0.5 rounded-md text-[9px] font-mono font-bold tracking-wider uppercase shadow-xs flex items-center gap-1">
-                                                  <BookOpen className="w-2.5 h-2.5 text-white" /> Já Estudado no MedRevise
-                                                </span>
-                                              );
-                                            }
-                                            return null;
-                                          })()}
+
                                           <span className="font-bold text-stone-700 uppercase tracking-wide bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200">{topic.subjectName}</span>
                                           <span className="text-stone-300">•</span>
                                           <span className="flex items-center gap-1 font-bold text-[#b45309]">
@@ -7118,14 +7157,12 @@ export default function Cronograma({
                                     key={`sorted-grid-${sortedIdx}-${topic.title}`} 
                                     className={`p-4 rounded-xl border transition-all duration-300 hover:shadow-2xs ${borderLeftClass} ${
                                       isTopicDone(topic) 
-                                        ? hasDbStudyGrid ? "bg-indigo-100/70 border-indigo-300/90 text-stone-800" : "bg-stone-50/70 border-stone-200/60 opacity-80" 
-                                        : hasDbStudyGrid
-                                          ? "bg-indigo-100/80 border-indigo-400/90 ring-2 ring-indigo-500/30 hover:border-indigo-600 shadow-xs"
-                                          : isRescheduledGrid
-                                            ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400"
-                                            : tType === 'revisao'
-                                              ? "bg-purple-50/10 border-purple-100/30 hover:bg-purple-50/20"
-                                              : "bg-white border-[#E2E0D9] hover:border-stone-400"
+                                        ? "bg-stone-50/70 border-stone-200/60 opacity-80" 
+                                        : isRescheduledGrid
+                                          ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400"
+                                          : tType === 'revisao'
+                                            ? "bg-purple-50/10 border-purple-100/30 hover:bg-purple-50/20"
+                                            : "bg-white border-[#E2E0D9] hover:border-stone-400"
                                     }`}
                                   >
                                     <div className="flex items-start justify-between gap-3">
@@ -7160,25 +7197,7 @@ export default function Cronograma({
                                               <RefreshCw className="w-2 h-2 text-amber-700" /> Recalculado
                                             </span>
                                           )}
-                                          {(() => {
-                                            const dbTopicMatch = getMatchedDbTopic(topic.title, topic.topicId, topic.type);
-                                            const hasDbStudy = !!(
-                                              dbTopicMatch && (
-                                                dbTopicMatch.completed === true ||
-                                                dbTopicMatch.completed === 'true' ||
-                                                (typeof dbTopicMatch.repetitions === 'number' && dbTopicMatch.repetitions > 0) ||
-                                                (dbTopicMatch.lastReviewDate && String(dbTopicMatch.lastReviewDate).trim().length > 0)
-                                              )
-                                            );
-                                            if (hasDbStudy && !isTopicDone(topic)) {
-                                              return (
-                                                <span className="bg-indigo-600 text-white border border-indigo-700 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold tracking-wider uppercase shadow-xs flex items-center gap-1">
-                                                  <BookOpen className="w-2 h-2 text-white" /> Já Estudado no MedRevise
-                                                </span>
-                                              );
-                                            }
-                                            return null;
-                                          })()}
+
                                           <span className="font-bold text-stone-700 uppercase tracking-tight bg-stone-100 px-1 py-0.5 rounded border border-stone-150">{topic.subjectName}</span>
                                           <span className="text-stone-300">•</span>
                                           <span className="font-bold text-[#b45309]">
@@ -7922,14 +7941,12 @@ export default function Cronograma({
                                     key={tIdx} 
                                     className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border transition-all gap-3 ${
                                       done 
-                                        ? hasDbStudyPreview ? "bg-indigo-100/70 border-indigo-300/90 border-l-4 border-l-indigo-600 opacity-90" : "bg-stone-50 border-stone-200/60 opacity-80" 
-                                        : hasDbStudyPreview
-                                          ? "bg-indigo-100/80 border-indigo-400/90 border-l-4 border-l-indigo-600 ring-2 ring-indigo-500/30 hover:border-indigo-600 shadow-xs"
-                                          : isRescheduledWeek
-                                            ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400"
-                                            : isRev 
-                                              ? "bg-amber-50/10 border-amber-200/50 hover:border-amber-300"
-                                              : "bg-white border-[#E2E0D9] hover:border-[#D44E3D]"
+                                        ? "bg-stone-50 border-stone-200/60 opacity-80" 
+                                        : isRescheduledWeek
+                                          ? "bg-amber-50/40 border-amber-300/80 ring-1 ring-amber-400/20 hover:border-amber-400"
+                                          : isRev 
+                                            ? "bg-amber-50/10 border-amber-200/50 hover:border-amber-300"
+                                            : "bg-white border-[#E2E0D9] hover:border-[#D44E3D]"
                                     }`}
                                   >
                                     <div className="space-y-1.5 flex-1 min-w-0 pr-2">
@@ -7961,11 +7978,7 @@ export default function Cronograma({
                                             )
                                           );
                                           if (hasDbStudy && !done) {
-                                            return (
-                                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase bg-indigo-50 border border-indigo-200 text-indigo-800 flex items-center gap-1">
-                                                <BookOpen className="w-2.5 h-2.5 text-indigo-600" /> Já Estudado no MedRevise
-                                              </span>
-                                            );
+                                            return null;
                                           }
                                           return null;
                                         })()}

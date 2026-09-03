@@ -8119,7 +8119,7 @@ th { background: #F8F7F4; font-weight: bold; }
 
           {/* Summary Generation Wizard Modal */}
           {showSummaryWizard && (
-            <div className="fixed inset-0 z-[9999] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-[9999] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
               <SummaryGenerationWizard
                 topicTitle={topic?.title || (topic as any)?.name || (topic as any)?.titulo || (topic as any)?.topicTitle || 'Tópico de Estudo'}
                 availableCredits={availableCredits !== undefined ? availableCredits : (globalQuota?.available ?? 0)}

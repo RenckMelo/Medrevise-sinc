@@ -197,24 +197,24 @@ export default function SummaryGenerationWizard({
   const cost = getCost();
 
   return (
-    <div className="bg-white border-2 border-stone-200 rounded-3xl shadow-2xl overflow-hidden max-w-2xl w-full mx-auto my-6 flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+    <div className="bg-white border-2 border-stone-200 rounded-3xl shadow-2xl overflow-hidden max-w-2xl w-full mx-auto my-auto flex flex-col max-h-[92vh] sm:max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
       {/* Header */}
-      <div className="bg-gradient-to-r from-indigo-900 to-indigo-950 p-5 text-white flex items-center justify-between shrink-0">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="bg-indigo-700/80 text-indigo-200 text-[10px] font-mono px-2.5 py-0.5 rounded-md uppercase tracking-wider font-bold">
-              Assistente de Geração de Resumos
+      <div className="bg-gradient-to-r from-indigo-900 to-indigo-950 p-3.5 sm:p-5 text-white flex items-center justify-between shrink-0">
+        <div className="space-y-1 min-w-0 pr-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="bg-indigo-700/80 text-indigo-200 text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-md uppercase tracking-wider font-bold shrink-0">
+              Assistente de Resumos
             </span>
-            <span className="text-xs text-indigo-300 font-mono">Etapa {step} de 4</span>
+            <span className="text-[11px] sm:text-xs text-indigo-300 font-mono">Etapa {step} de 4</span>
           </div>
-          <h3 className="font-display font-black text-lg text-white">
-            Planejamento Inteligente: <span className="text-indigo-200 italic">{topicTitle}</span>
+          <h3 className="font-display font-black text-sm sm:text-lg text-white truncate">
+            Planejamento: <span className="text-indigo-200 italic">{topicTitle}</span>
           </h3>
         </div>
         <button
           onClick={onCancel}
           disabled={isGenerating}
-          className="text-indigo-300 hover:text-white p-2 rounded-lg transition-colors cursor-pointer"
+          className="text-indigo-300 hover:text-white p-1.5 sm:p-2 rounded-lg transition-colors cursor-pointer shrink-0"
         >
           ✕
         </button>
@@ -228,7 +228,8 @@ export default function SummaryGenerationWizard({
         />
       </div>
 
-      <div className="p-6 space-y-6 overflow-y-auto flex-1">
+      {/* Scrollable Body Container */}
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto flex-1 min-h-0">
         {analysisError && (
           <div className="bg-rose-50 border border-rose-200/60 text-rose-800 p-3.5 rounded-2xl text-xs font-semibold flex items-start gap-2.5 animate-in fade-in duration-200">
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -628,84 +629,84 @@ export default function SummaryGenerationWizard({
             )}
           </div>
         )}
+      </div>
 
-        {/* Footer Navigation */}
-        <div className="flex items-center justify-between pt-4 border-t border-stone-100">
-          {step > 1 ? (
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (step === 3 && !hasAnalysisEnabled) {
-                  setStep(1); // Skip Step 2 going back
-                } else {
-                  setStep(step - 1);
-                }
-              }}
-              disabled={isGenerating}
-              className="text-xs font-bold uppercase tracking-wider h-10 px-4 rounded-xl cursor-pointer flex items-center gap-1.5"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Voltar
-            </Button>
-          ) : (
-            <div />
-          )}
+      {/* Footer Navigation - Always Pinned at Bottom */}
+      <div className="p-3 sm:p-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between shrink-0 gap-2 z-10">
+        {step > 1 ? (
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (step === 3 && !hasAnalysisEnabled) {
+                setStep(1); // Skip Step 2 going back
+              } else {
+                setStep(step - 1);
+              }
+            }}
+            disabled={isGenerating}
+            className="text-xs font-bold uppercase tracking-wider h-10 px-3 sm:px-4 rounded-xl cursor-pointer flex items-center gap-1 shrink-0"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Voltar
+          </Button>
+        ) : (
+          <div />
+        )}
 
-          {step < 4 ? (
-            <Button
-              onClick={async () => {
-                if (step === 1) {
-                  if (hasAnalysisEnabled) {
-                    if (hasRunAnalysis) {
-                      setStep(2);
-                    } else {
-                      await handleRunPreAnalysis(depth);
-                    }
+        {step < 4 ? (
+          <Button
+            onClick={async () => {
+              if (step === 1) {
+                if (hasAnalysisEnabled) {
+                  if (hasRunAnalysis) {
+                    setStep(2);
                   } else {
-                    setStep(3); // Skip Step 2 going forward
+                    await handleRunPreAnalysis(depth);
                   }
                 } else {
-                  setStep(step + 1);
+                  setStep(3); // Skip Step 2 going forward
                 }
-              }}
-              disabled={isAnalyzingLocal}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase tracking-wider h-10 px-6 rounded-xl cursor-pointer flex items-center gap-1.5"
-            >
-              {isAnalyzingLocal ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Carregando...
-                </>
-              ) : step === 1 && hasAnalysisEnabled && !hasRunAnalysis ? (
-                <>
-                  Solicitar Pré-Análise (+2cr)
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
-                </>
-              ) : (
-                <>
-                  Avançar
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </>
-              )}
-            </Button>
-          ) : (
-            <Button
-              onClick={() => onGenerate({ 
-                depth, 
-                illustrationLevel, 
-                alertBoxLevel, 
-                referencePref, 
-                chapters: analysis?.chapters || [],
-                analysisResult: hasAnalysisEnabled ? analysis : undefined
-              })}
-              disabled={isGenerating || availableCredits < cost}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider h-11 px-8 rounded-xl shadow-lg shadow-indigo-200 cursor-pointer flex items-center gap-2"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Confirmar e Gerar Resumo ({cost}cr)</span>
-            </Button>
-          )}
-        </div>
+              } else {
+                setStep(step + 1);
+              }
+            }}
+            disabled={isAnalyzingLocal}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase tracking-wider h-10 px-4 sm:px-6 rounded-xl cursor-pointer flex items-center gap-1.5 shrink-0"
+          >
+            {isAnalyzingLocal ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Carregando...
+              </>
+            ) : step === 1 && hasAnalysisEnabled && !hasRunAnalysis ? (
+              <>
+                <span className="truncate">Solicitar Pré-Análise (+2cr)</span>
+                <Sparkles className="w-3.5 h-3.5 text-indigo-200 shrink-0" />
+              </>
+            ) : (
+              <>
+                <span>Avançar</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            )}
+          </Button>
+        ) : (
+          <Button
+            onClick={() => onGenerate({ 
+              depth, 
+              illustrationLevel, 
+              alertBoxLevel, 
+              referencePref, 
+              chapters: analysis?.chapters || [],
+              analysisResult: hasAnalysisEnabled ? analysis : undefined
+            })}
+            disabled={isGenerating || availableCredits < cost}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-black uppercase tracking-wider h-11 px-4 sm:px-8 rounded-xl shadow-lg shadow-indigo-200 cursor-pointer flex items-center gap-2 max-w-full min-w-0"
+          >
+            <Sparkles className="w-4 h-4 shrink-0" />
+            <span className="truncate">Confirmar e Gerar Resumo ({cost}cr)</span>
+          </Button>
+        )}
       </div>
     </div>
   );

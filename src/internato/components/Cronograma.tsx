@@ -336,22 +336,52 @@ export const getTodayWeekAndDay = (schedule: StudySchedule): { weekIndex: number
 const findMatchingTopic = (title: string, userTopics: any[], manualTopicId?: string): any | null => {
   if (!title || !userTopics || userTopics.length === 0) return null;
 
-  // 0. ID matching (if manually linked)
-  if (manualTopicId) {
-    const foundById = userTopics.find(t => t.id === manualTopicId);
-    if (foundById) return foundById;
-  }
-
   // 1. Core normalization function
   const cleanAndNormalize = (text: string): string => {
+    if (!text) return '';
     return text
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "") // remove accents
+      .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[⚡🔄📖💡📝🎯]/gu, "") // remove emojis
+      .replace(/^\[[^\]]+\]\s*/gi, "") // remove leading brackets
+      .replace(/\[[^\]]+\]/gi, "") // remove all brackets
+      .replace(/^[0-9]+[\.\-\)\s]*/gi, "") // remove leading numbers (1., 2., 3., 01 -)
+      .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, "")
+      .replace(/^Revisão\s*(Ativa|24h|7d|30d|R\d+|de Reforço|Ebbinghaus|Sistemática|Ativa \+ Flashcards)?[\s:\-\–\—]*/gi, "")
+      .replace(/^REVISÃO\s*R?\d*[\s:\-\–\—]*/gi, "")
+      .replace(/^SIMULADO DE RETA FINAL[\s:\-\–\—]*/gi, "")
+      .replace(/^MANUTENÇÃO EBBINGHAUS[\s:\-\–\—]*/gi, "")
+      .replace(/^QUESTÕES AVANÇADAS[\s:\-\–\—]*/gi, "")
+      .replace(/^REVISÃO DE REFORÇO[\s:\-\–\—]*/gi, "")
+      .replace(/[\s:\-\–\—]+\s*Revisão\s*(Ativa|24h|7d|30d|R\d+|de Reforço|Ebbinghaus|Sistemática)?\s*$/gi, "")
+      .replace(/\s*\(\s*Revisão\s*(Ativa|24h|7d|30d|R\d+|de Reforço|Ebbinghaus|Sistemática)?\s*\)\s*$/gi, "")
+      .replace(/[\s:\-\–\—]+\s*R\d+\s*$/gi, "")
+      .replace(/\s*\(\s*R\d+\s*\)\s*$/gi, "")
+      .replace(/[\s:\-\–\—]+\s*Ebbinghaus\s*$/gi, "")
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, " ") // replace symbols with space
       .replace(/\s+/g, " ") // collapse multiple spaces
       .trim();
   };
+
+  const titleClean = cleanAndNormalize(title);
+
+  // 0. ID matching (if manually linked) - ONLY if topic name matches or is similar
+  if (manualTopicId) {
+    const foundById = userTopics.find(t => t.id === manualTopicId);
+    if (foundById) {
+      const foundNameClean = cleanAndNormalize(foundById.title || foundById.name || '');
+      if (
+        titleClean &&
+        foundNameClean &&
+        (foundNameClean === titleClean ||
+         foundNameClean.includes(titleClean) ||
+         titleClean.includes(foundNameClean))
+      ) {
+        return foundById;
+      }
+    }
+  }
 
   const stopWords = new Set(["de", "da", "do", "em", "com", "e", "o", "a", "os", "as", "para", "por", "um", "uma", "tipo", "apos", "pos"]);
 
@@ -361,7 +391,6 @@ const findMatchingTopic = (title: string, userTopics: any[], manualTopicId?: str
       .filter(w => w.length > 0 && !stopWords.has(w));
   };
 
-  const titleClean = cleanAndNormalize(title);
   const titleExpanded = expandPhrase(titleClean);
 
   // Rule 1: Exact or expanded exact match (highest confidence)
@@ -635,7 +664,21 @@ export default function Cronograma({
     setStudyingTopicTitle(cleanTitle);
 
     try {
-      const topicIdToTry = scheduleTopic?.topicId || scheduleTopic?.linkedTopicId || scheduleTopic?.id;
+      const topicIdToTryRaw = scheduleTopic?.topicId || scheduleTopic?.linkedTopicId || scheduleTopic?.id;
+      let topicIdToTry = topicIdToTryRaw;
+
+      // Double-check: if this ID actually belongs to a completely different topic in topics list, do not use it!
+      if (topicIdToTry && typeof topicIdToTry === 'string' && !topicIdToTry.startsWith('local_')) {
+        const topicsList = topics || [];
+        const foundWithId = topicsList.find(t => t.id === topicIdToTry);
+        if (foundWithId) {
+          const tNameNorm = (foundWithId.title || foundWithId.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+          const targetNameNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+          if (tNameNorm && targetNameNorm && tNameNorm !== targetNameNorm && !tNameNorm.includes(targetNameNorm) && !targetNameNorm.includes(tNameNorm)) {
+            topicIdToTry = undefined;
+          }
+        }
+      }
 
       let targetSubject: any;
       let targetTopic: any;
@@ -657,13 +700,18 @@ export default function Cronograma({
         // 2. Query Firestore before creating a new topic to prevent duplicate empty topic creation
         let foundInFirestore: any = null;
 
-        // A. If topicIdToTry exists, fetch by ID
+        // A. If topicIdToTry exists, fetch by ID (only accept if title matches)
         if (topicIdToTry && typeof topicIdToTry === 'string' && !topicIdToTry.startsWith('local_')) {
           try {
             const topicDocRef = doc(db, 'users', user.uid, 'topics', topicIdToTry);
             const topicSnap = await getDoc(topicDocRef);
             if (topicSnap.exists()) {
-              foundInFirestore = { id: topicSnap.id, ...topicSnap.data() };
+              const fsData = { id: topicSnap.id, ...topicSnap.data() as any };
+              const fsTitleNorm = (fsData.title || fsData.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+              const targetNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+              if (!targetNorm || fsTitleNorm === targetNorm || fsTitleNorm.includes(targetNorm) || targetNorm.includes(fsTitleNorm)) {
+                foundInFirestore = fsData;
+              }
             }
           } catch (err) {
             console.warn('Error fetching topic by ID from Firestore:', err);
@@ -797,7 +845,7 @@ export default function Cronograma({
             color: 'bg-blue-100 text-[#0066cc]'
           };
           targetTopic = {
-            id: scheduleTopic.id || `local_topic_${cleanTitle.toLowerCase().replace(/\s+/g, '_')}`,
+            id: topicIdToTry || `local_topic_${cleanTitle.toLowerCase().replace(/\s+/g, '_')}`,
             title: cleanTitle,
             subjectId: targetSubject.id,
             semesterId: 'cronograma_local',
@@ -973,9 +1021,26 @@ export default function Cronograma({
     });
 
     const cleanAndNormalize = (text: string): string => {
+      if (!text) return '';
       return text
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "") // remove accents
+        .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[⚡🔄📖💡📝🎯]/gu, "") // remove emojis
+        .replace(/^\[[^\]]+\]\s*/gi, "") // remove leading brackets
+        .replace(/\[[^\]]+\]/gi, "") // remove all brackets
+        .replace(/^[0-9]+[\.\-\)\s]*/gi, "") // remove leading numbers (1., 2., 3., 01 -)
+        .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, "")
+        .replace(/^Revisão\s*(Ativa|24h|7d|30d|R\d+|de Reforço|Ebbinghaus|Sistemática|Ativa \+ Flashcards)?[\s:\-\–\—]*/gi, "")
+        .replace(/^REVISÃO\s*R?\d*[\s:\-\–\—]*/gi, "")
+        .replace(/^SIMULADO DE RETA FINAL[\s:\-\–\—]*/gi, "")
+        .replace(/^MANUTENÇÃO EBBINGHAUS[\s:\-\–\—]*/gi, "")
+        .replace(/^QUESTÕES AVANÇADAS[\s:\-\–\—]*/gi, "")
+        .replace(/^REVISÃO DE REFORÇO[\s:\-\–\—]*/gi, "")
+        .replace(/[\s:\-\–\—]+\s*Revisão\s*(Ativa|24h|7d|30d|R\d+|de Reforço|Ebbinghaus|Sistemática)?\s*$/gi, "")
+        .replace(/\s*\(\s*Revisão\s*(Ativa|24h|7d|30d|R\d+|de Reforço|Ebbinghaus|Sistemática)?\s*\)\s*$/gi, "")
+        .replace(/[\s:\-\–\—]+\s*R\d+\s*$/gi, "")
+        .replace(/\s*\(\s*R\d+\s*\)\s*$/gi, "")
+        .replace(/[\s:\-\–\—]+\s*Ebbinghaus\s*$/gi, "")
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, " ") // replace symbols with space
         .replace(/\s+/g, " ") // collapse multiple spaces
@@ -1006,13 +1071,25 @@ export default function Cronograma({
     const findMatch = (title: string, manualTopicId?: string): any | null => {
       if (!title) return null;
 
-      // 0. ID matching
+      const titleClean = cleanAndNormalize(title);
+
+      // 0. ID matching (ONLY if title matches or is similar)
       if (manualTopicId) {
         const foundById = userTopicsById.get(manualTopicId);
-        if (foundById) return foundById;
+        if (foundById) {
+          const foundTitleNorm = cleanAndNormalize(foundById.title || foundById.name || '');
+          if (
+            titleClean &&
+            foundTitleNorm &&
+            (foundTitleNorm === titleClean ||
+             foundTitleNorm.includes(titleClean) ||
+             titleClean.includes(foundTitleNorm))
+          ) {
+            return foundById;
+          }
+        }
       }
 
-      const titleClean = cleanAndNormalize(title);
       const titleExpanded = expandPhrase(titleClean);
 
       // Rule 1: Exact or expanded exact match (using O(1) prebuilt phrases map)
@@ -2421,9 +2498,13 @@ export default function Cronograma({
       if (manualTopicId && typeof manualTopicId === 'string' && !manualTopicId.startsWith('local_')) {
         const snap = await getDoc(doc(db, 'users', user.uid, 'topics', manualTopicId));
         if (snap.exists()) {
-          const tData = { id: snap.id, ...snap.data() };
-          if (setTopics) setTopics(prev => prev.some(x => x.id === tData.id) ? prev : [...prev, tData]);
-          return tData;
+          const tData = { id: snap.id, ...(snap.data() as any) };
+          const tDataTitleNorm = (tData.title || tData.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+          const cleanTitleNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+          if (!cleanTitleNorm || tDataTitleNorm === cleanTitleNorm || tDataTitleNorm.includes(cleanTitleNorm) || cleanTitleNorm.includes(tDataTitleNorm)) {
+            if (setTopics) setTopics(prev => prev.some(x => x.id === tData.id) ? prev : [...prev, tData]);
+            return tData;
+          }
         }
       }
 

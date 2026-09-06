@@ -842,16 +842,16 @@ export default function TopicSyncWizard({
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase tracking-wider text-stone-400 block flex items-center gap-1">
                     <Activity className="w-3.5 h-3.5 text-amber-400" />
-                    Casos Clínicos por Patologia
+                    Casos Clínicos por Capítulo
                   </span>
                   <span className="text-[9px] font-mono text-stone-500">Exemplos Práticos</span>
                 </div>
                 
                 <div className="space-y-2">
                   {[
-                    { id: 'minimum', label: 'Sem Casos (Apenas Teoria)', impact: '-3 créditos' },
-                    { id: 'moderate', label: '1 Caso por Patologia (Equilibrado)', impact: '+0 créditos' },
-                    { id: 'maximum', label: 'Casos Detalhados (Anamnese & Conduta)', impact: '+10 créditos' }
+                    { id: 'minimum', label: 'Sem Casos (Apenas Teoria)', impact: '0 créditos' },
+                    { id: 'moderate', label: '1 Caso por Capítulo (Moderado)', impact: '+3 créditos' },
+                    { id: 'maximum', label: '1 Caso Aprofundado por Capítulo', impact: '+10 créditos' }
                   ].map((lvl) => {
                     const isSel = illustrationLevel === lvl.id;
                     return (

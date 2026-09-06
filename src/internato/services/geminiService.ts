@@ -376,13 +376,7 @@ async function generateMasterSummary(title: string, area: string, reference?: st
   const model = "gemini-3.1-flash-lite";
   
   try {
-    let extra = 0;
-    if (illustrationLevel === 'minimum') extra -= 3;
-    else if (illustrationLevel === 'maximum') extra += 10;
-    
-    if (alertBoxLevel === 'minimum') extra -= 2;
-    else if (alertBoxLevel === 'maximum') extra += 5;
-
+    const extra = calculateExtraCredits(illustrationLevel, alertBoxLevel);
     const totalCost = Math.max(1, 50 + extra);
     await checkUsageLimit(totalCost);
     console.log(`[Resumo Master 50cr] Iniciando geração aprofundada por capítulos dinâmicos para: ${title}`);
@@ -720,13 +714,7 @@ async function generateMonograph(title: string, area: string, reference?: string
   const model = "gemini-3.1-flash-lite";
   
   try {
-    let extra = 0;
-    if (illustrationLevel === 'minimum') extra -= 3;
-    else if (illustrationLevel === 'maximum') extra += 10;
-    
-    if (alertBoxLevel === 'minimum') extra -= 2;
-    else if (alertBoxLevel === 'maximum') extra += 5;
-
+    const extra = calculateExtraCredits(illustrationLevel, alertBoxLevel);
     const totalCost = Math.max(1, 100 + extra);
     await checkUsageLimit(totalCost);
     console.log(`[Monografia] Iniciando geração exaustiva para: ${title}`);
@@ -2289,6 +2277,78 @@ Escreva o capítulo "${chapterTitle}" de forma exaustiva, 100% aprofundada, sem 
       }
     }
 
+    // Se illustrationLevel for 'moderate' ou 'maximum', gera 1 Caso Clínico por Capítulo ao final do resumo
+    if (illustrationLevel !== 'minimum' && illustrationLevel !== 'off' && illustrationLevel !== 'desativado' && illustrationLevel !== 'none') {
+      if (onProgress) {
+        onProgress({
+          current: totalChapters,
+          total: totalChapters,
+          message: 'Adicionando 1 Caso Clínico Simulado para cada capítulo...',
+          partialContent: fullContent
+        });
+      }
+
+      for (let cIdx = 0; cIdx < totalChapters; cIdx++) {
+        const chapterTitle = chapters[cIdx];
+        if (fullContent.includes(`Caso Clínico & Questão Simulada do Capítulo: ${chapterTitle}`) || fullContent.includes(`Caso Clínico Aprofundado & Raciocínio Guiado do Capítulo: ${chapterTitle}`)) {
+          continue;
+        }
+
+        if (onProgress) {
+          onProgress({
+            current: cIdx + 1,
+            total: totalChapters,
+            message: `Gerando Caso Clínico do Capítulo ${cIdx + 1}/${totalChapters}: ${chapterTitle}...`,
+            partialContent: fullContent
+          });
+        }
+
+        const caseMarkdown = await generateChapterClinicalCases(
+          safeTitle,
+          safeArea,
+          chapterTitle,
+          cIdx,
+          totalChapters,
+          illustrationLevel,
+          userId
+        );
+
+        if (caseMarkdown && caseMarkdown.trim()) {
+          const nextChapterTitle = cIdx < totalChapters - 1 ? chapters[cIdx + 1] : null;
+          let inserted = false;
+
+          if (nextChapterTitle) {
+            const nextHeader = `## ${nextChapterTitle}`;
+            const cleanNextTitle = nextChapterTitle.replace(/^\d+\.\s*/, '').trim();
+            const cleanNextHeader = `## ${cleanNextTitle}`;
+
+            let splitIdx = fullContent.indexOf(nextHeader);
+            if (splitIdx === -1 && cleanNextTitle) {
+              splitIdx = fullContent.indexOf(cleanNextHeader);
+            }
+
+            if (splitIdx !== -1) {
+              fullContent = fullContent.slice(0, splitIdx).trim() + '\n\n' + caseMarkdown.trim() + '\n\n---\n\n' + fullContent.slice(splitIdx);
+              inserted = true;
+            }
+          }
+
+          if (!inserted) {
+            fullContent = fullContent.trim() + '\n\n' + caseMarkdown.trim() + '\n\n---\n\n';
+          }
+
+          if (onProgress) {
+            onProgress({
+              current: cIdx + 1,
+              total: totalChapters,
+              message: `Caso Clínico do Capítulo ${cIdx + 1} anexado com sucesso!`,
+              partialContent: fullContent
+            });
+          }
+        }
+      }
+    }
+
     if (onProgress) {
       onProgress({ current: totalChapters, total: totalChapters, message: 'Concluindo e estruturando o tratado personalizado...', partialContent: fullContent });
     }
@@ -2603,14 +2663,12 @@ function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate',
 
   // DIRETRIZ EXPLÍCITA PARA CASOS CLÍNICOS / QUADROS CLÍNICOS (illustrationLevel):
   const lowerIll = (illustrationLevel || 'moderate').toLowerCase();
-  if (lowerIll === 'minimum' || lowerIll === 'off' || lowerIll === 'desativado') {
-    instructions += 'DIRETRIZ DE CASOS CLÍNICOS (QUADROS CLÍNICOS): DESATIVADO / SEM CASOS. É PROIBIDO incluir simulações de casos clínicos ao longo das patologias; mantenha 100% do texto focado estritamente em conceitos teóricos, diretrizes, algoritmos e tabelas.\n\n';
-  } else if (lowerIll === 'maximum' || lowerIll === 'academic' || lowerIll === 'extreme' || lowerIll === 'alto') {
-    instructions += 'DIRETRIZ DE CASOS CLÍNICOS (QUADROS CLÍNICOS): OBRIGATÓRIO E APROFUNDADO (NÍVEL MÁXIMO/EXTREMO). Ao final de cada patologia descrita, inclua OBRIGATORIAMENTE uma seção dedicada intitulada "### 🏥 Caso Clínico & Resolução Comentada", contendo uma vinheta clínica completa com história do paciente, achados de exame físico, exames complementares, conduta rápida de prova e justificativa médica comentada.\n\n';
-  } else if (lowerIll === 'light' || lowerIll === 'leve') {
-    instructions += 'DIRETRIZ DE CASOS CLÍNICOS (QUADROS CLÍNICOS): LEVE / MÍNIMO. Inclua no máximo 1 caso clínico ilustrativo conciso ao longo do texto todo em formato de vinheta clínica curta.\n\n';
+  if (lowerIll === 'minimum' || lowerIll === 'off' || lowerIll === 'desativado' || lowerIll === 'none') {
+    instructions += 'DIRETRIZ DE CASOS CLÍNICOS (QUADROS CLÍNICOS): DESATIVADO / SEM CASOS. Mantenha 100% do texto focado estritamente em conceitos teóricos, diretrizes, algoritmos e tabelas.\n\n';
+  } else if (lowerIll === 'maximum' || lowerIll === 'academic' || lowerIll === 'extreme' || lowerIll === 'alto' || lowerIll === 'aprofundado') {
+    instructions += 'DIRETRIZ DE CASOS CLÍNICOS: APROFUNDADO (1 CASO POR CAPÍTULO). Não insira os casos no corpo do texto dos parágrafos da teoria; eles serão adicionados de forma estruturada ao final de cada capítulo na pós-geração.\n\n';
   } else {
-    instructions += 'DIRETRIZ DE CASOS CLÍNICOS (QUADROS CLÍNICOS): MODERADO (PADRÃO). Se houver casos clínicos, utilize formato de vinheta clínica ultra-curta (1 parágrafo de história + 1 parágrafo de resolução comentada, max 100-120 palavras por patologia) para priorizar o espaço da fundamentação teórica.\n\n';
+    instructions += 'DIRETRIZ DE CASOS CLÍNICOS: MODERADO (1 CASO POR CAPÍTULO). Não insira os casos no corpo do texto dos parágrafos da teoria; eles serão adicionados de forma estruturada ao final de cada capítulo na pós-geração.\n\n';
   }
   
   // DIRETRIZ EXPLÍCITA PARA CAIXAS DE ALERTA / QUADRADOS LARANJAS (alertBoxLevel):
@@ -2682,14 +2740,81 @@ export function cleanLeadingChapterTitle(text: string, chapterTitle: string): st
   return lines.join('\n').trim();
 }
 
+export async function generateChapterClinicalCases(
+  topicTitle: string,
+  area: string,
+  chapterTitle: string,
+  chapterIndex: number,
+  totalChapters: number,
+  illustrationLevel: string = 'moderate',
+  userId?: string
+): Promise<string> {
+  if (
+    illustrationLevel === 'minimum' ||
+    illustrationLevel === 'off' ||
+    illustrationLevel === 'desativado' ||
+    illustrationLevel === 'none'
+  ) {
+    return '';
+  }
+
+  const isDeep =
+    illustrationLevel === 'maximum' ||
+    illustrationLevel === 'academic' ||
+    illustrationLevel === 'extreme' ||
+    illustrationLevel === 'alto' ||
+    illustrationLevel === 'aprofundado';
+
+  const prompt = `Você é um PRECEPTOR DE INTERNATO E ELABORADOR DE QUESTÕES DE RESIDÊNCIA MÉDICA.
+Crie EXATAMENTE 1 Caso Clínico Prático Simulante com Questão de Prova referente ao seguinte capítulo:
+
+Tema Geral: "${topicTitle}" (${area})
+Capítulo ${chapterIndex + 1}/${totalChapters}: "${chapterTitle}"
+Nível de Aprofundamento Solicitado: ${isDeep ? 'APROFUNDADO (1 CASO POR CAPÍTULO, 10 CRÉDITOS)' : 'MODERADO (1 CASO POR CAPÍTULO, 3 CRÉDITOS)'}
+
+REGRAS RÍGIDAS DE ESTRUTURAÇÃO DO CASO CLÍNICO:
+Formate OBRIGATORIAMENTE em Markdown com a estrutura exata abaixo:
+
+### 🏥 Caso Clínico & Questão Simulada do Capítulo: ${chapterTitle}
+
+> [!CASE]
+> **Vinheta Clínica:** [Descreva o caso do paciente em 1-2 parágrafos: idade, sexo, queixa principal, história clínica, exame físico e exames complementares relevantes para o capítulo]
+> 
+> **Questão:** [Enunciado direto da pergunta de prova para tomada de conduta ou diagnóstico]
+> 
+> - **A)** [Alternativa A]
+> - **B)** [Alternativa B]
+> - **C)** [Alternativa C]
+> - **D)** [Alternativa D]
+> 
+> **Gabarito Oficial:** Alternativa [A, B, C ou D]
+> 
+> **Raciocínio Clínico & Justificativa:**
+> ${isDeep 
+    ? '[Desenvolva uma explicação APROFUNDADA e EXAUSTIVA da alternativa correta. Detalhe o raciocínio diagnóstico e terapêutico para chegar à resposta certa e explique por que cada uma das outras alternativas está incorreta ou representa uma armadilha clássica de prova.]' 
+    : '[Forneça uma justificativa objetiva, clara e bem fundamentada da conduta/diagnóstico correto.]'}
+
+Responda APENAS com a estrutura do caso clínico em Markdown puro sem rodeios ou introduções.`;
+
+  try {
+    const result = await callGemini('generateContent', prompt, "gemini-3.1-flash-lite");
+    return result || '';
+  } catch (err) {
+    console.warn(`[Gemini] Falha ao gerar caso clínico do capítulo ${chapterTitle}:`, err);
+    return '';
+  }
+}
+
 export function calculateExtraCredits(illustrationLevel: string = 'moderate', alertBoxLevel: string = 'moderate'): number {
   let extra = 0;
   
   const lowerIll = (illustrationLevel || 'moderate').toLowerCase();
-  if (lowerIll === 'minimum' || lowerIll === 'off' || lowerIll === 'desativado') {
-    extra -= 3;
-  } else if (lowerIll === 'maximum' || lowerIll === 'academic' || lowerIll === 'extreme' || lowerIll === 'alto') {
-    extra += 10;
+  if (lowerIll === 'minimum' || lowerIll === 'off' || lowerIll === 'desativado' || lowerIll === 'none') {
+    extra += 0; // Sem Casos Clínicos = 0 CR
+  } else if (lowerIll === 'moderate' || lowerIll === 'moderado') {
+    extra += 3; // Moderado: 1 Caso por Capítulo = +3 CR
+  } else if (lowerIll === 'maximum' || lowerIll === 'academic' || lowerIll === 'extreme' || lowerIll === 'alto' || lowerIll === 'aprofundado') {
+    extra += 10; // Aprofundado: 1 Caso Aprofundado por Capítulo = +10 CR
   }
 
   const lowerAlert = (alertBoxLevel || 'moderate').toLowerCase();

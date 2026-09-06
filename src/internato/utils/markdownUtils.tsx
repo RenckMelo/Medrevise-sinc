@@ -12,6 +12,7 @@ import {
   Sun, Moon, Terminal, X, LayoutGrid, RefreshCw
 } from 'lucide-react';
 import { StaticMedicalFigure } from '../components/StaticMedicalFigure';
+import { InteractiveClinicalCase } from '../components/InteractiveClinicalCase';
 
 export const getEnglishMedicalTerm = (ptText: string): string => {
   if (!ptText) return '';
@@ -5534,17 +5535,9 @@ export const markdownComponents: any = {
       );
     }
 
-    if (text.toLowerCase().includes('caso clínico') || text.toLowerCase().includes('caso clinico')) {
+    if (text.includes('[!CASE]') || text.toLowerCase().includes('caso clínico') || text.toLowerCase().includes('caso clinico')) {
       return (
-        <div className="my-5 p-4 sm:p-5 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-amber-500/5 border-l-4 border-amber-500 border-y border-r border-amber-200/80 rounded-r-2xl shadow-xs">
-          <div className="flex items-center gap-2 text-amber-900 text-[10px] font-extrabold uppercase tracking-wider mb-2">
-            <Activity className="w-4 h-4 text-amber-600 shrink-0" />
-            Caso Clínico Ilustrativo
-          </div>
-          <div className="text-stone-800 text-sm sm:text-base leading-relaxed font-medium">
-            {children}
-          </div>
-        </div>
+        <InteractiveClinicalCase rawText={text} />
       );
     }
 

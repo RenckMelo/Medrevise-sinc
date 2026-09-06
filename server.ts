@@ -167,10 +167,10 @@ async function callGroqApi(apiKey: string, action: string, promptText: string, p
   const modelsToTry = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
-    "llama-3.2-3b-preview",
-    "deepseek-r1-distill-llama-70b",
-    "mixtral-8x7b-32768",
-    "gemma2-9b-it"
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.6-27b",
+    "deepseek-r1-distill-llama-70b"
   ];
   let lastErr: any = null;
 

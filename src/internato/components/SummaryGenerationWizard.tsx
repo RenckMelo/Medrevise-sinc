@@ -515,7 +515,7 @@ export default function SummaryGenerationWizard({
 
             <div className="space-y-4 pt-2">
               <div className="space-y-2">
-                <label className="text-xs font-bold text-stone-800 uppercase tracking-wide">Casos Clínicos por Patologia</label>
+                <label className="text-xs font-bold text-stone-800 uppercase tracking-wide">Casos Clínicos por Capítulo</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['minimum', 'moderate', 'maximum'] as const).map((lvl) => (
                     <button
@@ -529,7 +529,7 @@ export default function SummaryGenerationWizard({
                           : "bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100"
                       )}
                     >
-                      {lvl === 'minimum' ? 'Sem Casos (-3cr)' : lvl === 'moderate' ? 'Moderado (+0cr)' : 'Detalhado (+10cr)'}
+                      {lvl === 'minimum' ? 'Sem Casos (0cr)' : lvl === 'moderate' ? '1 Caso/Cap. (+3cr)' : '1 Caso Aprof./Cap. (+10cr)'}
                     </button>
                   ))}
                 </div>
@@ -590,7 +590,7 @@ export default function SummaryGenerationWizard({
               <div className="flex justify-between border-b border-stone-200/60 pb-2">
                 <span className="text-stone-500">Casos Clínicos:</span>
                 <span className="font-bold text-stone-900 uppercase">
-                  {illustrationLevel === 'minimum' ? 'Sem Casos (-3cr)' : illustrationLevel === 'moderate' ? 'Médio (0cr)' : 'Detalhado (+10cr)'}
+                  {illustrationLevel === 'minimum' ? 'Sem Casos (0cr)' : illustrationLevel === 'moderate' ? '1 Caso por Capítulo (+3cr)' : '1 Caso Aprofundado por Capítulo (+10cr)'}
                 </span>
               </div>
               <div className="flex justify-between border-b border-stone-200/60 pb-2">

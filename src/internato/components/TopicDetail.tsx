@@ -5026,7 +5026,7 @@ th { background: #F8F7F4; font-weight: bold; }
                   Personalizador de Leitura & Preceptoria
                 </h4>
                 <p className="text-xs text-stone-500 mt-0.5 leading-relaxed">
-                  As configurações de preceptoria deste resumo gerado estão ativas: Casos Clínicos <strong>{illustrationLevel === 'minimum' ? 'Desativados' : illustrationLevel === 'moderate' ? '1 Caso/Patologia' : 'Detalhados'}</strong>, Dicas <strong>{alertBoxLevel === 'minimum' ? 'Mínimas' : alertBoxLevel === 'moderate' ? 'Médias' : 'Máximas'}</strong>.
+                  As configurações de preceptoria deste resumo gerado estão ativas: Casos Clínicos <strong>{illustrationLevel === 'minimum' ? 'Sem Casos' : illustrationLevel === 'moderate' ? '1 Caso/Capítulo' : '1 Caso Aprofundado/Capítulo'}</strong>, Dicas <strong>{alertBoxLevel === 'minimum' ? 'Mínimas' : alertBoxLevel === 'moderate' ? 'Médias' : 'Máximas'}</strong>.
                 </p>
               </div>
             </div>

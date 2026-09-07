@@ -992,7 +992,7 @@ export default function TopicDetail({ topic: initialTopic, userProgress, onBack,
 
     const headingRegex = /^(#{1,4})\s+(.+)$/gm;
     let match: RegExpExecArray | null;
-    const rawSections: { level: number; text: string; index: number }[] = [];
+    const rawSections: { level: number; text: string; index: number; headingEndIndex: number }[] = [];
 
     while ((match = headingRegex.exec(content)) !== null) {
       const rawText = match[2].trim().replace(/[*_~`#]/g, '');
@@ -1000,7 +1000,8 @@ export default function TopicDetail({ topic: initialTopic, userProgress, onBack,
         rawSections.push({
           level: match[1].length,
           text: rawText,
-          index: match.index
+          index: match.index,
+          headingEndIndex: match.index + match[0].length
         });
       }
     }
@@ -1009,17 +1010,31 @@ export default function TopicDetail({ topic: initialTopic, userProgress, onBack,
       return { sections: [], defaultSectionId: 'end', defaultHeadingText: 'Final do Texto' };
     }
 
-    const sections: { id: string; headingText: string; level: number; startIndex: number; endIndex: number }[] = [];
+    const sections: { id: string; headingText: string; level: number; startIndex: number; headingEndIndex: number; firstBlockEndIndex: number; endIndex: number }[] = [];
     for (let i = 0; i < rawSections.length; i++) {
       const curr = rawSections[i];
+      const nextAnyHeading = rawSections[i + 1];
       const nextSameOrHigher = rawSections.slice(i + 1).find(m => m.level <= curr.level);
+      
       const endIndex = nextSameOrHigher ? nextSameOrHigher.index : content.length;
+      const nextHeadingIndex = nextAnyHeading ? nextAnyHeading.index : content.length;
+
+      let firstBlockEndIndex = curr.headingEndIndex;
+      const sectionTextAfterHeading = content.substring(curr.headingEndIndex, nextHeadingIndex);
+      const doubleBreak = sectionTextAfterHeading.indexOf('\n\n');
+      if (doubleBreak !== -1) {
+        firstBlockEndIndex = curr.headingEndIndex + doubleBreak;
+      } else if (sectionTextAfterHeading.trim().length > 0) {
+        firstBlockEndIndex = nextHeadingIndex;
+      }
 
       sections.push({
         id: `sec-${i}`,
         headingText: curr.text,
         level: curr.level,
         startIndex: curr.index,
+        headingEndIndex: curr.headingEndIndex,
+        firstBlockEndIndex,
         endIndex
       });
     }
@@ -2186,15 +2201,43 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
         if (activeSecId === 'end') {
           insertIndex = contentStr.length;
           targetHeadingName = 'Final do Texto';
+        } else if (selectedInsertionSectionId === 'auto' && term && term.trim().length > 1) {
+          // If auto mode, insert directly after the paragraph containing the selected term
+          const cleanTerm = term.trim().toLowerCase();
+          let termIdx = contentStr.toLowerCase().indexOf(cleanTerm);
+          if (termIdx === -1) {
+            const words = cleanTerm.split(/\s+/).filter(w => w.length > 2);
+            if (words.length > 0) {
+              termIdx = contentStr.toLowerCase().indexOf(words[0]);
+            }
+          }
+
+          if (termIdx !== -1) {
+            const nextDoubleNL = contentStr.indexOf('\n\n', termIdx);
+            const nextSingleNL = contentStr.indexOf('\n', termIdx);
+            if (nextDoubleNL !== -1) {
+              insertIndex = nextDoubleNL;
+            } else if (nextSingleNL !== -1) {
+              insertIndex = nextSingleNL;
+            } else {
+              insertIndex = contentStr.length;
+            }
+          } else {
+            const foundSec = sections.find(s => s.id === defaultSectionId);
+            if (foundSec) {
+              insertIndex = foundSec.firstBlockEndIndex;
+              targetHeadingName = foundSec.headingText;
+            }
+          }
         } else {
           const foundSec = sections.find(s => s.id === activeSecId);
           if (foundSec) {
-            insertIndex = foundSec.endIndex;
+            insertIndex = foundSec.firstBlockEndIndex;
             targetHeadingName = foundSec.headingText;
           } else {
             const defSec = sections.find(s => s.id === defaultSectionId);
             if (defSec) {
-              insertIndex = defSec.endIndex;
+              insertIndex = defSec.firstBlockEndIndex;
               targetHeadingName = defSec.headingText;
             }
           }
@@ -6534,13 +6577,13 @@ th { background: #F8F7F4; font-weight: bold; }
           {/* SOPHISTICATED ILLUSTRATION & SCIENTIFIC BOOK SEARCH POPUP */}
           {showIllustrationSearchModal && (
             <div 
-              className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 z-[99999] select-auto text-stone-800 font-sans"
+              className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 z-[99999] select-auto text-stone-800 font-sans overscroll-contain overflow-y-auto"
             >
               <motion.div
                 initial={{ opacity: 0, scale: 0.96, y: 12 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 12 }}
-                className="bg-white border border-[#E2E0D9] shadow-2xl rounded-2xl md:rounded-3xl p-4 md:p-6 max-w-7xl w-full relative flex flex-col h-[92vh] md:h-[90vh] overflow-hidden"
+                className="bg-white border border-[#E2E0D9] shadow-2xl rounded-2xl md:rounded-3xl p-4 md:p-6 max-w-7xl w-full relative flex flex-col h-[92vh] max-h-[95vh] overflow-hidden my-auto"
               >
                 {/* Close Button */}
                 <button
@@ -6690,7 +6733,7 @@ th { background: #F8F7F4; font-weight: bold; }
                     </div>
 
                     {/* Split View for Step 1 */}
-                    <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-4 overflow-hidden">
+                    <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-4 overflow-y-auto md:overflow-hidden">
                       {searchModalLoading ? (
                         <div className="col-span-12 flex flex-col items-center justify-center py-16 space-y-4">
                           <div className="relative">
@@ -6709,7 +6752,7 @@ th { background: #F8F7F4; font-weight: bold; }
                       ) : (
                         <>
                           {/* Results List (5 cols) */}
-                          <div className="col-span-12 md:col-span-5 flex flex-col min-h-0 min-w-0 border-b md:border-b-0 md:border-r border-[#E2E0D9] pb-2 md:pb-0 md:pr-3">
+                          <div className="col-span-12 md:col-span-5 flex flex-col min-h-[220px] max-h-[38vh] md:max-h-none md:min-h-0 min-w-0 border-b md:border-b-0 md:border-r border-[#E2E0D9] pb-3 md:pb-0 md:pr-3">
                             <div className="flex items-center justify-between mb-2 shrink-0">
                               <span className="text-[9px] uppercase tracking-widest font-extrabold text-stone-400 font-mono">
                                 Resultados ({searchModalResults.length})
@@ -6721,7 +6764,7 @@ th { background: #F8F7F4; font-weight: bold; }
                               )}
                             </div>
                             
-                            <div className="flex-1 overflow-y-auto pr-1 space-y-2 min-h-0 scrollbar-thin">
+                            <div className="flex-1 overflow-y-auto pr-1 space-y-2 min-h-0 scrollbar-thin touch-pan-y overscroll-contain">
                               {searchModalResults.length === 0 ? (
                                 <div className="text-center py-12 px-4 text-stone-400 border border-dashed border-[#E2E0D9] rounded-2xl bg-stone-50/50 flex flex-col items-center gap-3">
                                   <ImageOff className="w-8 h-8 text-stone-300" />
@@ -6811,7 +6854,7 @@ th { background: #F8F7F4; font-weight: bold; }
                           </div>
 
                           {/* Selected Image Preview & Next Step Button (7 cols) */}
-                          <div className="col-span-12 md:col-span-7 flex flex-col min-h-0 min-w-0 overflow-y-auto pr-1 space-y-3.5 scrollbar-thin">
+                          <div className="col-span-12 md:col-span-7 flex flex-col min-h-0 min-w-0 overflow-y-auto pr-1 space-y-3.5 scrollbar-thin touch-pan-y overscroll-contain">
                             <span className="text-[9px] uppercase tracking-widest font-extrabold text-stone-400 font-mono block shrink-0">
                               Pré-visualização da Imagem
                             </span>
@@ -6965,7 +7008,7 @@ th { background: #F8F7F4; font-weight: bold; }
                           </div>
 
                           {/* MAIN SINGLE UNCONSTRAINED SCROLL VIEWPORT FOR LOCATION SELECTION & DOCUMENT SIMULATOR */}
-                          <div className="flex-1 overflow-y-auto pr-1.5 space-y-4 pb-2 scrollbar-thin">
+                          <div className="flex-1 overflow-y-auto pr-1.5 space-y-4 pb-2 scrollbar-thin touch-pan-y overscroll-contain min-h-0">
                             {/* SECTION LOCATION PICKER */}
                             <div className="bg-gradient-to-b from-stone-900 to-stone-950 text-stone-100 border border-stone-800 rounded-2xl p-4 md:p-5 space-y-3.5 shadow-xl relative overflow-hidden">
                               <div className="flex items-center justify-between gap-3 border-b border-stone-800 pb-3">

@@ -530,7 +530,7 @@ Escreva o capítulo "${chapterTitle}" com densidade técnica impecável, parágr
     }
 
     onProgress?.({ current: totalChapters + 1, total: totalChapters + 1, message: "Resumo Master 50cr concluído com sucesso!", partialContent: fullContent });
-    return removeDuplicateSumarios(fullContent);
+    return deduplicateTablesAndAlerts(removeDuplicateSumarios(fullContent));
   } catch (error) {
     console.error('Error generating master summary:', error);
     throw error;
@@ -1037,7 +1037,7 @@ export async function resumeFailedSummaryContent(
       }
 
       onProgress?.({ current: chapters.length + 1, total: chapters.length + 1, message: "Monografia restaurada com sucesso!" });
-      return updatedContent;
+      return deduplicateTablesAndAlerts(removeDuplicateSumarios(updatedContent));
     } 
     
     if (depth === 'master') {
@@ -2404,7 +2404,26 @@ export function deduplicateTablesAndAlerts(content: string): string {
   const lines = contentFixed.split('\n');
   const resultLines: string[] = [];
   
-  const seenAlertSignatures = new Map<string, { chapterTitle: string; alertTitle: string }>();
+  const stopWords = new Set([
+    'sobre', 'entre', 'quando', 'após', 'paciente', 'este', 'esta', 'para', 'como', 'pela', 'pelo',
+    'mais', 'menos', 'pode', 'deve', 'caso', 'tambem', 'também', 'todavia', 'embora', 'estudo',
+    'nota', 'dica', 'observacao', 'observação', 'clínica', 'clinica', 'prova', 'banca', 'atencao',
+    'atenção', 'importante', 'cuidado', 'alerta', 'highlight', 'pegadinha', 'resumo', 'medico', 'médico'
+  ]);
+
+  const getMedicalKeywords = (text: string): Set<string> => {
+    return new Set(
+      text
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 4 && !stopWords.has(w))
+    );
+  };
+  
+  const seenAlertSignatures = new Map<string, { chapterTitle: string; alertTitle: string; keywords: Set<string> }>();
   const seenTableSignatures = new Map<string, { chapterTitle: string; tableName: string }>();
 
   let currentChapterTitle = 'Capítulo Anterior';
@@ -2435,23 +2454,42 @@ export function deduplicateTablesAndAlerts(content: string): string {
       }
 
       // Normalize alert text
-      const alertText = alertLines
+      const alertRawText = alertLines
         .map(l => l.replace(/^>\s*/, '').trim())
-        .join(' ')
+        .join(' ');
+
+      const alertText = alertRawText
         .toLowerCase()
-        .replace(/[^\w\s\u00C0-\u00FF]/g, '')
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^\w\s]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
 
+      const currKeywords = getMedicalKeywords(alertRawText);
+
       if (alertText.length >= 15) {
         let matchedSigKey: string | null = null;
-        for (const [seenSigKey] of seenAlertSignatures.entries()) {
+        for (const [seenSigKey, info] of seenAlertSignatures.entries()) {
           if (seenSigKey === alertText) {
             matchedSigKey = seenSigKey;
             break;
           }
           if (alertText.length > 30 && seenSigKey.length > 30) {
             if (seenSigKey.includes(alertText) || alertText.includes(seenSigKey)) {
+              matchedSigKey = seenSigKey;
+              break;
+            }
+          }
+          // Medical keyword overlap check
+          if (currKeywords.size >= 3 && info.keywords.size >= 3) {
+            let sharedCount = 0;
+            for (const kw of currKeywords) {
+              if (info.keywords.has(kw)) sharedCount++;
+            }
+            const simCurr = sharedCount / currKeywords.size;
+            const simSeen = sharedCount / info.keywords.size;
+            if (simCurr >= 0.55 || simSeen >= 0.55 || (sharedCount >= 4 && (simCurr >= 0.4 || simSeen >= 0.4))) {
               matchedSigKey = seenSigKey;
               break;
             }
@@ -2472,7 +2510,7 @@ export function deduplicateTablesAndAlerts(content: string): string {
             const m = titleLine.match(/\*\*([^*]+)\*\*/);
             if (m && m[1]) alertTitle = m[1].trim();
           }
-          seenAlertSignatures.set(alertText, { chapterTitle: currentChapterTitle, alertTitle });
+          seenAlertSignatures.set(alertText, { chapterTitle: currentChapterTitle, alertTitle, keywords: currKeywords });
         }
       }
 

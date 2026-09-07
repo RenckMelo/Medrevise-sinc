@@ -163,39 +163,111 @@ export default function Dashboard({
     });
     const finalWeekCount = Math.max(weekAttempts.length, weekQuizQuestions, weekSessionQuestions);
 
-    // 3. Calculate total study time
-    let computedTimeSeconds = userProgress?.totalStudyTimeSeconds || 0;
-    
-    // Add time from dbStudySessions (convert minutes to seconds if not already accounted)
-    let sessionsTimeSeconds = 0;
+    // 3. Collect and sanitize all study sessions across sources
+    const rawSessionsList: any[] = [];
+
+    // Source A: dbStudySessions (Firestore subcollection users/{userId}/studySessions)
     dbStudySessions.forEach(s => {
-      if (s.durationSeconds) {
-        sessionsTimeSeconds += Number(s.durationSeconds);
-      } else if (s.studyTimeMinutes) {
-        sessionsTimeSeconds += Number(s.studyTimeMinutes) * 60;
+      let mins = Number(s.studyTimeMinutes || 0);
+      // Auto-heal inflated sessions from previous cronograma bug (matching MedRevise auto-heal)
+      if (mins >= 180 && (s.description?.includes('via Cronograma Inteligente') || (s.questionsCount === 0 && mins >= 240))) {
+        mins = 25;
       }
+      const durSecs = s.durationSeconds ? Number(s.durationSeconds) : (mins * 60);
+
+      rawSessionsList.push({
+        id: s.id,
+        subjectId: s.subjectId,
+        topicId: s.topicId,
+        startTime: s.date || s.startTime || s.createdAt || new Date().toISOString(),
+        durationSeconds: durSecs,
+        questionsCount: Number(s.questionsCount) || 0,
+        correctCount: Number(s.correctCount) || 0,
+        description: s.description,
+        type: 'db'
+      });
     });
 
-    let quizTimeSeconds = 0;
+    // Source B: userProgress.studySessions (Embedded local sessions)
+    (userProgress?.studySessions || []).forEach(s => {
+      let mins = Number(s.studyTimeMinutes || 0);
+      if (mins >= 180 && (s.description?.includes('via Cronograma Inteligente') || (s.questionsCount === 0 && mins >= 240))) {
+        mins = 25;
+      }
+      const durSecs = s.durationSeconds ? Number(s.durationSeconds) : (mins * 60);
+
+      rawSessionsList.push({
+        id: s.id,
+        subjectId: s.subjectId,
+        topicId: s.topicId,
+        startTime: s.startTime || s.date || s.createdAt || new Date().toISOString(),
+        durationSeconds: durSecs,
+        questionsCount: Number(s.questionsCount) || 0,
+        correctCount: Number(s.correctCount) || 0,
+        description: s.description,
+        type: 'local'
+      });
+    });
+
+    // Source C: mergedQuizAttempts (quizAttempts collection)
     mergedQuizAttempts.forEach(q => {
-      if (q.timeSpentSeconds) {
-        quizTimeSeconds += Number(q.timeSpentSeconds);
+      rawSessionsList.push({
+        id: q.id,
+        subjectId: q.subjectIds?.[0] || 'geral',
+        startTime: q.timestamp || new Date().toISOString(),
+        durationSeconds: Number(q.timeSpentSeconds) || 120,
+        questionsCount: Number(q.totalQuestions || q.questions?.length) || 0,
+        correctCount: Number(q.score) || 0,
+        description: q.type === 'simulado' 
+          ? `Simulado MedInternato (${q.score}/${q.totalQuestions || q.questions?.length})` 
+          : `Quiz MedInternato (${q.score}/${q.totalQuestions || q.questions?.length})`,
+        type: 'quiz'
+      });
+    });
+
+    // Intelligent Deduplication: prevent double-counting across db, local, and quiz sources
+    const uniqueSessionsMap = new Map<string, any>();
+    rawSessionsList.forEach(s => {
+      if (!s.id) return;
+      if (uniqueSessionsMap.has(s.id)) return;
+
+      // Check for fuzzy match (same questions count + same start time within 5 minutes window)
+      const sTime = new Date(s.startTime).getTime();
+      let isDuplicate = false;
+
+      for (const existing of uniqueSessionsMap.values()) {
+        const exTime = new Date(existing.startTime).getTime();
+        const timeDiffSec = Math.abs(sTime - exTime) / 1000;
+
+        if (timeDiffSec < 300) {
+          if (s.questionsCount > 0 && existing.questionsCount === s.questionsCount) {
+            isDuplicate = true;
+            break;
+          }
+          if (s.topicId && existing.topicId === s.topicId && Math.abs(s.durationSeconds - existing.durationSeconds) < 60) {
+            isDuplicate = true;
+            break;
+          }
+        }
+      }
+
+      if (!isDuplicate) {
+        uniqueSessionsMap.set(s.id, s);
       }
     });
 
-    const finalTotalTimeSeconds = Math.max(computedTimeSeconds, sessionsTimeSeconds + quizTimeSeconds, computedTimeSeconds + sessionsTimeSeconds);
+    const mergedSortedSessions = Array.from(uniqueSessionsMap.values()).sort(
+      (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+    );
+
+    // Calculate total study time from deduplicated sessions
+    const finalTotalTimeSeconds = mergedSortedSessions.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
 
     // 4. Time per subject
     const timeBySubject: Record<string, number> = {};
-    (userProgress?.studySessions || []).forEach(s => {
+    mergedSortedSessions.forEach(s => {
       if (s.subjectId) {
         timeBySubject[s.subjectId] = (timeBySubject[s.subjectId] || 0) + (s.durationSeconds || 0);
-      }
-    });
-    dbStudySessions.forEach(s => {
-      if (s.subjectId) {
-        const secs = s.durationSeconds ? Number(s.durationSeconds) : (Number(s.studyTimeMinutes || 0) * 60);
-        timeBySubject[s.subjectId] = (timeBySubject[s.subjectId] || 0) + secs;
       }
     });
 
@@ -211,55 +283,6 @@ export default function Dashboard({
         questionsBySubject[subId] = (questionsBySubject[subId] || 0) + 1;
       }
     });
-
-    // Merge sessions for display
-    const formattedSessions: any[] = [];
-    (userProgress?.studySessions || []).forEach(s => {
-      formattedSessions.push({
-        id: s.id,
-        subjectId: s.subjectId,
-        startTime: s.startTime,
-        durationSeconds: s.durationSeconds,
-        type: 'local'
-      });
-    });
-    dbStudySessions.forEach(s => {
-      formattedSessions.push({
-        id: s.id,
-        subjectId: s.subjectId,
-        topicId: s.topicId,
-        startTime: s.date || s.startTime || s.createdAt || new Date().toISOString(),
-        durationSeconds: s.durationSeconds ? Number(s.durationSeconds) : (Number(s.studyTimeMinutes || 15) * 60),
-        questionsCount: s.questionsCount,
-        correctCount: s.correctCount,
-        description: s.description,
-        type: 'db'
-      });
-    });
-    mergedQuizAttempts.forEach(q => {
-      formattedSessions.push({
-        id: q.id,
-        subjectId: q.subjectIds?.[0] || 'geral',
-        startTime: q.timestamp || new Date().toISOString(),
-        durationSeconds: q.timeSpentSeconds || 120,
-        questionsCount: q.totalQuestions || q.questions?.length,
-        correctCount: q.score,
-        description: q.type === 'simulado' ? `Simulado MedInternato (${q.score}/${q.totalQuestions || q.questions?.length})` : `Quiz MedInternato (${q.score}/${q.totalQuestions || q.questions?.length})`,
-        type: 'quiz'
-      });
-    });
-
-    // Deduplicate sessions by ID or approximate timestamp
-    const uniqueSessionsMap = new Map<string, any>();
-    formattedSessions.forEach(s => {
-      if (s.id && !uniqueSessionsMap.has(s.id)) {
-        uniqueSessionsMap.set(s.id, s);
-      }
-    });
-
-    const mergedSortedSessions = Array.from(uniqueSessionsMap.values()).sort(
-      (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-    );
 
     // Question attempts list
     const allAttemptsList = [...attempts];

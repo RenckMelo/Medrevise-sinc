@@ -436,10 +436,11 @@ export default function FlashcardModule({
     try {
       const q = query(collection(db, 'users', userId, 'flashcardSessions'), limit(60));
       const snap = await getDocs(q);
-      const list: FlashcardSessionHistory[] = snap.docs.map(docSnap => ({
+      let list: FlashcardSessionHistory[] = snap.docs.map(docSnap => ({
         id: docSnap.id,
         ...(docSnap.data() as any)
       }));
+      list = list.filter(s => s.mode !== 'cronograma' && s.mode !== 'popup' && s.mode !== 'planejamento' && s.mode !== 'manual_cronograma');
       list.sort((a, b) => new Date(b.dateISO).getTime() - new Date(a.dateISO).getTime());
       setSessionHistoryList(list);
     } catch (err) {

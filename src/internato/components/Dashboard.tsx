@@ -273,16 +273,22 @@ export default function Dashboard({
       }
     });
 
-    // 6. Flashcards stats
+    // 6. Flashcards stats (calculated ONLY from actual flashcard practice in the module)
+    const actualFlashcardSessions = dbFlashcardSessions.filter(
+      sess => sess.mode !== 'cronograma' && sess.mode !== 'popup' && sess.mode !== 'planejamento' && sess.mode !== 'manual_cronograma'
+    );
     const srsKeysCount = Object.keys(userProgress?.flashcardReviews || {}).length;
-    const sessionFlashcardSum = dbFlashcardSessions.reduce((acc, sess) => acc + (Number(sess.totalCards) || 0), 0);
-    const studySessionFlashcards = dbStudySessions.reduce((acc, sess) => acc + (Number(sess.flashcardCount || sess.flashcardsCount) || 0), 0);
-    const flashcardsTotalCount = Math.max(srsKeysCount, sessionFlashcardSum + studySessionFlashcards, srsKeysCount + studySessionFlashcards);
+    const actualSessionFlashcardSum = actualFlashcardSessions.reduce(
+      (acc, sess) => acc + (Number(sess.totalCards) || (Array.isArray(sess.scores) ? sess.scores.length : 0)), 
+      0
+    );
+    // Total flashcards is extracted strictly from actual practice (SRS reviews or actual sessions)
+    const flashcardsTotalCount = Math.max(srsKeysCount, actualSessionFlashcardSum);
 
     let flashcardsTodayCount = 0;
-    dbFlashcardSessions.forEach(sess => {
+    actualFlashcardSessions.forEach(sess => {
       if (isDateToday(sess.dateISO || sess.createdAt)) {
-        flashcardsTodayCount += (Number(sess.totalCards) || 0);
+        flashcardsTodayCount += (Number(sess.totalCards) || (Array.isArray(sess.scores) ? sess.scores.length : 0));
       }
     });
     const srsReviewsMap = userProgress?.flashcardReviews || {};

@@ -2700,22 +2700,6 @@ export default function Cronograma({
         }
       }
 
-      // Record flashcard session if user did flashcards
-      if (fCount > 0) {
-        await addDoc(collection(db, 'users', user.uid, 'flashcardSessions'), {
-          userId: user.uid,
-          mode: 'cronograma',
-          dateISO: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          totalCards: fCount,
-          masteredCount: Math.round(fCount * 0.8),
-          hardCount: Math.round(fCount * 0.2),
-          erredCount: 0,
-          topicTitles: [canonicalTitle],
-          scores: []
-        });
-      }
-
       showToast(`Tópico "${canonicalTitle}" ${topicCompletionModal.isEditingExisting ? 'atualizado' : 'concluído'}! (${mins} min | ${qCount} qst | ${fCount} flashcards)`, "success");
       setTopicCompletionModal(null);
     } catch (err: any) {

@@ -302,6 +302,45 @@ const VERIFIED_CLINICAL_MANUALS_ATLAS = [
     authors: 'Sociedade Brasileira de Reumatologia (SBR)',
     caption: 'Eritema fixo maculopapular sobre o dorso do nariz e eminências malares respeitando os sulcos nasolabiais, achado clássico de fotossensibilidade no LES.',
     score: 300
+  },
+  {
+    id: 'manual-cardio-02',
+    keywords: ['dissecção de aorta', 'dissecção aguda de aorta', 'dissecção da aorta', 'disseccao de aorta', 'dissecção', 'disseccao', 'aorta', 'angiotc', 'angio-tc', 'flap intimal', 'duplo lúmen', 'duplo lumen', 'stanford', 'debakey'],
+    title: 'Angiotomografia de Tórax: Dissecção Aguda de Aorta (Flap Intimal e Duplo Lúmen)',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/e/eb/Dissection_aorta_CT.png',
+    thumbUrl: 'https://upload.wikimedia.org/wikipedia/commons/e/eb/Dissection_aorta_CT.png',
+    sourceType: 'book',
+    sourceName: 'Manual de Emergências Cardiovasculares - Sociedade Brasileira de Cardiologia (SBC)',
+    specialty: 'Cardiologia e Radiologia Vascular',
+    authors: 'Sociedade Brasileira de Cardiologia (SBC) / CBR',
+    caption: 'Angiotomografia de tórax evidenciando descolamento da camada íntima (flap intimal) com separação do verdadeiro e falso lúmen na aorta torácica (Classificação de Stanford A/B).',
+    score: 350
+  },
+  {
+    id: 'manual-cardio-03',
+    keywords: ['aneurisma de aorta', 'aneurisma da aorta', 'aneurisma de aorta abdominal', 'aaa', 'aorta', 'tomografia'],
+    title: 'Tomografia Computadorizada: Aneurisma de Aorta Abdominal Infra-renal',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/6/64/Abdominal_aortic_aneurysm_CT.jpg',
+    thumbUrl: 'https://upload.wikimedia.org/wikipedia/commons/6/64/Abdominal_aortic_aneurysm_CT.jpg',
+    sourceType: 'book',
+    sourceName: 'Manual de Cirurgia Vascular - Sociedade Brasileira de Angiologia e Cirurgia Vascular (SBACV)',
+    specialty: 'Cirurgia Vascular e Radiologia',
+    authors: 'SBACV / Colégio Brasileiro de Radiologia (CBR)',
+    caption: 'Corte axial de TC de abdome mostrando dilatação aneurismática da aorta abdominal infra-renal com trombo mural intraluminal.',
+    score: 350
+  },
+  {
+    id: 'manual-cardio-04',
+    keywords: ['tamponamento cardiaco', 'tamponamento cardíaco', 'derrame pericardico', 'derrame pericárdico', 'ecocardiograma', 'pericardite', 'triade de beck'],
+    title: 'Ecocardiograma e Raios-X: Derrame Pericárdico Maciço e Tamponamento Cardíaco',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/e/e0/Pericardial_effusion_ECHO_01.jpg',
+    thumbUrl: 'https://upload.wikimedia.org/wikipedia/commons/e/e0/Pericardial_effusion_ECHO_01.jpg',
+    sourceType: 'book',
+    sourceName: 'Diretrizes de Emergências Cardiorrespiratórias - SBC / AHA',
+    specialty: 'Cardiologia e Medicina de Emergência',
+    authors: 'Sociedade Brasileira de Cardiologia (SBC)',
+    caption: 'Ecocardiograma de emergência mostrando lâmina de líquido pericárdico de grande volume ao redor das câmaras cardíacas provocando colapso de átrio/ventrículo direito.',
+    score: 350
   }
 ];
 
@@ -1163,6 +1202,9 @@ export default function TopicDetail({ topic: initialTopic, userProgress, onBack,
     if (!showIllustrationSearchModal || searchModalResults.length === 0) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+
       if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
         e.preventDefault();
         setSearchModalSelectedId(prev => {
@@ -1779,6 +1821,109 @@ export default function TopicDetail({ topic: initialTopic, userProgress, onBack,
     handleSearchScientificImages(defaultQuery);
   };
 
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 3500) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  };
+
+  const isGraphicOrChart = (text: string) => {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    const graphicTerms = [
+      'chart', 'graph', 'plot', 'diagram', 'flowchart', 'bar chart', 'pie chart', 
+      'box plot', 'kaplan-meier', 'roc curve', 'forest plot', 'histogram', 
+      'survival curve', 'scatter plot', 'tree diagram', 'infographic', 'grafico', 
+      'gráfico', 'fluxograma', 'curva', 'tabela', 'table', 'boxplot', 'statistics', 
+      'survival rate', 'odds ratio', 'meta-analysis', 'forest-plot', 'funnel plot',
+      'pie-chart', 'bar-chart', 'flow-chart', 'bar graph'
+    ];
+    return graphicTerms.some(term => lower.includes(term));
+  };
+
+  const getLocalMedicalEnglishTranslation = (clean: string): string => {
+    if (!clean) return '';
+    
+    // Check exact mapped term first
+    const mapped = getEnglishMedicalTerm(clean);
+    if (mapped && mapped.toLowerCase() !== clean.toLowerCase()) {
+      return mapped;
+    }
+
+    const cleanNorm = clean.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
+    let translated = cleanNorm
+      .replace(/\bcolo do utero\b/g, 'cervix')
+      .replace(/\bcolo uterino\b/g, 'cervix')
+      .replace(/\bcorrimento vaginal\b/g, 'vaginal discharge')
+      .replace(/\bcorrimento amarelado\b/g, 'yellowish discharge')
+      .replace(/\bcorrimento esverdeado\b/g, 'greenish discharge')
+      .replace(/\bcorrimento purulento\b/g, 'purulent discharge')
+      .replace(/\bcorrimento\b/g, 'discharge')
+      .replace(/\bvaginose bacteriana\b/g, 'bacterial vaginosis')
+      .replace(/\bvaginose\b/g, 'vaginosis')
+      .replace(/\bcandidiase vulvovaginal\b/g, 'vulvovaginal candidiasis')
+      .replace(/\bcandidiase\b/g, 'candidiasis')
+      .replace(/\btricomoniase\b/g, 'trichomoniasis')
+      .replace(/\bcervicite aguda\b/g, 'acute cervicitis')
+      .replace(/\bcervicite\b/g, 'cervicitis')
+      .replace(/\bsinal de murphy\b/g, 'murphy sign gallbladder')
+      .replace(/\bsinal de blumberg\b/g, 'blumberg sign appendicitis')
+      .replace(/\bsinal de mcburney\b/g, 'mcburney sign')
+      .replace(/\bsinal de giordano\b/g, 'giordano sign')
+      .replace(/\berisipela\b/g, 'erysipelas')
+      .replace(/\bpsoriase\b/g, 'psoriasis')
+      .replace(/\bhanseniase\b/g, 'leprosy')
+      .replace(/\bsifilis\b/g, 'syphilis')
+      .replace(/\bcancro duro\b/g, 'primary syphilis chancre')
+      .replace(/\bcancro mole\b/g, 'chancroid')
+      .replace(/\bherpes genital\b/g, 'genital herpes')
+      .replace(/\bapendicite aguda\b/g, 'acute appendicitis')
+      .replace(/\bapendicite\b/g, 'appendicitis')
+      .replace(/\bcolecistite aguda\b/g, 'acute cholecystitis')
+      .replace(/\bcolecistite\b/g, 'cholecystitis')
+      .replace(/\bpancreatite\b/g, 'pancreatitis')
+      .replace(/\bpneumonia\b/g, 'pneumonia')
+      .replace(/\bpneumotorax\b/g, 'pneumothorax')
+      .replace(/\bderrame pleural\b/g, 'pleural effusion')
+      .replace(/\binfarto agudo do miocardio\b/g, 'myocardial infarction')
+      .replace(/\binfarto\b/g, 'myocardial infarction')
+      .replace(/\bavc isquemico\b/g, 'ischemic stroke')
+      .replace(/\bavc\b/g, 'stroke')
+      .replace(/\bdisseccao aguda de aorta\b/g, 'acute aortic dissection')
+      .replace(/\bdisseccao de aorta\b/g, 'aortic dissection')
+      .replace(/\bdisseccao da aorta\b/g, 'aortic dissection')
+      .replace(/\bdisseccao\b/g, 'dissection')
+      .replace(/\baneurisma de aorta\b/g, 'aortic aneurysm')
+      .replace(/\baneurisma da aorta\b/g, 'aortic aneurysm')
+      .replace(/\btamponamento cardiaco\b/g, 'cardiac tamponade')
+      .replace(/\bderrame pericardico\b/g, 'pericardial effusion')
+      .replace(/\braio x\b/g, 'x-ray')
+      .replace(/\btomografia\b/g, 'ct scan')
+      .replace(/\bressonancia\b/g, 'mri')
+      .replace(/\bultrassom\b/g, 'ultrasound')
+      .replace(/\blesao\b/g, 'lesion')
+      .replace(/\blesoes\b/g, 'lesions')
+      .replace(/\bpele\b/g, 'skin')
+      .replace(/\bdor abdominal\b/g, 'abdominal pain')
+      .replace(/\bdor\b/g, 'pain')
+      .replace(/\bsecrecao\b/g, 'secretion')
+      .replace(/\bferida\b/g, 'ulcer')
+      .replace(/\bbolha\b/g, 'blister')
+      .replace(/ite\b/g, 'itis')
+      .replace(/ose\b/g, 'osis')
+      .replace(/ico\b/g, 'ic');
+
+    return translated;
+  };
+
   const handleSearchScientificImages = async (queryStr: string, useAi: boolean = false) => {
     if (!queryStr || queryStr.trim().length < 2) return;
     setSearchModalLoading(true);
@@ -1800,18 +1945,43 @@ export default function TopicDetail({ topic: initialTopic, userProgress, onBack,
       
       let queryTermsToSearch: string[] = [];
       let ptTerm = cleanQuery;
+
+      // 1. Instant 0ms local English translation
+      const instantLocalEn = getLocalMedicalEnglishTranslation(ptTerm);
+      if (instantLocalEn && instantLocalEn !== ptTerm.toLowerCase()) {
+        queryTermsToSearch.push(instantLocalEn);
+      }
+
+      // 2. Parallel MyMemory Free Translation API (up to 2.5s)
+      try {
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanQuery)}&langpair=pt|en`;
+        const res = await fetchWithTimeout(url, {}, 2500);
+        if (res.ok) {
+          const data = await res.json();
+          const transText = data?.responseData?.translatedText;
+          if (transText && typeof transText === 'string' && transText.length > 0 && !transText.toLowerCase().includes('mymemory')) {
+            const cleanTrans = transText.trim().toLowerCase();
+            if (!queryTermsToSearch.includes(cleanTrans)) {
+              queryTermsToSearch.unshift(cleanTrans);
+            }
+          }
+        }
+      } catch (err) {
+        // Silently continue if MyMemory fails or times out
+      }
       
       if (useAi) {
         try {
           const aiPrompt = `O usuário deseja encontrar imagens médicas ou achados clínicos REAIS para a consulta médica: "${cleanQuery}".
-Gere 6 a 8 termos de busca altamente específicos e COMPOSTOS em INGLÊS para repositórios acadêmicos internacionais (NLM, PubMed, Open-i, PLOS, Wikimedia Commons).
-DIRETRIZES CRÍTICAS PARA PRECISÃO DA PATOLOGIA:
-1. SEMPRE combine o nome da patologia/doença com o achado visual (ex: "trichomoniasis strawberry cervix", "vulvovaginal candidiasis discharge", "bacterial vaginosis clue cells", "acute cervicitis endocervix", "chlamydia cervicitis").
-2. NUNCA gere palavras isoladas ou ambíguas.
-Retorne APENAS os termos separados por vírgula.`;
+Gere 3 a 5 termos de busca em INGLÊS diretos e concisos (2 a 3 palavras cada) para repositórios acadêmicos médicos internacionais (NLM Open-i, PubMed Central, PLOS, Wikimedia Commons).
+DIRETRIZES OBRIGATÓRIAS:
+1. Crie expressões médicas acadêmicas consagradas em inglês (ex para Dissecção de Aorta: "aortic dissection", "aortic dissection CT", "acute aortic dissection", "aorta dissection").
+2. Mantenha cada termo curto (máximo 3 palavras por termo). NUNCA gere frases longas de 5+ palavras.
+3. Retorne APENAS os termos em inglês separados por vírgula.`;
           const aiResponse = await generateWithAI(aiPrompt, "gemini-3.1-flash-lite", 1);
           if (aiResponse) {
-            queryTermsToSearch = aiResponse.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+            const aiTerms = aiResponse.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+            queryTermsToSearch.unshift(...aiTerms);
           }
         } catch (err: any) {
           console.warn("AI failed to optimize search", err);
@@ -1819,35 +1989,38 @@ Retorne APENAS os termos separados por vírgula.`;
           await fetchQuota(); 
         }
       }
-      
+
       // Always include exact mapped English term and clean query
       const enTerm = getEnglishMedicalTerm(ptTerm);
       if (enTerm && enTerm !== ptTerm && !queryTermsToSearch.includes(enTerm)) {
         queryTermsToSearch.unshift(enTerm);
       }
       if (!queryTermsToSearch.includes(ptTerm)) {
-        queryTermsToSearch.unshift(ptTerm);
+        queryTermsToSearch.push(ptTerm);
       }
       
       // Add expanded medical terms
       const expanded = expandSearchTerms([ptTerm]);
       expanded.forEach(t => {
-        if (t && t.length > 3 && !queryTermsToSearch.includes(t) && queryTermsToSearch.length < 10) {
+        if (t && t.length > 3 && !queryTermsToSearch.includes(t) && queryTermsToSearch.length < 8) {
           queryTermsToSearch.push(t);
         }
       });
 
-      // 1. MATCH VERIFIED CLINICAL MANUALS ATLAS (GUARANTEED ACCURACY)
+      // 1. MATCH VERIFIED CLINICAL MANUALS ATLAS (GUARANTEED ACCURACY & INSTANT SPEED)
       const queryWords = lowerQuery.split(/[\s,/-]+/).filter(w => w.length > 2);
       const verifiedManualMatches: any[] = [];
 
-      VERIFIED_CLINICAL_MANUALS_ATLAS.forEach(manualItem => {
+      VERIFIED_CLINICAL_MANUALS_ATLAS.forEach((manualItem, mIdx) => {
         const matchesKeyword = manualItem.keywords.some(kw => {
           const lowerKw = kw.toLowerCase();
           return lowerQuery.includes(lowerKw) || queryWords.some(qw => lowerKw.includes(qw));
         });
         if (matchesKeyword) {
-          verifiedManualMatches.push({ ...manualItem });
+          verifiedManualMatches.push({ 
+            ...manualItem, 
+            id: `atlas-${manualItem.id || mIdx}-${mIdx}` 
+          });
         }
       });
 
@@ -1867,69 +2040,78 @@ Retorne APENAS os termos separados por vírgula.`;
       const isEndocrino = lowerPT.includes('endocrino') || lowerPT.includes('diabetes') || lowerPT.includes('tireoide') || lowerPT.includes('tireóide');
       const isNefro = lowerPT.includes('nefro') || lowerPT.includes('rim') || lowerPT.includes('renal') || lowerPT.includes('glomerulo');
 
-      // Fetcher for NLM Open-i (National Library of Medicine - Clinical Cases & Radiology)
+      // Fetcher for NLM Open-i (National Library of Medicine) with PARALLEL fetches and TIMEOUT
       const fetchOpenI = async () => {
         const openIResults: any[] = [];
         try {
           const termsToUse = queryTermsToSearch.slice(0, 3);
-          for (const qTerm of termsToUse) {
-            const url = `/api/proxy-scientific?source=openi&query=${encodeURIComponent(qTerm)}&limit=10`;
-            const res = await fetch(url);
-            if (!res.ok) continue;
-            const data = await res.json();
-            const list = data.list || [];
-            list.forEach((item: any, idx: number) => {
-              const imgUrl = item.imgLarge || item.imgThumb;
-              if (!imgUrl) return;
+          const promises = termsToUse.map(async (qTerm, qIdx) => {
+            try {
+              const url = `/api/proxy-scientific?source=openi&query=${encodeURIComponent(qTerm)}&limit=10`;
+              const res = await fetchWithTimeout(url, {}, 3500);
+              if (!res.ok) return [];
+              const data = await res.json();
+              const list = data.list || [];
+              const items: any[] = [];
+              list.forEach((item: any, idx: number) => {
+                const imgUrl = item.imgLarge || item.imgThumb;
+                if (!imgUrl) return;
 
-              let sourceName = "Open-i (National Library of Medicine / NIH)";
-              if (item.coll === 'medpix') sourceName = "MedPix (NLM Radiology & Clinical Cases)";
-              else if (item.coll === 'pmc') sourceName = "PubMed Central (Artigo Peer-Reviewed)";
+                let sourceName = "Open-i (National Library of Medicine / NIH)";
+                if (item.coll === 'medpix') sourceName = "MedPix (NLM Radiology & Clinical Cases)";
+                else if (item.coll === 'pmc') sourceName = "PubMed Central (Artigo Peer-Reviewed)";
 
-              let displayTitle = item.title || `Caso Clínico: ${qTerm}`;
-              if (displayTitle.length > 80) displayTitle = displayTitle.substring(0, 77) + '...';
+                let displayTitle = item.title || `Caso Clínico: ${qTerm}`;
+                if (displayTitle.length > 80) displayTitle = displayTitle.substring(0, 77) + '...';
 
-              const fullText = (displayTitle + " " + (item.abstract || '')).toLowerCase();
+                const fullText = (displayTitle + " " + (item.abstract || '')).toLowerCase();
 
-              // Strict Domain Relevance Filter
-              if (isGyneco) {
-                const gyneKeywords = ['vagina', 'cervix', 'cervicitis', 'vaginitis', 'vaginosis', 'discharge', 'candidiasis', 'trichomon', 'colposcopy', 'gynecolog', 'pap smear', 'vulva', 'leukorrhea', 'colpitis', 'endocervix', 'exocervix', 'uterus', 'pelvic'];
-                const hasGyneKeyword = gyneKeywords.some(k => fullText.includes(k));
-                const unrelatedKeywords = ['heart', 'lung', 'brain', 'skull', 'fracture', 'knee', 'liver', 'spleen', 'dental', 'teeth', 'eye', 'cornea'];
-                const hasUnrelated = unrelatedKeywords.some(k => fullText.includes(k));
-                if (!hasGyneKeyword || hasUnrelated) return;
-              } else if (isDerma) {
-                const dermaKeywords = ['skin', 'dermatol', 'lesion', 'rash', 'erythema', 'epiderm', 'cutan', 'pustule', 'papule', 'nevus', 'melanoma', 'eczema', 'psoriasis'];
-                if (!dermaKeywords.some(k => fullText.includes(k))) return;
-              }
+                // Skip graphics, charts, tables
+                if (isGraphicOrChart(fullText)) return;
 
-              openIResults.push({
-                id: `oi-${item.uid || item.pmcid || idx}-${idx}`,
-                title: displayTitle,
-                url: imgUrl,
-                thumbUrl: item.imgThumb || imgUrl,
-                sourceType: 'article',
-                sourceName,
-                specialty: "Relato de Caso & Atlas NLM/NIH",
-                authors: item.authors || "NLM Medical Board",
-                caption: item.abstract || `Achado clínico/figura de artigo médico referente a ${qTerm}.`,
-                score: 120
+                // Soft Domain Relevance Filter - Boost score if domain matches
+                let score = 120;
+                if (isGyneco) {
+                  const gyneKeywords = ['vagina', 'cervix', 'cervicitis', 'vaginitis', 'vaginosis', 'discharge', 'candidiasis', 'trichomon', 'colposcopy', 'gynecolog', 'pap smear', 'vulva', 'leukorrhea', 'colpitis', 'endocervix', 'exocervix', 'uterus', 'pelvic'];
+                  if (gyneKeywords.some(k => fullText.includes(k))) score += 40;
+                } else if (isDerma) {
+                  const dermaKeywords = ['skin', 'dermatol', 'lesion', 'rash', 'erythema', 'epiderm', 'cutan', 'pustule', 'papule', 'nevus', 'melanoma', 'eczema', 'psoriasis'];
+                  if (dermaKeywords.some(k => fullText.includes(k))) score += 40;
+                }
+
+                items.push({
+                  id: `oi-${item.uid || item.pmcid || idx}-${qIdx}-${idx}-${Math.random().toString(36).substring(2,6)}`,
+                  title: displayTitle,
+                  url: imgUrl,
+                  thumbUrl: item.imgThumb || imgUrl,
+                  sourceType: 'article',
+                  sourceName,
+                  specialty: "Relato de Caso & Atlas NLM/NIH",
+                  authors: item.authors || "NLM Medical Board",
+                  caption: item.abstract || `Achado clínico/figura de artigo médico referente a ${qTerm}.`,
+                  score
+                });
               });
-            });
-          }
+              return items;
+            } catch (err) {
+              return [];
+            }
+          });
+          const subArrays = await Promise.all(promises);
+          subArrays.forEach(arr => openIResults.push(...arr));
         } catch (err) {
           console.warn('Open-i fetch failed', err);
         }
         return openIResults;
       };
 
-      // Fetcher for PLOS Open Access Medical Journals
+      // Fetcher for PLOS Open Access Medical Journals with TIMEOUT
       const fetchPLOS = async () => {
         const plosResults: any[] = [];
         try {
           const qTerm = queryTermsToSearch[0] || ptTerm;
           const url = `/api/proxy-scientific?source=plos&query=${encodeURIComponent(qTerm)}&limit=10`;
-          const res = await fetch(url);
+          const res = await fetchWithTimeout(url, {}, 3500);
           if (!res.ok) return [];
           const data = await res.json();
           const docs = data.response?.docs || [];
@@ -1940,13 +2122,17 @@ Retorne APENAS os termos separados por vírgula.`;
               const title = item.title_display || `Figura Clínica - ${qTerm}`;
               const fullText = (title + " " + (item.abstract || '')).toLowerCase();
 
+              // Skip graphics, charts, tables
+              if (isGraphicOrChart(fullText)) return;
+
+              let plosScore = 110;
               if (isGyneco) {
                 const gyneKeywords = ['vagina', 'cervix', 'cervicitis', 'vaginitis', 'vaginosis', 'discharge', 'candidiasis', 'trichomon', 'colposcopy', 'gynecolog', 'vulva'];
-                if (!gyneKeywords.some(k => fullText.includes(k))) return;
+                if (gyneKeywords.some(k => fullText.includes(k))) plosScore += 40;
               }
 
               plosResults.push({
-                id: `plos-${doi.replace(/[^a-z0-9]/gi, '_')}-${idx}`,
+                id: `plos-${doi.replace(/[^a-z0-9]/gi, '_')}-${idx}-${Math.random().toString(36).substring(2,6)}`,
                 title: title.length > 80 ? title.substring(0, 77) + '...' : title,
                 url: figUrl,
                 thumbUrl: figUrl,
@@ -1955,7 +2141,7 @@ Retorne APENAS os termos separados por vírgula.`;
                 specialty: "Artigo Médico Peer-Reviewed",
                 authors: Array.isArray(item.author_display) ? item.author_display.join(', ') : (item.author_display || 'Pesquisadores Médicos'),
                 caption: `Ilustração clínica de estudo publicado em ${item.journal || 'PLOS Medicine'}.`,
-                score: 110
+                score: plosScore
               });
             }
           });
@@ -1965,110 +2151,113 @@ Retorne APENAS os termos separados por vírgula.`;
         return plosResults;
       };
 
-      // Specialized Wikimedia Commons Medical Search
+      // Specialized Wikimedia Commons Medical Search with TIMEOUT
       const fetchWikimedia = async () => {
         const wikimediaResults: any[] = [];
         try {
-          const promises = queryTermsToSearch.slice(0, 6).map(async (qTerm, qIdx) => {
-            const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(qTerm)}&gsrnamespace=6&prop=imageinfo|categories&cllimit=15&iiprop=url|extmetadata&iiurlwidth=500&gsrlimit=12&format=json&origin=*`;
-            const res = await fetch(url);
-            if (!res.ok) return [];
-            const data = await res.json();
-            const pages = data.query?.pages || {};
-            const candidates = Object.values(pages) as any[];
-            
-            return candidates.map((cand: any, idx: number) => {
-              const imgUrl = cand.imageinfo?.[0]?.url;
-              const thumbUrl = cand.imageinfo?.[0]?.thumburl || imgUrl;
-              if (!imgUrl || !/\.(jpg|jpeg|png|gif|svg|webp)/i.test(imgUrl)) return null;
-
-              const rawTitle = cand.title || '';
-              const cleanFileTitle = rawTitle.replace(/^file:/i, '').replace(/\.[a-z0-9]+$/i, '').replace(/[\s_-]+/g, ' ').trim();
-              const fullText = (cleanFileTitle + " " + (cand.imageinfo?.[0]?.extmetadata?.ImageDescription?.value || '') + " " + (cand.categories?.map((c: any) => c.title).join(' ') || '')).toLowerCase();
-
-              // Domain Relevance Filter
-              if (isGyneco) {
-                const gyneKeywords = ['vagina', 'cervix', 'cervicitis', 'vaginitis', 'vaginosis', 'discharge', 'candidiasis', 'trichomon', 'colposcopy', 'gynecolog', 'pap smear', 'vulva', 'leukorrhea', 'colpitis', 'endocervix', 'exocervix', 'uterus', 'pelvic'];
-                const hasGyneKeyword = gyneKeywords.some(k => fullText.includes(k));
-                const unrelatedKeywords = ['heart', 'lung', 'brain', 'skull', 'fracture', 'knee', 'liver', 'spleen', 'dental', 'teeth', 'eye', 'cornea'];
-                const hasUnrelated = unrelatedKeywords.some(k => fullText.includes(k));
-                if (!hasGyneKeyword || hasUnrelated) return null;
-              } else if (isDerma) {
-                const dermaKeywords = ['skin', 'dermatol', 'lesion', 'rash', 'erythema', 'epiderm', 'cutan', 'pustule', 'papule', 'nevus', 'melanoma', 'eczema', 'psoriasis'];
-                const hasDermaKeyword = dermaKeywords.some(k => fullText.includes(k));
-                if (!hasDermaKeyword || fullText.includes('radiograph')) return null;
-              }
-
-              const baseScore = scoreMedicalCandidate(cand, qTerm);
-              let bonus = 0;
-              const lowerQ = qTerm.toLowerCase();
-              if (fullText.includes(lowerQ)) bonus += 30;
+          const promises = queryTermsToSearch.slice(0, 4).map(async (qTerm, qIdx) => {
+            try {
+              const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(qTerm)}&gsrnamespace=6&prop=imageinfo|categories&cllimit=15&iiprop=url|extmetadata&iiurlwidth=500&gsrlimit=10&format=json&origin=*`;
+              const res = await fetchWithTimeout(url, {}, 3500);
+              if (!res.ok) return [];
+              const data = await res.json();
+              const pages = data.query?.pages || {};
+              const candidates = Object.values(pages) as any[];
               
-              const score = baseScore + bonus;
+              return candidates.map((cand: any, idx: number) => {
+                const imgUrl = cand.imageinfo?.[0]?.url;
+                const thumbUrl = cand.imageinfo?.[0]?.thumburl || imgUrl;
+                if (!imgUrl || !/\.(jpg|jpeg|png|gif|svg|webp)/i.test(imgUrl)) return null;
 
-              let sourceName = "Manual Acadêmico / Wikimedia Commons Atlas";
-              let specialty = "Atlas Clínico de Especialidade";
-              let authors = cand.imageinfo?.[0]?.extmetadata?.Artist?.value || "Colaborador Médico";
-              authors = authors.replace(/<[^>]+>/g, '').trim();
-              if (authors.length > 40) authors = authors.substring(0, 37) + '...';
+                const rawTitle = cand.title || '';
+                const cleanFileTitle = rawTitle.replace(/^file:/i, '').replace(/\.[a-z0-9]+$/i, '').replace(/[\s_-]+/g, ' ').trim();
+                const fullText = (cleanFileTitle + " " + (cand.imageinfo?.[0]?.extmetadata?.ImageDescription?.value || '') + " " + (cand.categories?.map((c: any) => c.title).join(' ') || '')).toLowerCase();
 
-              if (isGyneco) {
-                sourceName = "Manual de Ginecologia e Obstetrícia (FEBRASGO / PCDT MS)";
-                specialty = "Ginecologia e Obstetrícia";
-              } else if (isDerma) {
-                sourceName = "Atlas de Dermatologia Clínica (SBD / DermNet)";
-                specialty = "Dermatologia";
-              } else if (isRadio) {
-                sourceName = "Colégio Brasileiro de Radiologia (CBR / Radiopaedia)";
-                specialty = "Radiologia e Diagnóstico por Imagem";
-              } else if (isCardio) {
-                sourceName = "Diretrizes de Cardiologia (SBC / AHA)";
-                specialty = "Cardiologia";
-              } else if (isPneu) {
-                sourceName = "Manual de Pneumologia e Tisiologia (SBPT / GOLD)";
-                specialty = "Pneumologia";
-              } else if (isCirurgia) {
-                sourceName = "Manual de Urgências Cirúrgicas (CBC / SBAIT)";
-                specialty = "Cirurgia Geral";
-              } else if (isInfecto) {
-                sourceName = "Guia de Vigilância e Infectologia (SBI / Ministério da Saúde)";
-                specialty = "Infectologia";
-              } else if (isPediatria) {
-                sourceName = "Tratado de Pediatria (SBP)";
-                specialty = "Pediatria";
-              } else if (isGastro) {
-                sourceName = "Manual de Gastroenterologia e Hepatologia (FBG / SBH)";
-                specialty = "Gastroenterologia";
-              } else if (isNeuro) {
-                sourceName = "Manual de Neurologia Clínica (ABN)";
-                specialty = "Neurologia";
-              } else if (isReumato) {
-                sourceName = "Diretrizes da Sociedade Brasileira de Reumatologia (SBR)";
-                specialty = "Reumatologia";
-              } else if (isEndocrino) {
-                sourceName = "Manual de Endocrinologia e Metabologia (SBEM)";
-                specialty = "Endocrinologia";
-              } else if (isNefro) {
-                sourceName = "Manual de Nefrologia Clínica (SBN)";
-                specialty = "Nefrologia";
-              }
+                // Skip graphics, charts, tables
+                if (isGraphicOrChart(fullText)) return null;
 
-              let displayTitle = cleanFileTitle;
-              if (displayTitle.length > 75) displayTitle = displayTitle.substring(0, 72) + '...';
+                const baseScore = scoreMedicalCandidate(cand, qTerm);
+                let bonus = 0;
+                const lowerQ = qTerm.toLowerCase();
+                if (fullText.includes(lowerQ)) bonus += 30;
 
-              return {
-                id: `wm-${cand.pageid || idx}-${qIdx}-${idx}`,
-                title: displayTitle,
-                url: imgUrl,
-                thumbUrl: thumbUrl,
-                sourceType: 'book',
-                sourceName,
-                specialty,
-                authors,
-                caption: cand.imageinfo?.[0]?.extmetadata?.ImageDescription?.value?.replace(/<[^>]+>/g, '') || `Achado visual clínico referente a ${qTerm}.`,
-                score
-              };
-            }).filter(Boolean);
+                // Domain Relevance Boost
+                if (isGyneco) {
+                  const gyneKeywords = ['vagina', 'cervix', 'cervicitis', 'vaginitis', 'vaginosis', 'discharge', 'candidiasis', 'trichomon', 'colposcopy', 'gynecolog', 'pap smear', 'vulva', 'leukorrhea', 'colpitis', 'endocervix', 'exocervix', 'uterus', 'pelvic'];
+                  if (gyneKeywords.some(k => fullText.includes(k))) bonus += 30;
+                } else if (isDerma) {
+                  const dermaKeywords = ['skin', 'dermatol', 'lesion', 'rash', 'erythema', 'epiderm', 'cutan', 'pustule', 'papule', 'nevus', 'melanoma', 'eczema', 'psoriasis'];
+                  if (dermaKeywords.some(k => fullText.includes(k))) bonus += 30;
+                }
+                
+                const score = baseScore + bonus;
+
+                let sourceName = "Manual Acadêmico / Wikimedia Commons Atlas";
+                let specialty = "Atlas Clínico de Especialidade";
+                let authors = cand.imageinfo?.[0]?.extmetadata?.Artist?.value || "Colaborador Médico";
+                authors = authors.replace(/<[^>]+>/g, '').trim();
+                if (authors.length > 40) authors = authors.substring(0, 37) + '...';
+
+                if (isGyneco) {
+                  sourceName = "Manual de Ginecologia e Obstetrícia (FEBRASGO / PCDT MS)";
+                  specialty = "Ginecologia e Obstetrícia";
+                } else if (isDerma) {
+                  sourceName = "Atlas de Dermatologia Clínica (SBD / DermNet)";
+                  specialty = "Dermatologia";
+                } else if (isRadio) {
+                  sourceName = "Colégio Brasileiro de Radiologia (CBR / Radiopaedia)";
+                  specialty = "Radiologia e Diagnóstico por Imagem";
+                } else if (isCardio) {
+                  sourceName = "Diretrizes de Cardiologia (SBC / AHA)";
+                  specialty = "Cardiologia";
+                } else if (isPneu) {
+                  sourceName = "Manual de Pneumologia e Tisiologia (SBPT / GOLD)";
+                  specialty = "Pneumologia";
+                } else if (isCirurgia) {
+                  sourceName = "Manual de Urgências Cirúrgicas (CBC / SBAIT)";
+                  specialty = "Cirurgia Geral";
+                } else if (isInfecto) {
+                  sourceName = "Guia de Vigilância e Infectologia (SBI / Ministério da Saúde)";
+                  specialty = "Infectologia";
+                } else if (isPediatria) {
+                  sourceName = "Tratado de Pediatria (SBP)";
+                  specialty = "Pediatria";
+                } else if (isGastro) {
+                  sourceName = "Manual de Gastroenterologia e Hepatologia (FBG / SBH)";
+                  specialty = "Gastroenterologia";
+                } else if (isNeuro) {
+                  sourceName = "Manual de Neurologia Clínica (ABN)";
+                  specialty = "Neurologia";
+                } else if (isReumato) {
+                  sourceName = "Diretrizes da Sociedade Brasileira de Reumatologia (SBR)";
+                  specialty = "Reumatologia";
+                } else if (isEndocrino) {
+                  sourceName = "Manual de Endocrinologia e Metabologia (SBEM)";
+                  specialty = "Endocrinologia";
+                } else if (isNefro) {
+                  sourceName = "Manual de Nefrologia Clínica (SBN)";
+                  specialty = "Nefrologia";
+                }
+
+                let displayTitle = cleanFileTitle;
+                if (displayTitle.length > 75) displayTitle = displayTitle.substring(0, 72) + '...';
+
+                return {
+                  id: `wm-${cand.pageid || idx}-${qIdx}-${idx}-${Math.random().toString(36).substring(2,6)}`,
+                  title: displayTitle,
+                  url: imgUrl,
+                  thumbUrl: thumbUrl,
+                  sourceType: 'book',
+                  sourceName,
+                  specialty,
+                  authors,
+                  caption: cand.imageinfo?.[0]?.extmetadata?.ImageDescription?.value?.replace(/<[^>]+>/g, '') || `Achado visual clínico referente a ${qTerm}.`,
+                  score
+                };
+              }).filter(Boolean);
+            } catch (err) {
+              return [];
+            }
           });
           const resultsArr = await Promise.all(promises);
           resultsArr.forEach(arr => wikimediaResults.push(...arr));
@@ -2086,7 +2275,41 @@ Retorne APENAS os termos separados por vírgula.`;
 
       const allWebResults = [...openIRes, ...plosRes, ...wmRes];
 
-      // Combine: Verified Manual Atlas items FIRST (highest score 300), followed by filtered web items
+      // FALLBACK SOFT-QUERYING: If domain filters returned 0 results, perform a relaxed search on Wikimedia so the user never gets an empty screen
+      if (allWebResults.length === 0 && verifiedManualMatches.length === 0) {
+        try {
+          const fallbackTerm = instantLocalEn || enTerm || ptTerm;
+          const fallbackUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(fallbackTerm + ' medical')}&gsrnamespace=6&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=500&gsrlimit=10&format=json&origin=*`;
+          const fbRes = await fetchWithTimeout(fallbackUrl, {}, 3000);
+          if (fbRes.ok) {
+            const fbData = await fbRes.json();
+            const fbPages = Object.values(fbData.query?.pages || {}) as any[];
+            fbPages.forEach((cand, idx) => {
+              const imgUrl = cand.imageinfo?.[0]?.url;
+              if (!imgUrl || !/\.(jpg|jpeg|png|gif|svg|webp)/i.test(imgUrl)) return;
+              const rawTitle = cand.title || '';
+              const cleanTitle = rawTitle.replace(/^file:/i, '').replace(/\.[a-z0-9]+$/i, '').replace(/[\s_-]+/g, ' ').trim();
+              if (isGraphicOrChart(cleanTitle)) return;
+              allWebResults.push({
+                id: `fb-wm-${cand.pageid || idx}-${idx}-${Math.random().toString(36).substring(2,6)}`,
+                title: cleanTitle.length > 75 ? cleanTitle.substring(0, 72) + '...' : cleanTitle,
+                url: imgUrl,
+                thumbUrl: cand.imageinfo?.[0]?.thumburl || imgUrl,
+                sourceType: 'book',
+                sourceName: "Atlas Global de Imagens Médicas",
+                specialty: "Medicina Geral",
+                authors: "Colaborador Médico",
+                caption: `Figura ou ilustração médica referente a ${fallbackTerm}.`,
+                score: 80
+              });
+            });
+          }
+        } catch (e) {
+          console.warn("Fallback search error", e);
+        }
+      }
+
+      // Combine: Verified Manual Atlas items FIRST (highest score 300), followed by web items
       const combined = [...verifiedManualMatches, ...allWebResults];
 
       // Combine and remove duplicates by URL and ensure unique IDs
@@ -2104,10 +2327,10 @@ Retorne APENAS os termos separados por vírgula.`;
         })
         .sort((a: any, b: any) => b.score - a.score);
 
-      // AI VERIFICATION FILTER (If useAi is active, filter out false positives with Gemini)
-      if (useAi && results.length > 0) {
+      // AI VERIFICATION FILTER (If useAi is active and no direct manual match exists, verify false positives)
+      if (useAi && results.length > 0 && verifiedManualMatches.length === 0) {
         try {
-          const candidatesToVerify = results.slice(0, 15).map((r, i) => `${i}: "${r.title}" - ${r.caption || ''}`);
+          const candidatesToVerify = results.slice(0, 10).map((r, i) => `${i}: "${r.title}" - ${r.caption || ''}`);
           const filterPrompt = `Você é um validador médico rigoroso. A busca do usuário é pela condição clínica: "${cleanQuery}".
 Analise os seguintes candidatos de imagens médicas e retorne APENAS OS ÍNDICES NUMÉRICOS daqueles que REALMENTE correspondem a esta patologia/achado clínico.
 Candidatos:
@@ -2120,7 +2343,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
             const validIndices = aiFilterResponse.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n >= 0 && n < results.length);
             if (validIndices.length > 0) {
               const verifiedSet = new Set(validIndices);
-              results = results.filter((_, idx) => verifiedSet.has(idx) || idx < verifiedManualMatches.length);
+              results = results.filter((_, idx) => verifiedSet.has(idx));
             }
           }
         } catch (err) {
@@ -2128,9 +2351,15 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
         }
       }
 
-      setSearchModalResults(results);
-      if (results.length > 0) {
-        setSearchModalSelectedId(results[0].id);
+      // Guarantee unique IDs for all items to eliminate React key collisions
+      const finalResults = results.map((item, idx) => ({
+        ...item,
+        id: `med-img-${idx}-${item.id || 'res'}-${Math.random().toString(36).substring(2, 7)}`
+      }));
+
+      setSearchModalResults(finalResults);
+      if (finalResults.length > 0) {
+        setSearchModalSelectedId(finalResults[0].id);
       }
     } catch (err) {
       console.error('General search error:', err);
@@ -6780,7 +7009,7 @@ th { background: #F8F7F4; font-weight: bold; }
                                   const isSelected = item.id === searchModalSelectedId;
                                   return (
                                     <button
-                                      key={`sm-res-${item.id || item.url || mapIdx}-${mapIdx}`}
+                                      key={`sm-res-${item.id || mapIdx}`}
                                       onClick={() => setSearchModalSelectedId(item.id)}
                                       onDoubleClick={() => {
                                         setSearchModalSelectedId(item.id);
@@ -7055,12 +7284,12 @@ th { background: #F8F7F4; font-weight: bold; }
                                   </p>
                                 </button>
 
-                                {sections.map(sec => {
+                                {sections.map((sec, secIdx) => {
                                   const isSecSelected = selectedInsertionSectionId === sec.id;
                                   const levelLabel = sec.level === 1 ? 'Seção Principal' : sec.level === 2 ? 'Subtítulo' : 'Subtópico';
                                   return (
                                     <button
-                                      key={`chip-${sec.id}`}
+                                      key={`chip-sec-${secIdx}-${sec.id}`}
                                       type="button"
                                       onClick={() => setSelectedInsertionSectionId(sec.id)}
                                       className={`p-3 rounded-xl text-left transition-all border cursor-pointer flex flex-col justify-between space-y-1.5 ${
@@ -7644,7 +7873,7 @@ th { background: #F8F7F4; font-weight: bold; }
                             <div className="space-y-4">
                               {illustrations.map((ill, idx) => (
                                 <SidebarIllustrationCard
-                                  key={`sidebar-ill-${ill.id}-${idx}`}
+                                  key={`sidebar-ill-${idx}-${ill.id || 'ill'}`}
                                   ill={ill}
                                   onSearchReplacement={(id, phrase) => handleOpenIllustrationSearchModal(phrase, id)}
                                   onRemove={async () => {

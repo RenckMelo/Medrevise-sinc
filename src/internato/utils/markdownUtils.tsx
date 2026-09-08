@@ -106,6 +106,21 @@ export const getEnglishMedicalTerm = (ptText: string): string => {
     'avc isquemico': 'ischemic stroke',
     'avc hemorrágico': 'hemorrhagic stroke',
     'avc hemorragico': 'hemorrhagic stroke',
+    'dissecção aguda de aorta': 'acute aortic dissection',
+    'dissecção de aorta': 'aortic dissection',
+    'dissecção da aorta': 'aortic dissection',
+    'dissecção de aorta torácica': 'thoracic aortic dissection',
+    'dissecção de aorta abdominal': 'abdominal aortic dissection',
+    'disseccao aguda de aorta': 'acute aortic dissection',
+    'disseccao de aorta': 'aortic dissection',
+    'disseccao da aorta': 'aortic dissection',
+    'dissecção': 'aortic dissection',
+    'disseccao': 'aortic dissection',
+    'aorta': 'aorta',
+    'aneurisma de aorta': 'aortic aneurysm',
+    'aneurisma da aorta': 'aortic aneurysm',
+    'aneurisma de aorta abdominal': 'abdominal aortic aneurysm',
+    'aneurisma de aorta torácica': 'thoracic aortic aneurysm',
     'aneurisma': 'aneurysm',
     'hipertensão intracraniana': 'intracranial hypertension',
     'hipertensao intracraniana': 'intracranial hypertension',
@@ -202,17 +217,60 @@ export const getEnglishMedicalTerm = (ptText: string): string => {
     'clinico': 'clinical',
     'imagem': 'image',
     'imagens': 'images',
-    'sinal de murphy': 'murphy sign',
-    'sinal de blumberg': 'blumberg sign',
-    'sinal de giordano': 'giordano sign',
-    'sinal de cullen': 'cullen sign',
-    'sinal de grey turner': 'grey turner sign',
-    'sinal de mcburney': 'mcburney sign',
-    'sinal de rovsing': 'rovsing sign',
-    'sinal de homans': 'homans sign',
+    'sinal de murphy': 'murphy sign gallbladder cholecystitis',
+    'sinal de blumberg': 'blumberg sign appendicitis',
+    'sinal de giordano': 'giordano sign pyelonephritis',
+    'sinal de cullen': 'cullen sign pancreatitis',
+    'sinal de grey turner': 'grey turner sign pancreatitis',
+    'sinal de mcburney': 'mcburney sign appendicitis',
+    'sinal de rovsing': 'rovsing sign appendicitis',
+    'sinal de homans': 'homans sign deep vein thrombosis',
     'sinal de babinski': 'babinski sign',
-    'sinal de kernig': 'kernig sign',
-    'sinal de brudzinski': 'brudzinski sign',
+    'sinal de kernig': 'kernig sign meningitis',
+    'sinal de brudzinski': 'brudzinski sign meningitis',
+    'colelitíase': 'gallstones cholelithiasis',
+    'colelitiase': 'gallstones cholelithiasis',
+    'coledocolitíase': 'choledocholithiasis',
+    'coledocolitiase': 'choledocholithiasis',
+    'colangite': 'cholangitis',
+    'pneumotórax': 'pneumothorax',
+    'pneumotorax': 'pneumothorax',
+    'vidro fosco': 'ground glass opacity',
+    'opacidade em vidro fosco': 'ground glass opacity chest ct',
+    'atelectasia': 'atelectasis',
+    'consolidação': 'consolidation chest xray',
+    'consolidacao': 'consolidation chest xray',
+    'broncograma aéreo': 'air bronchogram',
+    'broncograma aereo': 'air bronchogram',
+    'erisipela': 'erysipelas',
+    'celulite infecciosa': 'cellulitis skin infection',
+    'psoríase': 'psoriasis skin lesion',
+    'psoriase': 'psoriasis skin lesion',
+    'hanseníase': 'leprosy hansen disease',
+    'hanseniase': 'leprosy hansen disease',
+    'leishmaniose': 'leishmaniasis skin lesion',
+    'melanoma': 'melanoma skin cancer',
+    'carcinoma basocelular': 'basal cell carcinoma skin',
+    'carcinoma espinocelular': 'squamous cell carcinoma skin',
+    'condiloma': 'condyloma acuminata hpv',
+    'condiloma acuminado': 'condyloma acuminata hpv',
+    'crista de galo': 'condyloma acuminata hpv',
+    'cancro duro': 'primary syphilis chancre',
+    'herpes genital': 'genital herpes vesicles',
+    'mononucleose': 'mononucleosis epstein barr',
+    'dengue': 'dengue fever rash',
+    'exantema': 'exanthem skin rash',
+    'otite': 'otitis media otoscopy',
+    'otite média': 'otitis media otoscopy',
+    'otite media': 'otitis media otoscopy',
+    'sinusite': 'sinusitis ct scan',
+    'faringite': 'pharyngitis tonsillitis',
+    'amigdalite': 'tonsillitis pharyngitis',
+    'glaucoma': 'glaucoma fundoscopy',
+    'catarata': 'cataract eye',
+    'fratura': 'fracture xray',
+    'luxação': 'dislocation xray',
+    'luxacao': 'dislocation xray',
   };
 
   if (directMaps[text]) {
@@ -249,6 +307,12 @@ export const getEnglishMedicalTerm = (ptText: string): string => {
   translated = translated.replace(/\binfecção\b|\binfeccao\b/g, 'infection');
   translated = translated.replace(/\bcaracterísticas\b|\bcaracteristicas\b/g, 'features');
   translated = translated.replace(/\bdemonstrando\b/g, 'showing');
+  translated = translated.replace(/\bdissecção\b|\bdisseccao\b/g, 'dissection');
+  translated = translated.replace(/\baorta\b/g, 'aorta');
+  translated = translated.replace(/\baórtica\b|\baortica\b|\baórtico\b|\baortico\b/g, 'aortic');
+  translated = translated.replace(/\baneurisma\b/g, 'aneurysm');
+  translated = translated.replace(/\btorácica\b|\btoracica\b/g, 'thoracic');
+  translated = translated.replace(/\babdominal\b/g, 'abdominal');
   translated = translated.replace(/\bcmv\b/g, 'cmv cytomegalovirus');
   
   translated = translated.replace(/ite\bgrava\b/g, 'itis acute');
@@ -3108,7 +3172,7 @@ const ClinicalTreeNodeRenderer = ({
 
           <div className={node.children.length > 1 ? "grid grid-cols-1 md:grid-cols-2 gap-3 w-full min-w-0" : "space-y-3 w-full min-w-0"}>
             {node.children.map((childNode, cIdx) => (
-              <div key={childNode.id} className="w-full min-w-0">
+              <div key={`tree-child-${cIdx}-${childNode.id || 'node'}`} className="w-full min-w-0">
                 <ClinicalTreeNodeRenderer node={childNode} isRootLevel={false} stepBadgeText={`Ramo #${cIdx + 1}`} />
               </div>
             ))}
@@ -4980,24 +5044,28 @@ const renderMonospaceLineTokens = (
     const renderTextSegment = (textSeg: string, segKey: string) => {
       if (medicalTermRegex.test(textSeg)) {
         const medParts = textSeg.split(medicalTermRegex);
-        return medParts.map((mPart, mIdx) => {
-          if (medicalTermRegex.test(mPart)) {
-            const isDrug = /Metoprolol|Diltiazem|Verapamil|Carvedilol|Digoxina/i.test(mPart);
-            const isProc = /Cardioversão|Anticoagulação|ETE/i.test(mPart);
-            const medColor = isDrug 
-              ? (theme === 'paper' ? 'text-purple-700 font-normal' : 'text-purple-300 font-normal')
-              : isProc
-              ? (theme === 'paper' ? 'text-amber-700 font-normal' : 'text-amber-300 font-normal')
-              : (theme === 'paper' ? 'text-indigo-800 font-normal' : 'text-cyan-300 font-normal');
+        return (
+          <React.Fragment key={`med-frag-${segKey}`}>
+            {medParts.map((mPart, mIdx) => {
+              if (medicalTermRegex.test(mPart)) {
+                const isDrug = /Metoprolol|Diltiazem|Verapamil|Carvedilol|Digoxina/i.test(mPart);
+                const isProc = /Cardioversão|Anticoagulação|ETE/i.test(mPart);
+                const medColor = isDrug 
+                  ? (theme === 'paper' ? 'text-purple-700 font-normal' : 'text-purple-300 font-normal')
+                  : isProc
+                  ? (theme === 'paper' ? 'text-amber-700 font-normal' : 'text-amber-300 font-normal')
+                  : (theme === 'paper' ? 'text-indigo-800 font-normal' : 'text-cyan-300 font-normal');
 
-            return (
-              <span key={`${segKey}-m-${mIdx}`} className={medColor}>
-                {mPart}
-              </span>
-            );
-          }
-          return <span key={`${segKey}-n-${mIdx}`} className={baseClass}>{mPart}</span>;
-        });
+                return (
+                  <span key={`${segKey}-m-${mIdx}`} className={medColor}>
+                    {mPart}
+                  </span>
+                );
+              }
+              return <span key={`${segKey}-n-${mIdx}`} className={baseClass}>{mPart}</span>;
+            })}
+          </React.Fragment>
+        );
       }
       return <span key={segKey} className={baseClass}>{textSeg}</span>;
     };

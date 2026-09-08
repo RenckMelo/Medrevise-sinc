@@ -752,7 +752,7 @@ export default function Dashboard() {
             Clique em <strong>Revisar</strong> para focar no assunto agora.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {insufficientTopics.map((topic) => {
+            {insufficientTopics.map((topic, idx) => {
               const accuracy = topic.accuracyAfterStudy !== undefined
                 ? (topic.accuracyAfterStudy * 100).toFixed(0) + '%'
                 : topic.accuracyInSimulados !== undefined
@@ -762,7 +762,7 @@ export default function Dashboard() {
               const reason = topic.insufficiencyReason || (topic.accuracyAfterStudy !== undefined ? 'Aproveitamento pós-estudo baixo' : 'Rendimento deficitário em simulado');
 
               return (
-                <div key={topic.id} className="bg-white border border-[#141414] p-3.5 flex flex-col justify-between hover:shadow-[3px_3px_0px_0px_rgba(220,38,38,1)] hover:border-rose-600 transition-all">
+                <div key={`insuff-${topic.id || idx}-${idx}`} className="bg-white border border-[#141414] p-3.5 flex flex-col justify-between hover:shadow-[3px_3px_0px_0px_rgba(220,38,38,1)] hover:border-rose-600 transition-all">
                   <div>
                     <span className="block font-mono text-[8px] uppercase font-bold text-rose-800 tracking-wider">
                       {topic.subjectName}
@@ -818,8 +818,8 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {(sessions || []).slice(0, 5).map((s) => (
-                  <tr key={s.id} className="border-b border-[#141414]/10 hover:bg-[#141414]/5 transition-colors">
+                {(sessions || []).slice(0, 5).map((s, idx) => (
+                  <tr key={`dash-sess-${s.id || idx}-${idx}`} className="border-b border-[#141414]/10 hover:bg-[#141414]/5 transition-colors">
                     <td className="p-4 font-mono text-[10px]">{s.date ? format(parseISO(s.date), 'dd/MM/yyyy HH:mm') : 'N/A'}</td>
                     <td className="p-4 font-mono text-[10px]">{s.questionsCount || 0}</td>
                     <td className="p-4 font-mono text-[10px]">{s.correctCount || 0}</td>
@@ -859,12 +859,12 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {(mockExams || []).slice(0, 5).map((exam) => {
+                {(mockExams || []).slice(0, 5).map((exam, idx) => {
                   const accuracy = exam.totalQuestions > 0 
                     ? ((exam.correctAnswers / exam.totalQuestions) * 100).toFixed(0) 
                     : 0;
                   return (
-                    <tr key={exam.id} className="border-b border-[#141414]/10 hover:bg-[#141414]/5 transition-colors">
+                    <tr key={`dash-exam-${exam.id || idx}-${idx}`} className="border-b border-[#141414]/10 hover:bg-[#141414]/5 transition-colors">
                       <td className="p-4 font-sans text-[10px] font-medium truncate max-w-[120px]" title={exam.title}>{exam.title}</td>
                       <td className="p-4 font-mono text-[10px]">{exam.date ? format(parseISO(exam.date), 'dd/MM/yyyy') : 'N/A'}</td>
                       <td className="p-4 font-mono text-[10px]">{exam.correctAnswers}/{exam.totalQuestions}</td>

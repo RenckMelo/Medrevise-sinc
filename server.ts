@@ -894,7 +894,11 @@ app.get("/api/proxy-scientific", async (req, res) => {
         const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
         if (!response.ok) return res.status(200).json({ list: [] });
         const text = await response.text();
-        const data = JSON.parse(text);
+        const trimmed = text.trim();
+        if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+          return res.status(200).json({ list: [] });
+        }
+        const data = JSON.parse(trimmed);
         if (data.list && Array.isArray(data.list)) {
           data.list = data.list.map((item: any) => {
             let imgLarge = item.imgLarge || item.imgThumb || '';
@@ -910,7 +914,6 @@ app.get("/api/proxy-scientific", async (req, res) => {
         }
         return res.json(data);
       } catch (e: any) {
-        console.warn("[Proxy-Open-i] Request or parse warning:", e.message);
         return res.status(200).json({ list: [] });
       }
     }

@@ -3659,8 +3659,8 @@ export default function QuestionModule({
                       <Badge className="bg-amber-500 text-white text-[8px] font-extrabold">Prioridade Alta</Badge>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                      {candidatePreferredBancas.map(banca => (
-                        <Badge key={banca} className="bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-[10px] px-2 py-0.5 gap-1 shadow-2xs">
+                      {candidatePreferredBancas.map((banca, idx) => (
+                        <Badge key={`pref-banca-badge-${banca}-${idx}`} className="bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-[10px] px-2 py-0.5 gap-1 shadow-2xs">
                           <Sparkles className="w-3 h-3 text-amber-600 fill-amber-600" />
                           {banca}
                         </Badge>
@@ -3733,7 +3733,7 @@ export default function QuestionModule({
 
                       return (
                         <div
-                          key={banca}
+                          key={`pref-banca-card-${banca}-${bIdx}`}
                           className="p-4 rounded-xl border border-amber-300 ring-2 ring-amber-400/20 bg-gradient-to-br from-amber-50/50 to-white flex flex-col justify-between gap-3 shadow-sm"
                         >
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-amber-100 pb-2.5 gap-2">
@@ -3774,7 +3774,7 @@ export default function QuestionModule({
 
                           {/* Grid de anos */}
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {years.map(year => {
+                            {years.map((year, yIdx) => {
                               const key = `${banca.toUpperCase()}_${year}`;
                               const currentVal = bancaYearSelection[key] || 0;
                               const localAvail = bancaYearCounts[key] || 0;
@@ -3785,7 +3785,7 @@ export default function QuestionModule({
 
                               return (
                                 <div
-                                  key={year}
+                                  key={`pref-year-${banca}-${year}-${yIdx}`}
                                   className={cn(
                                     "p-2 rounded-lg border text-xs flex flex-col justify-between gap-1.5 transition-all",
                                     currentVal > 0
@@ -3888,7 +3888,7 @@ export default function QuestionModule({
 
                       return (
                         <div
-                          key={banca}
+                          key={`std-banca-${banca}-${bIdx}`}
                           className="p-4 rounded-xl border border-stone-200 hover:border-purple-300 bg-white flex flex-col justify-between gap-3 shadow-sm transition-all"
                         >
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-stone-100 pb-2.5 gap-2">
@@ -3924,7 +3924,7 @@ export default function QuestionModule({
 
                           {/* Grid de anos */}
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {years.map(year => {
+                            {years.map((year, yIdx) => {
                               const key = `${banca.toUpperCase()}_${year}`;
                               const currentVal = bancaYearSelection[key] || 0;
                               const localAvail = bancaYearCounts[key] || 0;
@@ -3935,7 +3935,7 @@ export default function QuestionModule({
 
                               return (
                                 <div
-                                  key={year}
+                                  key={`std-year-${banca}-${year}-${yIdx}`}
                                   className={cn(
                                     "p-2 rounded-lg border text-xs flex flex-col justify-between gap-1.5 transition-all",
                                     currentVal > 0
@@ -4754,7 +4754,7 @@ export default function QuestionModule({
             <div className="space-y-6 pt-6 border-t border-[#E2E0D9]">
               <h3 className="text-[11px] uppercase tracking-widest font-black text-[#8E8A82]">Desempenho por Matéria</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[...new Set(questions.map(q => q.subjectId))].filter(Boolean).map(sid => {
+                {[...new Set(questions.map(q => q.subjectId))].filter(Boolean).map((sid, sIdx) => {
                   const subject = subjects.find(s => s.id === sid);
                   const subjectAnswered = currentQuizResults.filter(r => r.subjectId === sid);
                   const subjectTotal = subjectAnswered.length > 0 ? subjectAnswered.length : questions.filter(q => q.subjectId === sid).length;
@@ -4762,7 +4762,7 @@ export default function QuestionModule({
                   const percentage = subjectTotal > 0 ? Math.round((subjectScore / subjectTotal) * 100) : 0;
                   
                   return (
-                    <div key={sid} className="p-4 bg-[#F9F7F2] rounded-2xl flex justify-between items-center">
+                    <div key={`subj-perf-${sid || sIdx}-${sIdx}`} className="p-4 bg-[#F9F7F2] rounded-2xl flex justify-between items-center">
                       <div>
                         <div className="text-[10px] uppercase font-bold text-[#8E8A82] mb-1">{subject?.name || 'Geral'}</div>
                         <div className="text-sm font-bold">{subjectScore} / {subjectTotal} corretas</div>
@@ -5008,8 +5008,8 @@ export default function QuestionModule({
               <div className="flex flex-wrap gap-2 justify-start md:justify-end items-center">
                 <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Incidência Regional Estimada:</span>
                 {currentQuestion.regionalIncidenceStats ? (
-                  Object.entries(currentQuestion.regionalIncidenceStats).map(([banca, count]) => (
-                    <Badge key={banca} variant="outline" className="bg-white border-[#E2E0D9] text-[#1A1A1A] text-[9px] font-extrabold px-2 py-0.5 rounded-lg shadow-sm">
+                  Object.entries(currentQuestion.regionalIncidenceStats).map(([banca, count], idx) => (
+                    <Badge key={`reg-inc-${banca}-${idx}`} variant="outline" className="bg-white border-[#E2E0D9] text-[#1A1A1A] text-[9px] font-extrabold px-2 py-0.5 rounded-lg shadow-sm">
                       {banca}: <span className="text-primary font-black ml-1">+{count}x</span>
                     </Badge>
                   ))

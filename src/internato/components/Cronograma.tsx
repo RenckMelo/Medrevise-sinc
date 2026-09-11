@@ -555,6 +555,7 @@ export default function Cronograma({
   } | null>(null);
   const [completionMinutes, setCompletionMinutes] = useState<number>(45);
   const [completionQuestions, setCompletionQuestions] = useState<number>(10);
+  const [completionCorrectCount, setCompletionCorrectCount] = useState<number>(8);
   const [completionFlashcards, setCompletionFlashcards] = useState<number>(15);
   const [isSavingCompletion, setIsSavingCompletion] = useState<boolean>(false);
 
@@ -2619,12 +2620,14 @@ export default function Cronograma({
 
       const mins = Number(completionMinutes) || 30;
       const qCount = Number(completionQuestions) || 0;
+      const cCount = Math.min(qCount, Number(completionCorrectCount) || 0);
       const fCount = Number(completionFlashcards) || 0;
 
       targetTopic.isCompleted = true;
       targetTopic.completedAt = new Date().toISOString();
       (targetTopic as any).studyTimeMinutes = mins;
       (targetTopic as any).questionsCount = qCount;
+      (targetTopic as any).correctCount = cCount;
       (targetTopic as any).flashcardsCount = fCount;
       delete targetTopic.isExplicitlyUncompleted;
 
@@ -2675,7 +2678,7 @@ export default function Cronograma({
             subjectId: foundTopic.subjectId,
             date: new Date().toISOString(),
             questionsCount: qCount,
-            correctCount: Math.round(qCount * 0.8), // realistic standard estimate
+            correctCount: cCount,
             flashcardsCount: fCount,
             flashcardCount: fCount,
             studyTimeMinutes: mins,
@@ -2784,8 +2787,12 @@ export default function Cronograma({
         const totalDayMinutes = (schedule.hoursPerDay || 4) * 60;
         const realisticMinutes = Math.max(15, Math.min(60, Math.round(totalDayMinutes / Math.max(1, dayTopicsCount))));
 
+        const initQ = (targetTopic as any).questionsCount !== undefined ? (targetTopic as any).questionsCount : 10;
+        const initC = (targetTopic as any).correctCount !== undefined ? (targetTopic as any).correctCount : Math.round(initQ * 0.8);
+
         setCompletionMinutes((targetTopic as any).studyTimeMinutes || realisticMinutes);
-        setCompletionQuestions((targetTopic as any).questionsCount !== undefined ? (targetTopic as any).questionsCount : 10);
+        setCompletionQuestions(initQ);
+        setCompletionCorrectCount(initC);
         setCompletionFlashcards((targetTopic as any).flashcardsCount !== undefined ? (targetTopic as any).flashcardsCount : 15);
         setTopicCompletionModal({
           weekIdx,
@@ -2799,8 +2806,12 @@ export default function Cronograma({
       }
 
       // OPEN MODAL FOR EDITING EXISTING COMPLETED TOPIC
+      const editQ = (targetTopic as any).questionsCount !== undefined ? (targetTopic as any).questionsCount : 10;
+      const editC = (targetTopic as any).correctCount !== undefined ? (targetTopic as any).correctCount : Math.round(editQ * 0.8);
+
       setCompletionMinutes((targetTopic as any).studyTimeMinutes || 45);
-      setCompletionQuestions((targetTopic as any).questionsCount !== undefined ? (targetTopic as any).questionsCount : 10);
+      setCompletionQuestions(editQ);
+      setCompletionCorrectCount(editC);
       setCompletionFlashcards((targetTopic as any).flashcardsCount !== undefined ? (targetTopic as any).flashcardsCount : 15);
       setTopicCompletionModal({
         weekIdx,
@@ -10096,7 +10107,10 @@ export default function Cronograma({
                       <button
                         key={q}
                         type="button"
-                        onClick={() => setCompletionQuestions(q)}
+                        onClick={() => {
+                          setCompletionQuestions(q);
+                          setCompletionCorrectCount(prev => Math.min(q, prev));
+                        }}
                         className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
                           completionQuestions === q
                             ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
@@ -10106,6 +10120,84 @@ export default function Cronograma({
                         {q} qst
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* 2.1 QUESTÕES ACERTADAS (ACERTOS REAIS) */}
+                <div className="space-y-2.5 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Questões Acertadas (Acertos Reais)
+                    </label>
+                    <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full">
+                      {completionCorrectCount} / {completionQuestions} ({completionQuestions > 0 ? Math.round((completionCorrectCount / completionQuestions) * 100) : 0}%)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCompletionCorrectCount(Math.max(0, completionCorrectCount - 5))}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      -5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionCorrectCount(Math.max(0, completionCorrectCount - 1))}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      -1
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      max={completionQuestions}
+                      value={completionCorrectCount}
+                      onChange={(e) => setCompletionCorrectCount(Math.min(completionQuestions, Math.max(0, parseInt(e.target.value) || 0)))}
+                      className="w-full h-11 text-center font-mono font-bold text-base text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-emerald-500 shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCompletionCorrectCount(Math.min(completionQuestions, completionCorrectCount + 1))}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      +1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionCorrectCount(Math.min(completionQuestions, completionCorrectCount + 5))}
+                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
+                    >
+                      +5
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {[
+                      { pct: 100, label: '100% Acertos' },
+                      { pct: 80, label: '80%' },
+                      { pct: 70, label: '70%' },
+                      { pct: 50, label: '50%' },
+                      { pct: 0, label: '0%' }
+                    ].map((preset) => {
+                      const calculated = Math.round((completionQuestions * preset.pct) / 100);
+                      return (
+                        <button
+                          key={preset.pct}
+                          type="button"
+                          onClick={() => setCompletionCorrectCount(calculated)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                            completionCorrectCount === calculated
+                              ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                              : 'bg-white text-stone-700 border-[#E2E0D9] hover:bg-stone-100'
+                          }`}
+                        >
+                          {preset.label} ({calculated})
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

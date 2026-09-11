@@ -341,6 +341,84 @@ const VERIFIED_CLINICAL_MANUALS_ATLAS = [
     authors: 'Sociedade Brasileira de Cardiologia (SBC)',
     caption: 'Ecocardiograma de emergência mostrando lâmina de líquido pericárdico de grande volume ao redor das câmaras cardíacas provocando colapso de átrio/ventrículo direito.',
     score: 350
+  },
+  {
+    id: 'manual-ped-01',
+    keywords: ['marasmo', 'kwashiorkor', 'desnutricao', 'desnutrição', 'caderneta da criança', 'pediatria', 'criança', 'nutrição infantil'],
+    title: 'Manual de Nutrologia Infantil: Desnutrição Calórico-Proteica Grave (Marasmo vs. Kwashiorkor)',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/2/23/Kwashiorkor_and_marasmus.jpg',
+    thumbUrl: 'https://upload.wikimedia.org/wikipedia/commons/2/23/Kwashiorkor_and_marasmus.jpg',
+    sourceType: 'book',
+    sourceName: 'Tratado de Pediatria - Sociedade Brasileira de Pediatria (SBP) / Ministério da Saúde',
+    specialty: 'Pediatria e Nutrologia Infantil',
+    authors: 'Sociedade Brasileira de Pediatria (SBP)',
+    caption: 'Comparação clínica entre emaciamento grave por deficiência calórica total (Marasmo) e edema de membros/fácie de lua cheia por deficiência proteica relativa (Kwashiorkor).',
+    score: 350
+  },
+  {
+    id: 'manual-nefro-01',
+    keywords: ['glomerulonefrite', 'gnda', 'síndrome nefrótica', 'sindrome nefrotica', 'biópsia renal', 'biopsia renal', 'nefrologia', 'hematúria', 'proteinúria'],
+    title: 'Atlas de Histopatologia Renal: Glomerulonefrite Proliferativa Difusa Aguda (GNDA)',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/8/87/Post-streptococcal_glomerulonephritis_-_high_mag.jpg',
+    thumbUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/87/Post-streptococcal_glomerulonephritis_-_high_mag.jpg',
+    sourceType: 'book',
+    sourceName: 'Diretrizes de Nefrologia Clínica - Sociedade Brasileira de Nefrologia (SBN)',
+    specialty: 'Nefrologia e Patologia Renal',
+    authors: 'Sociedade Brasileira de Nefrologia (SBN)',
+    caption: 'Microscopia óptica de biópsia renal com proliferação endocapilar marcada e deposição de imunocomplexos em formato de "jorro de corante" (humps) pós-estreptocócica.',
+    score: 350
+  },
+  {
+    id: 'manual-endo-01',
+    keywords: ['pé diabético', 'pe diabetico', 'neuropatia diabética', 'úlcera diabética', 'endocrinologia', 'diabetes', 'metabologia'],
+    title: 'Manual de Prevenção e Manejo do Pé Diabético (SBEM / SBD / CFM)',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/2/22/Diabetic_foot_ulcer.jpg',
+    thumbUrl: 'https://upload.wikimedia.org/wikipedia/commons/2/22/Diabetic_foot_ulcer.jpg',
+    sourceType: 'book',
+    sourceName: 'Diretrizes do Diabetes Mellitus - Sociedade Brasileira de Endocrinologia e Metabologia (SBEM) / CFM',
+    specialty: 'Endocrinologia e Metabologia',
+    authors: 'Sociedade Brasileira de Endocrinologia e Metabologia (SBEM) / Sociedade Brasileira de Diabetes',
+    caption: 'Ulceração neuropática de pressão em região plantar de hálux com perda da sensibilidade protetora ao monofilamento de 10g.',
+    score: 350
+  },
+  {
+    id: 'manual-ortho-01',
+    keywords: ['fratura de colles', 'fratura do rádio', 'raio x pulso', 'ortopedia', 'traumatologia', 'dorso de garfo'],
+    title: 'Radiografia de Pulso: Fratura de Colles em Rádio Distal com Deformidade em "Dorso de Garfo"',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/b/b2/Colles_fracture_AP_and_lateral.jpg',
+    thumbUrl: 'https://upload.wikimedia.org/wikipedia/commons/b/b2/Colles_fracture_AP_and_lateral.jpg',
+    sourceType: 'book',
+    sourceName: 'Manual de Traumatologia e Ortopedia - Sociedade Brasileira de Ortopedia e Traumatologia (SBOT)',
+    specialty: 'Ortopedia e Traumatologia',
+    authors: 'Sociedade Brasileira de Ortopedia e Traumatologia (SBOT)',
+    caption: 'Radiografia AP e Perfil demonstrando fratura extra-articular da metáfise distal do rádio com desvio dorsal do fragmento distal.',
+    score: 350
+  },
+  {
+    id: 'manual-oftalmo-01',
+    keywords: ['retinopatia diabética', 'fundo de olho', 'mapeamento de retina', 'oftalmologia', 'cbo', 'neovasos'],
+    title: 'Mapeamento de Retina: Retinopatia Diabética Proliferativa com Exsudatos duros e Neovasos',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/8/87/Diabetic_retinopathy.jpg',
+    thumbUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/87/Diabetic_retinopathy.jpg',
+    sourceType: 'book',
+    sourceName: 'Manual de Oftalmologia Clínica - Conselho Brasileiro de Oftalmologia (CBO)',
+    specialty: 'Oftalmologia',
+    authors: 'Conselho Brasileiro de Oftalmologia (CBO)',
+    caption: 'Retinografia demonstrando microaneurismas, hemorragias em chama de vela, exsudatos duros amarelados e neovascularização discoidal em paciente diabético.',
+    score: 350
+  },
+  {
+    id: 'manual-orl-01',
+    keywords: ['otite média', 'otite media', 'otoscopia', 'membrana timpânica', 'otorrinolaringologia', 'aborl'],
+    title: 'Otoscopia Clínica: Otite Média Aguda (OMA) com Abulamento da Membrana Timpânica',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/8/8d/Acute_otitis_media.jpg',
+    thumbUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/8d/Acute_otitis_media.jpg',
+    sourceType: 'book',
+    sourceName: 'Guia Prático de Otorrinolaringologia - ABORL-CCF',
+    specialty: 'Otorrinolaringologia',
+    authors: 'Associação Brasileira de Otorrinolaringologia e Cirurgia Cérvico-Facial (ABORL-CCF)',
+    caption: 'Imagem otoscópica evidenciando hiperemia intensa, opacificação e abulamento de membrana timpânica por exsudato purulento na orelha média.',
+    score: 350
   }
 ];
 
@@ -7105,7 +7183,7 @@ th { background: #F8F7F4; font-weight: bold; }
                               return (
                                 <>
                                   {/* High-Res Image Display */}
-                                  <div className="bg-stone-950 rounded-2xl overflow-hidden border border-stone-800 flex items-center justify-center p-3 relative group min-h-[200px] max-h-[340px] shadow-lg shrink-0">
+                                  <div className="bg-[#1A1A1A] rounded-2xl overflow-hidden border border-stone-800 flex flex-col items-center justify-center p-3 relative group min-h-[220px] max-h-[340px] shadow-lg shrink-0">
                                     <img
                                       src={getProxyImageUrl(selectedItem.url)}
                                       alt={selectedItem.title}
@@ -7117,10 +7195,20 @@ th { background: #F8F7F4; font-weight: bold; }
                                           target.src = selectedItem.url;
                                         } else {
                                           target.style.display = 'none';
+                                          const fallback = target.parentElement?.querySelector('.manual-fallback-box');
+                                          if (fallback) (fallback as HTMLElement).style.display = 'flex';
                                         }
                                       }}
                                     />
-                                    <div className="absolute bottom-2.5 right-2.5 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[9px] text-amber-300 font-mono uppercase tracking-widest border border-amber-500/30">
+                                    <div className="manual-fallback-box hidden flex-col items-center justify-center text-center p-6 space-y-2.5 z-0">
+                                      <BookOpen className="w-8 h-8 text-amber-400 opacity-80" />
+                                      <p className="text-xs font-bold text-stone-200 leading-snug">Ilustração do Manual Médico</p>
+                                      <p className="text-[10px] text-stone-400 max-w-xs">{selectedItem.title}</p>
+                                      <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded font-mono font-bold">
+                                        {selectedItem.sourceName}
+                                      </span>
+                                    </div>
+                                    <div className="absolute bottom-2.5 right-2.5 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[9px] text-amber-300 font-mono uppercase tracking-widest border border-amber-500/30 z-20">
                                       {selectedItem.sourceType === 'book' ? "Manual Bibliográfico" : "Acervo Científico"}
                                     </div>
                                   </div>

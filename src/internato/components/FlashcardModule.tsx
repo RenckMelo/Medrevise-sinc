@@ -256,6 +256,7 @@ export default function FlashcardModule({
   const [sessionRatings, setSessionRatings] = useState<Record<string, ReviewRating>>({});
   const [sessionCompleted, setSessionCompleted] = useState(false);
   const [currentSessionScores, setCurrentSessionScores] = useState<FlashcardSessionScore[]>([]);
+  const [onlyUndoneCards, setOnlyUndoneCards] = useState(false);
 
   // Deep Dives State ("Cards Aprofundados")
   const [deepDives, setDeepDives] = useState<FlashcardDeepDive[]>([]);
@@ -500,7 +501,6 @@ export default function FlashcardModule({
     const existingInMemory = deepDives.find(d => d.cardId === card.id);
     if (existingInMemory) {
       setSelectedDeepDive(existingInMemory);
-      setActiveTab('deepdives');
       return;
     }
 
@@ -522,7 +522,6 @@ export default function FlashcardModule({
           };
           setDeepDives(prev => [existing, ...prev.filter(x => x.id !== existing.id)]);
           setSelectedDeepDive(existing);
-          setActiveTab('deepdives');
           return;
         }
       }
@@ -558,7 +557,6 @@ export default function FlashcardModule({
 
       setDeepDives(prev => [createdObj, ...prev]);
       setSelectedDeepDive(createdObj);
-      setActiveTab('deepdives');
     } catch (err: any) {
       alert(`Erro ao aprofundar card com IA: ${err.message || 'Tente novamente.'}`);
     } finally {
@@ -1149,7 +1147,13 @@ export default function FlashcardModule({
     }, 150);
   };
 
-  const currentCard = flashcards[currentIndex];
+  const activeDeckCards = useMemo(() => {
+    if (!onlyUndoneCards) return flashcards;
+    const filtered = flashcards.filter(c => !sessionRatings[c.id]);
+    return filtered.length > 0 ? filtered : flashcards;
+  }, [flashcards, onlyUndoneCards, sessionRatings]);
+
+  const currentCard = activeDeckCards[currentIndex] || flashcards[currentIndex];
 
   // Derived current card SRS values preview
   const currentCardSRS = useMemo(() => {
@@ -2599,22 +2603,62 @@ export default function FlashcardModule({
       {/* FLASHCARD STUDY CANVAS */}
       {!isSelecting && activeTab !== 'create' && activeTab !== 'deepdives' && activeTab !== 'history' && !sessionCompleted && flashcards.length > 0 && currentCard && (
         <div className="space-y-8">
-          {/* PROGRESS BAR & INDEX */}
-          <div className="flex items-center justify-between text-xs font-bold text-[#8E8A82] uppercase tracking-widest px-2">
-            <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-primary" />
-              <span>
-                Card {currentIndex + 1} de {flashcards.length}
+          {/* PROGRESS BAR & DECK CONTROLS */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-[#E2E0D9] shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <Layers className="w-4 h-4 text-primary shrink-0" />
+              <span className="text-xs font-mono font-bold text-[#1A1A1A]">
+                Card {currentIndex + 1} de {activeDeckCards.length}
               </span>
+              {onlyUndoneCards && (
+                <Badge className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-extrabold uppercase tracking-wider">
+                  Filtro: Não Feitos
+                </Badge>
+              )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="w-32 h-2 bg-[#E2E0D9] rounded-full overflow-hidden">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="w-24 sm:w-32 h-2 bg-[#E2E0D9] rounded-full overflow-hidden mr-1">
                 <div
                   className="h-full bg-primary transition-all duration-300"
-                  style={{ width: `${((currentIndex + 1) / flashcards.length) * 100}%` }}
+                  style={{ width: `${((currentIndex + 1) / activeDeckCards.length) * 100}%` }}
                 />
               </div>
+
+              {/* FILTER ONLY UNDONE CARDS */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const nextState = !onlyUndoneCards;
+                  setOnlyUndoneCards(nextState);
+                  setCurrentIndex(0);
+                  setIsFlipped(false);
+                }}
+                className={`h-9 text-xs font-bold gap-1.5 rounded-xl border transition-all cursor-pointer ${
+                  onlyUndoneCards
+                    ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                    : 'bg-stone-50 border-[#E2E0D9] text-stone-700 hover:bg-stone-100'
+                }`}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                {onlyUndoneCards ? 'Apenas Pendentes' : 'Fazer Somente Não Feitos'}
+              </Button>
+
+              {/* FINISH DECK SESSION EARLY */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (confirm('Deseja encerrar este deck agora e ver seu resultado?')) {
+                    setSessionCompleted(true);
+                  }
+                }}
+                className="h-9 text-xs font-bold gap-1.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-rose-600" />
+                Terminar Deck Aqui
+              </Button>
             </div>
           </div>
 

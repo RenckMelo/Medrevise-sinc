@@ -1061,7 +1061,7 @@ app.get("/api/proxy-image", async (req, res) => {
     console.log(`[Proxy] Server-side fetching image: ${imageUrl}`);
     
     const headers: Record<string, string> = {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 MedicalAtlasBot/1.0",
+      "User-Agent": "MedInternatoApp/1.0 (https://medinternato.app; contact@medinternato.app) MedicalAtlasBot/1.0",
       "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
     };
 

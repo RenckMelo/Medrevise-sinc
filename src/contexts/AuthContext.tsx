@@ -113,7 +113,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   const preAuthData = preAuthSnap.data();
                   const earnsLifetime = !!preAuthData?.isLifetimePremium;
                   const planType = preAuthData?.planType || (earnsLifetime ? 'lifetime' : 'monthly');
-                  const premiumPlan = preAuthData?.premiumPlan || (planType === 'combo_ouro' ? 'combo_ouro' : planType === 'med_internato_premium' || planType === 'internato' ? 'med_internato_premium' : 'med_revise_pro');
+                  const premiumPlan = preAuthData?.premiumPlan || (planType === 'combo_ouro' || planType === 'trial_1week_combo' ? 'combo_ouro' : planType === 'med_internato_premium' || planType === 'trial_1week_internato' || planType === 'internato' ? 'med_internato_premium' : 'med_revise_pro');
+                  const isTrial = planType?.startsWith('trial_1week') || !!preAuthData?.premiumUntil;
+                  const defaultTrialUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+                  const premiumUntil = preAuthData?.premiumUntil || (isTrial ? defaultTrialUntil : null);
                   
                   await updateDoc(userRef, { 
                     isPremium: true,
@@ -121,13 +124,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     planType: planType,
                     premiumPlan: premiumPlan,
                     premiumSince: earnsLifetime ? null : serverTimestamp(),
-                    premiumProvider: earnsLifetime ? 'Admin (Vitalício)' : `Admin (${planType})`,
+                    premiumUntil: premiumUntil,
+                    premiumProvider: earnsLifetime ? 'Admin (Vitalício)' : isTrial ? 'Admin (Teste 1 Semana)' : `Admin (${planType})`,
                     role: data.role || 'user'
                   });
                   return;
                 }
               } catch (e) {
                 console.error("Error auto-matching pre-authorized email:", e);
+              }
+            } else if (data.isPremium && !data.isLifetimePremium && data.premiumUntil && !isSpecialAdmin) {
+              const expiryTime = new Date(data.premiumUntil).getTime();
+              if (!isNaN(expiryTime) && expiryTime < Date.now()) {
+                console.log("User trial/premium period expired. Reverting to free...");
+                try {
+                  await updateDoc(userRef, {
+                    isPremium: false,
+                    planType: null,
+                    premiumPlan: null,
+                    premiumProvider: null,
+                    premiumUntil: null
+                  });
+                  return;
+                } catch (e) {
+                  console.error("Error expiring user premium:", e);
+                }
               }
             }
 

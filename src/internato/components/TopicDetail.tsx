@@ -6221,7 +6221,7 @@ th { background: #F8F7F4; font-weight: bold; }
                       className="w-full border-[#E2E0D9] text-[10px] uppercase tracking-widest font-bold h-11 gap-2 cursor-pointer"
                     >
                       {isGeneratingQuestions ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      {questionCount > 0 ? 'Gerar +10 Questões (3cr)' : 'Gerar 10 Questões (3cr)'}
+                      {questionCount > 0 ? 'Buscar +10 Questões (3cr)' : 'Buscar 10 Questões (3cr)'}
                     </Button>
                   </div>
                 </Card>

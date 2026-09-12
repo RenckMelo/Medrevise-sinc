@@ -31,7 +31,10 @@ export type PlanType =
   | 'med_internato_premium' 
   | 'med_internato_lifetime'
   | 'combo_ouro'
-  | 'combo_ouro_lifetime';
+  | 'combo_ouro_lifetime'
+  | 'trial_1week_pro'
+  | 'trial_1week_internato'
+  | 'trial_1week_combo';
 
 const PLAN_LABELS: Record<string, string> = {
   monthly: 'MedRevise PRO Mensal',
@@ -44,14 +47,24 @@ const PLAN_LABELS: Record<string, string> = {
   combo_ouro: 'Combo Ouro (PRO + Internato)',
   combo_ouro_lifetime: 'Combo Ouro Vitalício (PRO + Internato)',
   internato: 'Med Internato Premium',
+  trial_1week_pro: '⚡ Teste 1 Sem (MedRevise PRO)',
+  trial_1week_internato: '⚡ Teste 1 Sem (Med Internato)',
+  trial_1week_combo: '⚡ Teste 1 Sem (Combo Ouro VIP)',
 };
 
 const checkIsLifetime = (type: PlanType) => {
   return type === 'lifetime' || type === 'med_internato_lifetime' || type === 'combo_ouro_lifetime';
 };
 
+const checkIsTrial = (type: PlanType) => {
+  return type === 'trial_1week_pro' || type === 'trial_1week_internato' || type === 'trial_1week_combo';
+};
+
 const getProviderName = (type: PlanType) => {
   switch (type) {
+    case 'trial_1week_pro': return 'Admin (Teste 1 Semana - PRO)';
+    case 'trial_1week_internato': return 'Admin (Teste 1 Semana - Internato)';
+    case 'trial_1week_combo': return 'Admin (Teste 1 Semana - Combo Ouro)';
     case 'lifetime': return 'Admin (PRO Vitalício)';
     case 'med_internato_lifetime': return 'Admin (Med Internato Vitalício)';
     case 'combo_ouro_lifetime': return 'Admin (Combo Ouro Vitalício)';
@@ -65,8 +78,8 @@ const getProviderName = (type: PlanType) => {
 };
 
 const getPremiumPlan = (type: PlanType) => {
-  if (type === 'combo_ouro' || type === 'combo_ouro_lifetime') return 'combo_ouro';
-  if (type === 'med_internato_premium' || type === 'med_internato_lifetime' || (type as string) === 'internato') return 'med_internato_premium';
+  if (type === 'combo_ouro' || type === 'combo_ouro_lifetime' || type === 'trial_1week_combo') return 'combo_ouro';
+  if (type === 'med_internato_premium' || type === 'med_internato_lifetime' || type === 'trial_1week_internato' || (type as string) === 'internato') return 'med_internato_premium';
   return 'med_revise_pro';
 };
 
@@ -79,6 +92,9 @@ interface RegisteredUser {
   isPremium?: boolean;
   isLifetimePremium?: boolean;
   planType?: PlanType;
+  premiumUntil?: string;
+  premiumPlan?: string;
+  premiumProvider?: string;
 }
 
 interface PreAuthorizedEmail {
@@ -86,6 +102,8 @@ interface PreAuthorizedEmail {
   createdAt: string;
   isLifetimePremium?: boolean;
   planType?: PlanType;
+  premiumPlan?: string;
+  premiumUntil?: string;
 }
 
 export default function AdminPanel() {
@@ -150,7 +168,9 @@ export default function AdminPanel() {
     try {
       const userRef = doc(db, 'users', targetUser.uid);
       const isLifetime = checkIsLifetime(newPlan);
+      const isTrial = checkIsTrial(newPlan);
       const pPlan = getPremiumPlan(newPlan);
+      const oneWeekLater = isTrial ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
       
       const updateData: any = {
         isPremium: true,
@@ -159,10 +179,16 @@ export default function AdminPanel() {
         premiumPlan: pPlan,
         premiumProvider: getProviderName(newPlan)
       };
+
       if (isLifetime) {
         updateData.premiumSince = null;
-      } else if (!targetUser.isPremium) {
+        updateData.premiumUntil = null;
+      } else if (isTrial) {
         updateData.premiumSince = new Date().toISOString();
+        updateData.premiumUntil = oneWeekLater;
+      } else {
+        updateData.premiumSince = targetUser.isPremium ? (targetUser.createdAt || new Date().toISOString()) : new Date().toISOString();
+        updateData.premiumUntil = null;
       }
 
       await updateDoc(userRef, updateData);
@@ -172,15 +198,22 @@ export default function AdminPanel() {
           ...u,
           isPremium: true,
           isLifetimePremium: isLifetime,
-          planType: newPlan
+          planType: newPlan,
+          premiumPlan: pPlan,
+          premiumUntil: oneWeekLater || undefined
         } : u
       ));
-      alert(`Plano do usuário ${targetUser.email || targetUser.uid} alterado para: ${PLAN_LABELS[newPlan] || newPlan}`);
+      alert(`Plano do usuário ${targetUser.email || targetUser.uid} alterado para: ${PLAN_LABELS[newPlan] || newPlan}${isTrial ? ' (Concedido 7 dias de teste)' : ''}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${targetUser.uid}`);
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // Quick helper to grant 1 week trial to any user for any model/combo
+  const grantOneWeekTrial = async (targetUser: RegisteredUser, trialType: PlanType = 'trial_1week_combo') => {
+    await changeUserPlan(targetUser, trialType);
   };
 
   // Toggle registered user premium status
@@ -195,17 +228,21 @@ export default function AdminPanel() {
       
       if (newStatus) {
         const isLifetime = checkIsLifetime(type);
+        const isTrial = checkIsTrial(type);
         const pPlan = getPremiumPlan(type);
+        const oneWeekLater = isTrial ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
         updateData.isLifetimePremium = isLifetime;
         updateData.planType = type;
         updateData.premiumPlan = pPlan;
         updateData.premiumSince = isLifetime ? null : new Date().toISOString();
+        updateData.premiumUntil = oneWeekLater;
         updateData.premiumProvider = getProviderName(type);
       } else {
         updateData.isLifetimePremium = false;
         updateData.planType = null;
         updateData.premiumPlan = null;
         updateData.premiumSince = null;
+        updateData.premiumUntil = null;
         updateData.premiumProvider = null;
       }
       
@@ -217,7 +254,9 @@ export default function AdminPanel() {
           ...u, 
           isPremium: newStatus,
           isLifetimePremium: newStatus ? checkIsLifetime(type) : false,
-          planType: newStatus ? type : undefined
+          planType: newStatus ? type : undefined,
+          premiumPlan: newStatus ? getPremiumPlan(type) : undefined,
+          premiumUntil: newStatus && checkIsTrial(type) ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : undefined
         } : u
       ));
     } catch (err) {
@@ -250,7 +289,9 @@ export default function AdminPanel() {
     setActionLoading('preauth-add');
     try {
       const isLifetime = checkIsLifetime(preAuthType);
+      const isTrial = checkIsTrial(preAuthType);
       const pPlan = getPremiumPlan(preAuthType);
+      const oneWeekLater = isTrial ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
       
       // Check if this user is already registered. If yes, update their profile too!
       const existingUser = users.find(u => u.email?.toLowerCase() === emailToAuthorize);
@@ -261,6 +302,7 @@ export default function AdminPanel() {
           planType: preAuthType,
           premiumPlan: pPlan,
           premiumSince: isLifetime ? null : new Date().toISOString(),
+          premiumUntil: oneWeekLater,
           premiumProvider: getProviderName(preAuthType)
         });
         setUsers(prev => prev.map(u => 
@@ -268,7 +310,9 @@ export default function AdminPanel() {
             ...u, 
             isPremium: true,
             isLifetimePremium: isLifetime,
-            planType: preAuthType
+            planType: preAuthType,
+            premiumPlan: pPlan,
+            premiumUntil: oneWeekLater || undefined
           } : u
         ));
       }
@@ -278,7 +322,8 @@ export default function AdminPanel() {
         createdAt: new Date().toISOString(),
         isLifetimePremium: isLifetime,
         planType: preAuthType,
-        premiumPlan: pPlan
+        premiumPlan: pPlan,
+        premiumUntil: oneWeekLater
       });
 
       setNewPreAuthEmail('');
@@ -448,15 +493,22 @@ export default function AdminPanel() {
                       onChange={(e) => setPreAuthType(e.target.value as PlanType)}
                       className="w-full h-11 px-3 border border-[#E2E0D9] rounded-xl bg-white focus:outline-none focus:border-primary text-xs font-mono"
                     >
-                      <option value="monthly">MedRevise PRO - Mensal (30 dias)</option>
-                      <option value="quarterly">MedRevise PRO - Trimestral (90 dias)</option>
-                      <option value="semiannual">MedRevise PRO - Semestral (180 dias)</option>
-                      <option value="annual">MedRevise PRO - Anual (365 dias)</option>
-                      <option value="lifetime">MedRevise PRO - Vitalício (Permanente)</option>
-                      <option value="med_internato_premium">Med Internato Premium - Periódico (R$ 39,90)</option>
-                      <option value="med_internato_lifetime">Med Internato Premium - Vitalício (Permanente)</option>
-                      <option value="combo_ouro">Combo Ouro VIP - Periódico (R$ 49,90)</option>
-                      <option value="combo_ouro_lifetime">Combo Ouro VIP - Vitalício (Permanente)</option>
+                      <optgroup label="⚡ Conceder Teste Gratuito (1 Semana / 7 Dias)">
+                        <option value="trial_1week_combo">⚡ 1 Semana Teste - Combo Ouro VIP (Tudo Liberado)</option>
+                        <option value="trial_1week_internato">⚡ 1 Semana Teste - Med Internato Premium</option>
+                        <option value="trial_1week_pro">⚡ 1 Semana Teste - MedRevise PRO</option>
+                      </optgroup>
+                      <optgroup label="Assinaturas Regulares">
+                        <option value="monthly">MedRevise PRO - Mensal (30 dias)</option>
+                        <option value="quarterly">MedRevise PRO - Trimestral (90 dias)</option>
+                        <option value="semiannual">MedRevise PRO - Semestral (180 dias)</option>
+                        <option value="annual">MedRevise PRO - Anual (365 dias)</option>
+                        <option value="lifetime">MedRevise PRO - Vitalício (Permanente)</option>
+                        <option value="med_internato_premium">Med Internato Premium - Periódico (R$ 39,90)</option>
+                        <option value="med_internato_lifetime">Med Internato Premium - Vitalício (Permanente)</option>
+                        <option value="combo_ouro">Combo Ouro VIP - Periódico (R$ 49,90)</option>
+                        <option value="combo_ouro_lifetime">Combo Ouro VIP - Vitalício (Permanente)</option>
+                      </optgroup>
                     </select>
                   </div>
                   
@@ -642,8 +694,10 @@ export default function AdminPanel() {
                               );
                             }
                             const plan = item.planType || (item.isLifetimePremium ? 'lifetime' : 'monthly');
+                            const isTrialPlan = plan?.startsWith('trial_1week') || !!item.premiumUntil;
                             const badgeStyle = 
-                              plan === 'lifetime' ? 'bg-purple-50 border-purple-200 text-purple-700' :
+                              isTrialPlan ? 'bg-amber-100 border-amber-300 text-amber-900 font-black' :
+                              plan === 'lifetime' ? 'bg-purple-50 border-purple-200 text-purple-700 font-black' :
                               plan === 'combo_ouro' ? 'bg-amber-100 border-amber-300 text-amber-800 font-black' :
                               plan === 'med_internato_premium' || (plan as string) === 'internato' ? 'bg-teal-50 border-teal-200 text-teal-700 font-black' :
                               plan === 'annual' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
@@ -651,32 +705,57 @@ export default function AdminPanel() {
                               plan === 'quarterly' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
                               'bg-amber-50 border-amber-200 text-amber-700 font-bold';
                             return (
-                              <span className={`inline-flex px-2 py-0.5 rounded-full border font-mono text-[8px] font-black uppercase tracking-wider ${badgeStyle}`}>
-                                ★ {PLAN_LABELS[plan] || 'PRO'}
-                              </span>
+                              <div className="flex flex-col items-start gap-0.5">
+                                <span className={`inline-flex px-2 py-0.5 rounded-full border font-mono text-[8px] font-black uppercase tracking-wider ${badgeStyle}`}>
+                                  ★ {PLAN_LABELS[plan] || 'PRO'}
+                                </span>
+                                {item.premiumUntil && item.isPremium && (
+                                  <span className="text-[7.5px] font-mono text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-semibold whitespace-nowrap">
+                                    ⚡ Expira em: {new Date(item.premiumUntil).toLocaleDateString('pt-BR')}
+                                  </span>
+                                )}
+                              </div>
                             );
                           })()}
                         </td>
 
                         {/* Column 4: Controls inline */}
                         <td className="p-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1.5">
                             <select
                               id={`select-plan-${item.uid}`}
                               value={subTypeMap[item.uid] || item.planType || 'monthly'}
                               onChange={(e) => setSubTypeMap(prev => ({ ...prev, [item.uid]: e.target.value as PlanType }))}
-                              className="border border-[#E2E0D9] text-[9.5px] font-mono px-2 py-1 rounded-lg focus:outline-none bg-white max-w-[135px] h-8 truncate"
+                              className="border border-[#E2E0D9] text-[9.5px] font-mono px-2 py-1 rounded-lg focus:outline-none bg-white max-w-[145px] h-8 truncate"
                             >
-                              <option value="monthly">PRO Mensal</option>
-                              <option value="quarterly">PRO Trimestral</option>
-                              <option value="semiannual">PRO Semestral</option>
-                              <option value="annual">PRO Anual</option>
-                              <option value="lifetime">PRO Vitalício</option>
-                              <option value="med_internato_premium">Internato Premium</option>
-                              <option value="med_internato_lifetime">Internato Vitalício</option>
-                              <option value="combo_ouro">Combo Ouro VIP</option>
-                              <option value="combo_ouro_lifetime">Combo Ouro Vitalício</option>
+                              <optgroup label="⚡ Teste 1 Semana">
+                                <option value="trial_1week_combo">⚡ 1 Sem - Combo Ouro VIP</option>
+                                <option value="trial_1week_internato">⚡ 1 Sem - Med Internato</option>
+                                <option value="trial_1week_pro">⚡ 1 Sem - MedRevise PRO</option>
+                              </optgroup>
+                              <optgroup label="Planos Regulares">
+                                <option value="monthly">PRO Mensal</option>
+                                <option value="quarterly">PRO Trimestral</option>
+                                <option value="semiannual">PRO Semestral</option>
+                                <option value="annual">PRO Anual</option>
+                                <option value="lifetime">PRO Vitalício</option>
+                                <option value="med_internato_premium">Internato Premium</option>
+                                <option value="med_internato_lifetime">Internato Vitalício</option>
+                                <option value="combo_ouro">Combo Ouro VIP</option>
+                                <option value="combo_ouro_lifetime">Combo Ouro Vitalício</option>
+                              </optgroup>
                             </select>
+
+                            <button
+                              id={`btn-trial-quick-${item.uid}`}
+                              onClick={() => grantOneWeekTrial(item, subTypeMap[item.uid]?.startsWith('trial_1week') ? subTypeMap[item.uid] : 'trial_1week_combo')}
+                              disabled={actionLoading === item.uid || actionLoading === `trial-${item.uid}`}
+                              title="Conceder 1 Semana de Teste Gratuito"
+                              className="h-8 px-2 rounded-lg font-mono text-[8.5px] uppercase tracking-wider font-black transition-all border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 shrink-0 cursor-pointer flex items-center gap-1"
+                            >
+                              <Zap className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span>1 Sem. Teste</span>
+                            </button>
 
                             {item.isPremium && subTypeMap[item.uid] && subTypeMap[item.uid] !== item.planType && (
                               <button

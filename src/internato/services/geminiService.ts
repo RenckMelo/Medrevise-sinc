@@ -1874,17 +1874,25 @@ export async function analyzeSummaryNeeds(title: string, area: string, depth: Ge
     custom_analyzed: null
   }[depth];
 
-  const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Sua especialidade é analisar editais e provas de residência (SUS, SES-GO, SES-DF, ENARE, USP, UNIFESP, etc.) para desenhar materiais de estudo impecáveis, exaustivos e 100% autossuficientes.
+  const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Sua especialidade é analisar editais e provas de residência (SUS, SES-GO, SES-DF, ENARE, USP, UNIFESP, etc.) para desenhar materiais de estudo impecáveis, exaustivos, DIDÁTICOS e 100% autossuficientes.
 
 Analise o seguinte tópico médico de estudo:
 Título: "${safeTitle}"
 Grande Área: "${safeArea}"
 Nível de Profundidade Desejado: ${depthText}
 
-Seu objetivo é definir as necessidades exatas para que o aluno receba um resumo completo, profundamente detalhado, didático e autossuficiente (capaz de substituir livros-texto), cobrindo tanto a BASE DIDÁTICA FISIOPATOLÓGICA/FISIOLÓGICA quanto o CONTEÚDO PRÁTICO DE PROVA E MANEJO COMPLETO (critérios oficiais na íntegra, doses exatas mg/kg, checklists de procedimento, todas as escalas e escores relevantes e pegadinhas de bancas).
+Seu objetivo é definir as necessidades exatas para que o aluno receba um resumo completo, profundamente detalhado, didático e autossuficiente (capaz de substituir livros-texto), cobrindo a BASE DIDÁTICA FISIOPATOLÓGICA/FISIOLÓGICA, DEFINIÇÕES CONCEITUAIS IMPECÁVEIS e o CONTEÚDO PRÁTICO DE PROVA E MANEJO COMPLETO (critérios oficiais na íntegra, doses exatas mg/kg, checklists de procedimento, todas as escalas e escores relevantes e pegadinhas de bancas).
+
+DIRETRIZES MANDATÓRIAS DE DIDÁTICA, DEFINIÇÕES E ENCADEMENTO DOS CAPÍTULOS:
+1. REGRA DA DEFINIÇÃO IMPECÁVEL E COMPLETA (NUNCA DEIXAR RASA):
+   - O primeiro capítulo do resumo DEVE OBRIGATORIAMENTE ser dedicado a "Introdução, Definição Formal Rigorosa, Consensos Históricos, Conceito Termo a Termo e Fisiopatologia Fundamental". NUNCA permita que a definição seja tratada como mera formalidade superficial ou deixada de canto. Ela deve ser profunda, dissecada termo a termo e ancorada nos consensos mais recentes.
+2. REGRA DO ENCADEMENTO DIDÁTICO CONTINUO ("CAPÍTULOS QUE SE ENCAIXAM"):
+   - A sequência de capítulos DEVE formar um curso lógico e pedagógico, onde cada capítulo constrói a base sobre o capítulo anterior (Definições/Fisiopatologia -> Quadro Clínico e Diagnóstico -> Escores de Gravidade e Estratificação -> Propedêutica -> Manejo Passo a Passo -> Farmacologia e Doses -> Situações Especiais).
+3. REGRA DO DESMEMBRAMENTO POR DENSIDADE (MICRO-ESTRATIFICAÇÃO SEPARADA):
+   - Avalie o peso e a densidade teórica do assunto. Se um capítulo abranger conceitos pesados (ex: Definições e Escores em Sepse, TEP, Cetoacidose, Insuficiência Cardíaca, IAM, etc.), VOCÊ DEVE SUBDIVIDI-LO EM CAPÍTULOS DEDICADOS (ex: "Capítulo 1: Definição Formal, Fisiopatologia e Consensos" e "Capítulo 2: Estratificação de Risco e Escores Oficiais em Tabelas Completas (SOFA/qSOFA/NEWS2)"). Isso impede que a IA precise cortar ou encurtar tabelas e definições devido a limites de saída da chamada.
 
 DIRETRIZES DE ESTRUTURAÇÃO DE CAPÍTULOS CONFORME A NATUREZA DO TEMA:
-1. SE O TÓPICO FOR UMA PATOLOGIA/DOENÇA: Crie capítulos cobrindo: Introdução/Epidemiologia -> Fisiopatologia Celular e Mecanismos -> Quadro Clínico e Propedêutica -> Classificações e Escores Oficiais -> Manejo Clínico Prático e Algoritmo Passo a Passo (Obrigatório) -> Tratamento Medicamentoso (Doses, Vias, Linhas) -> Peculiaridades e Casos Complexos.
+1. SE O TÓPICO FOR UMA PATOLOGIA/DOENÇA: Crie capítulos cobrindo: Introdução, Definição Formal e Fisiopatologia Celular -> Quadro Clínico e Diagnóstico -> Classificações Oficiais, Escores de Risco e Escalas -> Manejo Clínico Prático e Algoritmo Passo a Passo (Obrigatório) -> Tratamento Medicamentoso (Doses, Vias, Linhas) -> Peculiaridades e Casos Complexos.
 2. SE O TÓPICO FOR UM PROCEDIMENTO, MANEJO DE EMERGÊNCIA OU TEMA PRÁTICO NÃO-DOENÇA (ex: Manejo de Via Aérea, Ventilação Mecânica, Sequência Rápida de Intubação, Parada Cardiorrespiratória, Acesso Venoso Central, ATLS/Trauma, Reposição Volêmica, Distúrbios Eletrolíticos/Ácido-Básicos, DVA/Vasopressores, etc.):
    Garantir obrigatoriamente capítulos estruturados para abranger o MANEJO COMPLETO:
    - Cap. 1: Fundamentos Fisiológicos, Anatômicos, Indicações e Fisiologia Aplicada
@@ -1915,10 +1923,10 @@ Retorne APENAS um JSON válido no seguinte formato:
   "cost": ${costText !== null ? costText : 35},
   "justification": "Justificativa detalhada em português...",
   "chapters": [
-    "1. Introdução, Definições e Epidemiologia",
-    "2. Fisiopatologia e Quadro Clínico Detalhado",
-    "3. Classificações Oficiais, Escores de Risco e Escalas Clínicas",
-    "4. Propedêutica Diagnóstica e Algoritmo de Investigação",
+    "1. Introdução, Definição Formal Rigorosa e Fisiopatologia",
+    "2. Quadro Clínico e Propedêutica Diagnóstica",
+    "3. Classificações Oficiais, Escores de Risco e Escalas Clínicas (Tabelas Integrais)",
+    "4. Propedêutica Avançada e Algoritmo de Investigação",
     "5. Manejo Clínico Prático e Algoritmo Passo a Passo",
     "6. Tratamento Medicamentoso, Doses e Peculiaridades de Provas"
   ],
@@ -1935,6 +1943,7 @@ Retorne APENAS um JSON válido no seguinte formato:
     }
   ],
   "clinicalHighlights": [
+    "Definição oficial na íntegra termo a termo com evolução dos consensos",
     "Tabela oficial da escala X na íntegra com pontuação e conduta",
     "Passo a passo sequencial de manejo imediato beira-leito",
     "Fornecer dose exata de Y para primeira linha",
@@ -2169,10 +2178,14 @@ ELEMENTOS JÁ GERADOS NOS CAPÍTULOS ANTERIORES (REGRA RÍGIDA ANTI-DUPLICAÇÃO
 ${previousSignatures}
 * É ESTRITAMENTE PROIBIDO REPETIR QUALQUER TABELA, ESCORE OU CAIXA DE DICA LISTADA ACIMA.
 
-DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO E NÃO REPETIÇÃO:
-1. COMECE IMEDIATAMENTE PELO TÍTULO DO CAPÍTULO: O texto do capítulo DEVE começar na PRIMEIRA LINHA com "## ${chapterTitle}". É ESTRITAMENTE PROIBIDO incluir saudações, frases preparatórias, introduções gerais sobre o tema ou re-gerar o sumário de navegação.
-2. PROIBIÇÃO ABSOLUTA DE RE-INTRODUÇÃO, REPETIÇÕES E TABELAS DUPLICADAS:
-   - SE ESTE NÃO FOR O CAPÍTULO 1, NÃO REINICIE O TEMA! Não escreva introduções gerais ou definições básicas que pertençam aos capítulos iniciais. O aluno já leu as seções anteriores.
+DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO, DIDÁTICA E NÃO REPETIÇÃO:
+1. COMECE PELO TÍTULO SEGUIDO OBRIGATORIAMENTE DE UMA PONTE DIDÁTICA:
+   - A primeira linha DEVE conter "## ${chapterTitle}".
+   - ${i > 0 ? `SEGUNDO PARÁGRAFO MANDATÓRIO (PONTE DIDÁTICA DE TRANSIÇÃO): Logo após o título "## ${chapterTitle}", escreva um curto parágrafo de 1 a 2 frases conectando pedagogicamente o aprendizado do capítulo anterior (${previousChaptersStr}) com o tema deste novo capítulo. Exemplo: *"Conforme fundamentado no capítulo anterior quanto aos mecanismos de [conceito anterior], avançamos agora para a caracterização detalhada de [tema deste capítulo]..."*. Isso garante uma narrativa contínua, integrada e extremamente didática como em um livro-texto de medicina de alto nível.` : `PRIMEIRO PARÁGRAFO (DEFINIÇÃO CONCEITUAL RIGOROSA E DEFINITIVA): Como este é o capítulo inicial, forneça a Definição Formal Exaustiva e Impecável termo a termo, resgatando consensos atualizados, evolução de critérios históricos e o pilar fisiopatológico central. NUNCA resuma ou deixe a definição superficial ou secundária.`}
+2. REGRA DA DEFINIÇÃO IMPECÁVEL E COMPLETA:
+   - Sempre que este capítulo abordar conceitos primários ou definições clínicas, disseque cada termo com rigor técnico absoluto: traga os consensos oficiais atualizados (ex: Sepsis-3), a fisiopatologia que justifica a nomenclatura e os limites diagnósticos exatos. NUNCA deixe definições rasas, suprimidas ou escondidas.
+3. PROIBIÇÃO ABSOLUTA DE RE-INTRODUÇÃO, REPETIÇÕES E TABELAS DUPLICADAS:
+   - SE ESTE NÃO FOR O CAPÍTULO 1, NÃO REINICIE O TEMA! Não escreva introduções genéricas. O aluno já leu as seções anteriores.
    - NÃO REPITA conceitos, epidemiologia, definições, quadros ou tabelas que pertençam ou já foram explicados nos capítulos anteriores (${previousChaptersStr}).
    - REGRA DE OURO DAS TABELAS COMPARATIVAS (INVIOLÁVEL): CADA TABELA COMPARATIVA (ex: "Comparação entre Doença X e Doença Y", "Diagnóstico Diferencial", "Tabelas de Classificação") DEVE APARECER NO MÁXIMO UMA ÚNICA VEZ NO RESUMO INTEIRO. Se uma tabela comparativa ou quadro de diferenciação entre patologias já foi inserido em um capítulo anterior (${previousChaptersStr}), É TERMINANTEMENTE PROIBIDO recriá-lo, repeti-lo ou fazer novas variações dele neste capítulo.
    - NÃO ANTECIPE tópicos, condutas ou fármacos que pertencem aos capítulos seguintes (${futureChaptersStr}).

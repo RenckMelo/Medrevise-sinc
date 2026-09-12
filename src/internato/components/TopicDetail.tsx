@@ -48,6 +48,9 @@ const getAvailableDepths = (topicDoc: Topic) => {
   if (isRealContent(topicDoc.content_custom_analyzed)) {
     list.push({ depth: 'custom_analyzed', label: 'Personalizado Inteligente' });
   }
+  if (isRealContent(topicDoc.content_resumo_lacunas)) {
+    list.push({ depth: 'resumo_lacunas', label: 'Reparo de Lacunas 🎯' });
+  }
   return list;
 };
 
@@ -56,7 +59,8 @@ const detectRealDepth = (topic: Topic): GenerationDepth | 'none' => {
     return 'standard';
   }
 
-  // 1. Check if custom analyzed is explicitly stored
+  // 1. Check if resumo_lacunas or custom analyzed is explicitly stored
+  if (isRealContent(topic.content_resumo_lacunas)) return 'resumo_lacunas';
   if (isRealContent(topic.content_custom_analyzed)) return 'custom_analyzed';
 
   // 2. Check if monograph is explicitly stored
@@ -3148,6 +3152,10 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
       case 'custom_analyzed':
         if (isRealContent(topic.content_custom_analyzed)) result = topic.content_custom_analyzed || '';
         else if (detected === 'custom_analyzed') result = topic.content_standard || topic.content || '';
+        break;
+      case 'resumo_lacunas':
+        if (isRealContent(topic.content_resumo_lacunas)) result = topic.content_resumo_lacunas || '';
+        else if (detected === 'resumo_lacunas') result = topic.content_standard || topic.content || '';
         break;
       default:
         result = topic.content_standard || topic.content || '';

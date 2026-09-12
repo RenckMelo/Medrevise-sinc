@@ -27,6 +27,7 @@ export interface Topic {
   content_monograph?: string;
   content_custom_analyzed?: string;
   content_resumo_expansao?: string;
+  content_resumo_lacunas?: string;
   custom_analysis?: {
     cost: number;
     justification: string;

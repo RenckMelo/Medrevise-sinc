@@ -9976,297 +9976,134 @@ export default function Cronograma({
                 </p>
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {/* 1. TEMPO DE ESTUDO */}
-                <div className="space-y-2.5 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
+                <div className="space-y-2 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
                       <Clock className="w-4 h-4 text-primary" />
                       Tempo de Estudo / Revisão
                     </label>
-                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
                       {completionMinutes >= 60 
-                        ? `${Math.floor(completionMinutes / 60)}h ${completionMinutes % 60 > 0 ? `${completionMinutes % 60}min` : ''}`
+                        ? `${Math.floor(completionMinutes / 60)}h ${completionMinutes % 60 > 0 ? `${completionMinutes % 60}m` : ''}`
                         : `${completionMinutes} min`
                       }
                     </span>
                   </div>
-
-                  {/* Steppers + Main Input */}
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setCompletionMinutes(Math.max(5, completionMinutes - 15))}
-                      className="h-11 px-2.5 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      -15m
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionMinutes(Math.max(1, completionMinutes - 5))}
-                      className="h-11 px-2.5 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      -5m
-                    </button>
-                    <input
-                      type="number"
-                      min="1"
-                      max="600"
-                      value={completionMinutes}
-                      onChange={(e) => setCompletionMinutes(Math.max(1, parseInt(e.target.value) || 0))}
-                      className="w-full h-11 text-center font-mono font-bold text-base text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-primary shadow-2xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setCompletionMinutes(completionMinutes + 5)}
-                      className="h-11 px-2.5 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      +5m
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionMinutes(completionMinutes + 15)}
-                      className="h-11 px-2.5 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      +15m
-                    </button>
-                  </div>
-
-                  {/* Quick Preset Pills */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {[15, 30, 45, 60, 90, 120, 180].map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setCompletionMinutes(m)}
-                        className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
-                          completionMinutes === m
-                            ? 'bg-primary text-white border-primary shadow-xs'
-                            : 'bg-white text-stone-700 border-[#E2E0D9] hover:bg-stone-100'
-                        }`}
-                      >
-                        {m >= 60 ? `${m / 60}h` : `${m}m`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 2. NÚMERO DE QUESTÕES */}
-                <div className="space-y-2.5 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
-                      <HelpCircle className="w-4 h-4 text-amber-600" />
-                      Questões Resolvidas
-                    </label>
-                    <span className="text-xs font-mono font-bold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full">
-                      {completionQuestions} questões
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setCompletionQuestions(Math.max(0, completionQuestions - 5))}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      -5
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionQuestions(Math.max(0, completionQuestions - 1))}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      -1
-                    </button>
+                  <div className="relative flex items-center">
                     <input
                       type="number"
                       min="0"
-                      max="500"
-                      value={completionQuestions}
-                      onChange={(e) => setCompletionQuestions(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full h-11 text-center font-mono font-bold text-base text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-amber-500 shadow-2xs"
+                      max="600"
+                      placeholder="Ex: 45"
+                      value={completionMinutes === 0 ? '' : completionMinutes}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                        setCompletionMinutes(isNaN(val) || val < 0 ? 0 : val);
+                      }}
+                      className="w-full h-12 px-4 text-base font-mono font-bold text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-primary shadow-2xs transition-colors"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setCompletionQuestions(completionQuestions + 1)}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      +1
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionQuestions(completionQuestions + 5)}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      +5
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {[0, 5, 10, 15, 20, 30, 50].map((q) => (
-                      <button
-                        key={q}
-                        type="button"
-                        onClick={() => {
-                          setCompletionQuestions(q);
-                          setCompletionCorrectCount(prev => Math.min(q, prev));
-                        }}
-                        className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
-                          completionQuestions === q
-                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                            : 'bg-white text-stone-700 border-[#E2E0D9] hover:bg-stone-100'
-                        }`}
-                      >
-                        {q} qst
-                      </button>
-                    ))}
+                    <span className="absolute right-4 text-xs font-mono font-bold text-stone-400 pointer-events-none">
+                      minutos
+                    </span>
                   </div>
                 </div>
 
-                {/* 2.1 QUESTÕES ACERTADAS (ACERTOS REAIS) */}
-                <div className="space-y-2.5 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
+                {/* 2. QUESTÕES & ACERTOS (DUAS COLUNAS LADO A LADO) */}
+                <div className="space-y-3 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      Questões Acertadas (Acertos Reais)
+                      <HelpCircle className="w-4 h-4 text-amber-600" />
+                      Questões & Desempenho
                     </label>
-                    <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full">
+                    <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
                       {completionCorrectCount} / {completionQuestions} ({completionQuestions > 0 ? Math.round((completionCorrectCount / completionQuestions) * 100) : 0}%)
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setCompletionCorrectCount(Math.max(0, completionCorrectCount - 5))}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      -5
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionCorrectCount(Math.max(0, completionCorrectCount - 1))}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      -1
-                    </button>
-                    <input
-                      type="number"
-                      min="0"
-                      max={completionQuestions}
-                      value={completionCorrectCount}
-                      onChange={(e) => setCompletionCorrectCount(Math.min(completionQuestions, Math.max(0, parseInt(e.target.value) || 0)))}
-                      className="w-full h-11 text-center font-mono font-bold text-base text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-emerald-500 shadow-2xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setCompletionCorrectCount(Math.min(completionQuestions, completionCorrectCount + 1))}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      +1
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionCorrectCount(Math.min(completionQuestions, completionCorrectCount + 5))}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      +5
-                    </button>
-                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Total Resolvidas */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-stone-600 block">
+                        Total Resolvidas
+                      </label>
+                      <div className="relative flex items-center">
+                        <input
+                          type="number"
+                          min="0"
+                          max="500"
+                          placeholder="Ex: 15"
+                          value={completionQuestions === 0 ? '' : completionQuestions}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                            const q = isNaN(val) || val < 0 ? 0 : val;
+                            setCompletionQuestions(q);
+                            setCompletionCorrectCount(prev => Math.min(q, prev));
+                          }}
+                          className="w-full h-11 px-3.5 text-base font-mono font-bold text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-amber-500 shadow-2xs transition-colors"
+                        />
+                        <span className="absolute right-3.5 text-xs font-mono font-bold text-stone-400 pointer-events-none">
+                          qst
+                        </span>
+                      </div>
+                    </div>
 
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {[
-                      { pct: 100, label: '100% Acertos' },
-                      { pct: 80, label: '80%' },
-                      { pct: 70, label: '70%' },
-                      { pct: 50, label: '50%' },
-                      { pct: 0, label: '0%' }
-                    ].map((preset) => {
-                      const calculated = Math.round((completionQuestions * preset.pct) / 100);
-                      return (
-                        <button
-                          key={preset.pct}
-                          type="button"
-                          onClick={() => setCompletionCorrectCount(calculated)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
-                            completionCorrectCount === calculated
-                              ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
-                              : 'bg-white text-stone-700 border-[#E2E0D9] hover:bg-stone-100'
-                          }`}
-                        >
-                          {preset.label} ({calculated})
-                        </button>
-                      );
-                    })}
+                    {/* Acertos Reais */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-stone-600 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        Acertos Reais
+                      </label>
+                      <div className="relative flex items-center">
+                        <input
+                          type="number"
+                          min="0"
+                          max={completionQuestions || 500}
+                          placeholder="Ex: 12"
+                          value={completionCorrectCount === 0 ? '' : completionCorrectCount}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                            const c = isNaN(val) || val < 0 ? 0 : val;
+                            setCompletionCorrectCount(completionQuestions > 0 ? Math.min(completionQuestions, c) : c);
+                          }}
+                          className="w-full h-11 px-3.5 text-base font-mono font-bold text-emerald-800 bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-emerald-500 shadow-2xs transition-colors"
+                        />
+                        <span className="absolute right-3.5 text-xs font-mono font-bold text-stone-400 pointer-events-none">
+                          acertos
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* 3. NÚMERO DE FLASHCARDS */}
-                <div className="space-y-2.5 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
+                <div className="space-y-2 bg-[#FBFBFA] p-4 rounded-2xl border border-[#E2E0D9]">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold uppercase tracking-wider text-[#1A1A1A] flex items-center gap-2">
                       <Brain className="w-4 h-4 text-purple-600" />
                       Flashcards Revisados
                     </label>
-                    <span className="text-xs font-mono font-bold text-purple-700 bg-purple-100 px-2.5 py-1 rounded-full">
+                    <span className="text-xs font-mono font-bold text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-full">
                       {completionFlashcards} cards
                     </span>
                   </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setCompletionFlashcards(Math.max(0, completionFlashcards - 5))}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      -5
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionFlashcards(Math.max(0, completionFlashcards - 1))}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-[#FFFFFF] font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      -1
-                    </button>
+                  <div className="relative flex items-center">
                     <input
                       type="number"
                       min="0"
                       max="500"
-                      value={completionFlashcards}
-                      onChange={(e) => setCompletionFlashcards(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full h-11 text-center font-mono font-bold text-base text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-purple-500 shadow-2xs"
+                      placeholder="Ex: 15"
+                      value={completionFlashcards === 0 ? '' : completionFlashcards}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                        setCompletionFlashcards(isNaN(val) || val < 0 ? 0 : val);
+                      }}
+                      className="w-full h-12 px-4 text-base font-mono font-bold text-[#1A1A1A] bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:border-purple-500 shadow-2xs transition-colors"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setCompletionFlashcards(completionFlashcards + 1)}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      +1
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionFlashcards(completionFlashcards + 5)}
-                      className="h-11 px-3 rounded-xl border border-[#E2E0D9] bg-white font-mono font-bold text-xs text-[#1A1A1A] hover:bg-stone-100 cursor-pointer shrink-0"
-                    >
-                      +5
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {[0, 5, 10, 15, 20, 30, 50].map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        onClick={() => setCompletionFlashcards(f)}
-                        className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
-                          completionFlashcards === f
-                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                            : 'bg-white text-stone-700 border-[#E2E0D9] hover:bg-stone-100'
-                        }`}
-                      >
-                        {f} cards
-                      </button>
-                    ))}
+                    <span className="absolute right-4 text-xs font-mono font-bold text-stone-400 pointer-events-none">
+                      cards
+                    </span>
                   </div>
                 </div>
               </div>

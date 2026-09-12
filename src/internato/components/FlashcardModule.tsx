@@ -44,7 +44,7 @@ import {
   Copy
 } from 'lucide-react';
 
-import { db, collection, query, getDocs, doc, updateDoc, setDoc, where, addDoc, limit, deleteDoc } from '../firebase';
+import { db, collection, query, getDocs, getDoc, doc, updateDoc, setDoc, where, addDoc, limit, deleteDoc } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   generateFlashcards, 
@@ -54,7 +54,8 @@ import {
   FlashcardPotentialAnalysis,
   generateFlashcardDeepDive,
   analyzeFlashcardSessionForSummary,
-  generateCustomAnalyzedSummary
+  generateCustomAnalyzedSummary,
+  generateFlashcardGapRepairSummary
 } from '../services/geminiService';
 import { cn } from '@/lib/utils';
 
@@ -290,6 +291,93 @@ export default function FlashcardModule({
   const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
   const [isGeneratingDiagnosticReport, setIsGeneratingDiagnosticReport] = useState(false);
   const [scheduledSuccessMsg, setScheduledSuccessMsg] = useState<string | null>(null);
+
+  // Gap Repair Summary states
+  const [isGeneratingGapSummary, setIsGeneratingGapSummary] = useState(false);
+  const [gapSummarySuccessMsg, setGapSummarySuccessMsg] = useState<string | null>(null);
+  const [gapSummaryErrorMsg, setGapSummaryErrorMsg] = useState<string | null>(null);
+
+  const handleGenerateGapRepairSummary = async () => {
+    let failedCardsList: { concept?: string; front: string; back: string; rating?: string }[] = [];
+    let targetTopicId: string | undefined = selectedTopic?.id;
+
+    if (activeTab === 'diagnostic' && diagnosticResult) {
+      failedCardsList = [
+        ...diagnosticResult.failedItems.map(i => ({ concept: i.concept, front: i.front, back: i.back, rating: 'errei' })),
+        ...diagnosticResult.hardItems.map(i => ({ concept: i.concept, front: i.front, back: i.back, rating: 'dificil' }))
+      ];
+      if (!targetTopicId && diagnosticScores[0]?.card.topicId) {
+        targetTopicId = diagnosticScores[0].card.topicId;
+      }
+    } else {
+      const erredAndHardScores = currentSessionScores.filter(s => s.rating === 'errei' || s.rating === 'dificil');
+      failedCardsList = erredAndHardScores.map(s => ({
+        concept: s.card.concept || s.cardFront,
+        front: s.cardFront,
+        back: s.cardBack,
+        rating: s.rating
+      }));
+      if (!targetTopicId && currentSessionScores[0]?.cardId) {
+        const foundCard = flashcards.find(c => c.id === currentSessionScores[0].cardId);
+        if (foundCard?.topicId) targetTopicId = foundCard.topicId;
+      }
+    }
+
+    if (!targetTopicId && flashcards[0]?.topicId) {
+      targetTopicId = flashcards[0].topicId;
+    }
+
+    const topicObj = topics.find(t => t.id === targetTopicId) || selectedTopic;
+
+    if (!topicObj) {
+      alert('Não foi possível identificar o tópico associado a estes cartões para criar o resumo de lacunas.');
+      return;
+    }
+
+    if (failedCardsList.length === 0) {
+      alert('Nenhum erro ou dúvida foi registrado nesta sessão! Não há lacunas pendentes para este resumo.');
+      return;
+    }
+
+    setIsGeneratingGapSummary(true);
+    setGapSummaryErrorMsg(null);
+    setGapSummarySuccessMsg(null);
+
+    try {
+      const markdown = await generateFlashcardGapRepairSummary(topicObj.title, failedCardsList);
+
+      const topicRef = userId
+        ? doc(db, 'users', userId, 'topics', topicObj.id)
+        : doc(db, 'topics', topicObj.id);
+
+      const topicSnap = await getDoc(topicRef);
+      let existingGapContent = '';
+      if (topicSnap.exists()) {
+        const tData = topicSnap.data();
+        if (tData.content_resumo_lacunas) {
+          existingGapContent = tData.content_resumo_lacunas;
+        }
+      }
+
+      const newFormattedGapSummary = existingGapContent
+        ? `${existingGapContent}\n\n---\n\n${markdown}`
+        : markdown;
+
+      await setDoc(topicRef, {
+        content_resumo_lacunas: newFormattedGapSummary,
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
+
+      if (onProgressUpdate) onProgressUpdate();
+
+      setGapSummarySuccessMsg(`Resumo de Cobertura de Erros adicionado com sucesso ao tópico "${topicObj.title}" na nova aba "Reparo de Lacunas 🎯"!`);
+    } catch (err: any) {
+      console.error('Error generating gap repair summary:', err);
+      setGapSummaryErrorMsg(err.message || 'Erro ao gerar o resumo de reparo de lacunas.');
+    } finally {
+      setIsGeneratingGapSummary(false);
+    }
+  };
 
   // Manual Card Creation State
   const [manualFront, setManualFront] = useState('');
@@ -2424,6 +2512,60 @@ export default function FlashcardModule({
                 </div>
               ) : null}
 
+              {/* GAP REPAIR SUMMARY SUGGESTION BOX */}
+              {(diagnosticResult.failedCount > 0 || diagnosticResult.hardCount > 0) && (
+                <div className="p-6 bg-gradient-to-r from-amber-50/80 via-orange-50/50 to-amber-50/80 border border-amber-200/90 rounded-2xl space-y-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-sm shrink-0">
+                        <BookOpen className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-display font-black text-amber-950 flex items-center gap-2">
+                          Resumo de Cobertura de Erros & Reparo de Lacunas
+                          <Badge className="bg-amber-200 text-amber-900 border-amber-300 text-[9px] font-extrabold uppercase">Novo Resumo no Tópico</Badge>
+                        </h4>
+                        <p className="text-xs text-amber-800 font-medium mt-0.5">
+                          Gerar um resumo novo e separado no tópico focado 100% em sanar e dissecando os conceitos que você errou nesta sessão.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {gapSummarySuccessMsg ? (
+                    <div className="p-4 bg-emerald-100 border border-emerald-300 text-emerald-950 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
+                      <span>{gapSummarySuccessMsg}</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 pt-1">
+                      {gapSummaryErrorMsg && (
+                        <p className="text-xs font-bold text-rose-700 bg-rose-50 p-3 rounded-lg border border-rose-200">
+                          {gapSummaryErrorMsg}
+                        </p>
+                      )}
+                      <Button
+                        onClick={handleGenerateGapRepairSummary}
+                        disabled={isGeneratingGapSummary}
+                        className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-widest h-13 rounded-xl gap-2 shadow-md shadow-amber-600/20 cursor-pointer"
+                      >
+                        {isGeneratingGapSummary ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Sintetizando Resumo de Reparo de Lacunas pela IA...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            Gerar Resumo Novo de Cobertura de Erros (Reparo de Lacunas 🎯)
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* ACTION BUTTONS */}
               {scheduledSuccessMsg ? (
                 <div className="p-4 bg-emerald-100/80 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2">
@@ -2542,6 +2684,60 @@ export default function FlashcardModule({
                             );
                           })}
                         </div>
+                      </div>
+                    )}
+
+                    {/* GAP REPAIR SUMMARY SUGGESTION BOX */}
+                    {(erredCount > 0 || hardCount > 0) && (
+                      <div className="p-6 bg-gradient-to-r from-amber-50/80 via-orange-50/50 to-amber-50/80 border border-amber-200/90 rounded-2xl space-y-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-sm shrink-0">
+                              <BookOpen className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-display font-black text-amber-950 flex items-center gap-2">
+                                Resumo de Cobertura de Erros & Reparo de Lacunas
+                                <Badge className="bg-amber-200 text-amber-900 border-amber-300 text-[9px] font-extrabold uppercase">Novo Resumo no Tópico</Badge>
+                              </h4>
+                              <p className="text-xs text-amber-800 font-medium mt-0.5">
+                                Gerar um resumo novo e separado no tópico focado 100% em sanar os {erredCount + hardCount} conceitos que você errou/teve dúvidas nesta sessão.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {gapSummarySuccessMsg ? (
+                          <div className="p-4 bg-emerald-100 border border-emerald-300 text-emerald-950 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                            <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
+                            <span>{gapSummarySuccessMsg}</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-3 pt-1">
+                            {gapSummaryErrorMsg && (
+                              <p className="text-xs font-bold text-rose-700 bg-rose-50 p-3 rounded-lg border border-rose-200">
+                                {gapSummaryErrorMsg}
+                              </p>
+                            )}
+                            <Button
+                              onClick={handleGenerateGapRepairSummary}
+                              disabled={isGeneratingGapSummary}
+                              className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-widest h-13 rounded-xl gap-2 shadow-md shadow-amber-600/20 cursor-pointer"
+                            >
+                              {isGeneratingGapSummary ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Sintetizando Resumo de Reparo de Lacunas pela IA...
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="w-4 h-4" />
+                                  Gerar Resumo Novo de Cobertura de Erros (Reparo de Lacunas 🎯)
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -361,7 +361,7 @@ export async function generateWithAI(prompt: string, model: string = "gemini-3.1
   }
 }
 
-export type GenerationDepth = 'standard' | 'deep' | 'elite' | 'master' | 'monograph' | 'custom_analyzed';
+export type GenerationDepth = 'standard' | 'deep' | 'elite' | 'master' | 'monograph' | 'custom_analyzed' | 'resumo_lacunas';
 export type ProgressCallback = (data: { current: number; total: number; message: string; partialContent?: string }) => void;
 
 /**
@@ -1591,6 +1591,65 @@ Formato de Resposta (JSON estrito):
   } catch (err) {
     console.error('Error generating diagnostic report:', err);
     return null;
+  }
+}
+
+export async function generateFlashcardGapRepairSummary(
+  topicTitle: string,
+  failedAndHardItems: { concept?: string; front: string; back: string; rating?: string }[]
+): Promise<string> {
+  const itemsText = failedAndHardItems.map((item, i) => `
+${i + 1}. [${(item.rating || 'ERRO').toUpperCase()}] Conceito Mapeado: ${item.concept || item.front}
+   Pergunta/Frente: ${item.front}
+   Resposta Correta/Verso: ${item.back}
+`).join('\n');
+
+  const prompt = `Você é o COORDENADOR-PRECEPTOR DE INTERNATO MÉDICO especialista em análise de provas de residência (SUS, ENARE, USP, UNIFESP, etc.).
+
+O estudante acabou de realizar uma avaliação em flashcards no tópico **"${topicTitle}"** e foram identificadas as seguintes **LACUNAS E ERROS CLÍNICOS ESTRUTURAIS**:
+
+${itemsText}
+
+Sua missão é gerar um **RESUMO DEDICADO DE COBERTURA DE LACUNAS & REPARO CLÍNICO DE ELITE**.
+Este resumo será adicionado como um **NOVO RESUMO SEPARADO (REPARO DE LACUNAS)** no tópico para sanar de forma autossuficiente esses erros específicos.
+
+REGRAS OBRIGATÓRIAS:
+1. NÃO faça introduções genéricas sobre o tema. Entre direto na anatomia dos erros mapeados e na correção didática profunda.
+2. Cada erro/conceito com falha DEVE ser dissecado detalhadamente: por que a questão engana, qual a pegadinha clássica das bancas, qual a regra fisiopatológica e o protocolo beira-leito inviolável.
+3. Crie TABELAS EM MARKDOWN GFM VÁLIDAS, quadros comparativos e fluxogramas diagnósticos para fixação visual dos conceitos que o aluno errou.
+4. Inclua doses exatas (mg/kg), escores completos e checklists beira-leito associados aos conceitos das lacunas.
+
+ESTRUTURA EM MARKDOWN EXIGIDA:
+# 🎯 Resumo de Cobertura de Lacunas & Reparo Clínico: ${topicTitle}
+*Gerado automaticamente a partir dos erros diagnosticados nos Flashcards (${new Date().toLocaleDateString('pt-BR')})*
+
+---
+
+## 📌 1. Análise Pedagógica das Lacunas Diagnósticas Mapeadas
+(Visão geral didática dissecando a causa raiz dos erros e o raciocínio fisiopatológico correto).
+
+## 💡 2. Cobertura Aprofundada dos Conceitos Errados
+
+${failedAndHardItems.map(item => `### 🔍 Conceito: ${item.concept || item.front}
+- **Ponto Cego Identificado**: ${item.front}
+- **Gabarito / Resposta Correta**: ${item.back}
+- **Explicação Detalhada do Preceptor**: Explique o fundamento científico completo, a fisiopatologia e como a banca cobra isso em prova sem margem para dúvida.
+`).join('\n')}
+
+## 📊 3. Quadros Comparativos, Escores Oficiais & Pegadinhas de Bancas
+(Tabelas em Markdown GFM perfeitas e sínteses das diferenciações clínicas cruciais para não errar novamente).
+
+## 🛡️ 4. Protocolo Erro Zero: Checklist Beira-Leito & Regras Invioláveis
+(Tópicos práticos com regras de conduta rápida, doses de primeira linha e critérios definitivos).`;
+
+  try {
+    await checkUsageLimit();
+    const result = await generateWithAI(prompt, "gemini-3.1-flash-lite", 2);
+    await recordUsage(2);
+    return result;
+  } catch (err: any) {
+    console.error('Error generating flashcard gap repair summary:', err);
+    throw err;
   }
 }
 

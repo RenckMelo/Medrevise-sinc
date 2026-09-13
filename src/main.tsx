@@ -6,6 +6,31 @@ import './internato/index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
+// Global polyfill/patch for DOM node manipulation errors caused by browser extensions or Google Translate
+if (typeof window !== 'undefined' && typeof Node !== 'undefined' && Node.prototype) {
+  const originalRemoveChild = Node.prototype.removeChild;
+  Node.prototype.removeChild = function <T extends Node>(child: T): T {
+    if (child.parentNode !== this) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('DOM Guard: Prevented removeChild error on mismatched parentNode', child, this);
+      }
+      return child;
+    }
+    return originalRemoveChild.call(this, child) as T;
+  };
+
+  const originalInsertBefore = Node.prototype.insertBefore;
+  Node.prototype.insertBefore = function <T extends Node>(newNode: T, referenceNode: Node | null): T {
+    if (referenceNode && referenceNode.parentNode !== this) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('DOM Guard: Prevented insertBefore error on mismatched parentNode', newNode, referenceNode, this);
+      }
+      return newNode;
+    }
+    return originalInsertBefore.call(this, newNode, referenceNode) as T;
+  };
+}
+
 // Programmatically unlock screen orientation and listen for device rotation in mobile PWAs
 if (typeof window !== 'undefined') {
   const recheckViewportOrientation = () => {

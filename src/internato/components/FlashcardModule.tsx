@@ -69,6 +69,7 @@ interface FlashcardModuleProps {
   onProgressUpdate?: () => void;
   availableCredits?: number;
   setAvailableCredits?: React.Dispatch<React.SetStateAction<number>>;
+  onOpenSummaryWizard?: (topic: Topic, initialAnalysis?: any) => void;
 }
 
 export type ReviewRating = 'errei' | 'dificil' | 'bom' | 'facil';
@@ -160,7 +161,8 @@ export default function FlashcardModule({
   selectedTopic,
   onProgressUpdate,
   availableCredits,
-  setAvailableCredits
+  setAvailableCredits,
+  onOpenSummaryWizard
 }: FlashcardModuleProps) {
   // Main modes
   const [activeTab, setActiveTab] = useState<'srs' | 'deck' | 'diagnostic' | 'history' | 'deepdives' | 'create'>('srs');
@@ -368,6 +370,14 @@ export default function FlashcardModule({
         lastUpdated: new Date().toISOString()
       }, { merge: true });
 
+      if (userId) {
+        const globalRef = doc(db, 'topics', topicObj.id);
+        await setDoc(globalRef, {
+          content_resumo_lacunas: newFormattedGapSummary,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+      }
+
       if (onProgressUpdate) onProgressUpdate();
 
       setGapSummarySuccessMsg(`Resumo de Cobertura de Erros adicionado com sucesso ao tópico "${topicObj.title}" na nova aba "Reparo de Lacunas 🎯"!`);
@@ -376,6 +386,95 @@ export default function FlashcardModule({
       setGapSummaryErrorMsg(err.message || 'Erro ao gerar o resumo de reparo de lacunas.');
     } finally {
       setIsGeneratingGapSummary(false);
+    }
+  };
+
+  // Open Summary Generation Wizard with Pre-Analysis derived from Flashcard Errors
+  const handleOpenWizardForGapSummary = () => {
+    let failedCardsList: { concept?: string; front: string; back: string; rating?: string }[] = [];
+    let targetTopicId: string | undefined = selectedTopic?.id;
+
+    if (activeTab === 'diagnostic' && diagnosticResult) {
+      failedCardsList = [
+        ...diagnosticResult.failedItems.map(i => ({ concept: i.concept, front: i.front, back: i.back, rating: 'errei' })),
+        ...diagnosticResult.hardItems.map(i => ({ concept: i.concept, front: i.front, back: i.back, rating: 'dificil' }))
+      ];
+      if (!targetTopicId && diagnosticScores[0]?.card.topicId) {
+        targetTopicId = diagnosticScores[0].card.topicId;
+      }
+    } else {
+      const erredAndHardScores = currentSessionScores.filter(s => s.rating === 'errei' || s.rating === 'dificil');
+      failedCardsList = erredAndHardScores.map(s => ({
+        concept: s.card.concept || s.cardFront,
+        front: s.cardFront,
+        back: s.cardBack,
+        rating: s.rating
+      }));
+      if (!targetTopicId && currentSessionScores[0]?.cardId) {
+        const foundCard = flashcards.find(c => c.id === currentSessionScores[0].cardId);
+        if (foundCard?.topicId) targetTopicId = foundCard.topicId;
+      }
+    }
+
+    if (!targetTopicId && flashcards[0]?.topicId) {
+      targetTopicId = flashcards[0].topicId;
+    }
+
+    const topicObj = topics.find(t => t.id === targetTopicId) || selectedTopic;
+
+    if (!topicObj) {
+      alert('Não foi possível identificar o tópico associado a estes cartões para criar o resumo personalizado.');
+      return;
+    }
+
+    let chaptersList: string[] = [];
+    if (diagnosticResult?.aiReport?.whatToStudy && diagnosticResult.aiReport.whatToStudy.length > 0) {
+      chaptersList = diagnosticResult.aiReport.whatToStudy.map((item, idx) => {
+        const clean = item.replace(/^\d+\.\s*/, '').trim();
+        return `Análise de Lacuna ${idx + 1}: ${clean}`;
+      });
+    } else if (failedCardsList.length > 0) {
+      const conceptsSet = new Set<string>();
+      failedCardsList.forEach(item => {
+        const title = item.concept || item.front;
+        if (title) {
+          const clean = title.replace(/\?$/, '').trim();
+          if (clean.length < 90) {
+            conceptsSet.add(clean);
+          }
+        }
+      });
+      const uniqueConcepts = Array.from(conceptsSet);
+      if (uniqueConcepts.length > 0) {
+        chaptersList = uniqueConcepts.slice(0, 6).map((c, i) => `Foco em Erro ${i + 1}: ${c}`);
+      }
+    }
+
+    if (chaptersList.length === 0) {
+      chaptersList = [
+        'Reparo de Lacunas 1: Conceitos e Definições Essenciais',
+        'Reparo de Lacunas 2: Fisiopatologia e Mecanismos com Dificuldades',
+        'Reparo de Lacunas 3: Conduta Clínica Imediata e Diagnóstico Diferencial'
+      ];
+    }
+
+    const justification = diagnosticResult?.aiReport?.overallMasteryLevel
+      ? `Análise de Erros nos Flashcards: "${diagnosticResult.aiReport.overallMasteryLevel}". As orientações e capítulos focarão na elucidação dos conceitos onde você apresentou dúvida.`
+      : `Plano de Reparo de Lacunas derivado da sessão de flashcards do tópico "${topicObj.title}". Foco em sanar as dúvidas e erros registrados.`;
+
+    const clinicalHighlights = diagnosticResult?.aiReport?.whatToStudy || failedCardsList.map(i => i.concept || i.front).slice(0, 5);
+
+    const initialAnalysis = {
+      justification,
+      chapters: chaptersList,
+      clinicalHighlights,
+      suggestedExtraChapters: []
+    };
+
+    if (onOpenSummaryWizard) {
+      onOpenSummaryWizard(topicObj, initialAnalysis);
+    } else {
+      alert('Navegação para o assistente de resumo não configurada.');
     }
   };
 
@@ -673,9 +772,9 @@ export default function FlashcardModule({
   const handleConfirmGenerateSessionSummary = async () => {
     if (!selectedSessionHistory || !sessionSummaryAnalysis) return;
 
-    const cost = sessionSummaryAnalysis.recommendedCredits || 5;
+    const cost = sessionSummaryAnalysis.recommendedCredits || (sessionSummaryAnalysis.chapters.length * 10);
     if (availableCredits !== undefined && availableCredits < cost) {
-      alert(`Créditos insuficientes (${availableCredits} disponíveis). A geração deste Resumo Adaptado exige ${cost} créditos.`);
+      alert(`Créditos insuficientes (${availableCredits} disponíveis). A geração deste Resumo Adaptado exige ${cost} créditos (${sessionSummaryAnalysis.chapters.length} capítulos x 10cr).`);
       return;
     }
 
@@ -712,6 +811,53 @@ export default function FlashcardModule({
           console.error('Error updating session doc with generated summary:', e);
         }
       }
+
+      // Find matching topic(s) and save to content_resumo_lacunas
+      const matchedTopics = topics.filter(t => 
+        (selectedSessionHistory.topicIds && selectedSessionHistory.topicIds.includes(t.id)) ||
+        (selectedSessionHistory.topicTitles && selectedSessionHistory.topicTitles.includes(t.title))
+      );
+
+      if (matchedTopics.length > 0) {
+        for (const topicObj of matchedTopics) {
+          try {
+            const topicRef = userId
+              ? doc(db, 'users', userId, 'topics', topicObj.id)
+              : doc(db, 'topics', topicObj.id);
+
+            const topicSnap = await getDoc(topicRef);
+            let existingGapContent = '';
+            if (topicSnap.exists()) {
+              const tData = topicSnap.data();
+              if (tData.content_resumo_lacunas) {
+                existingGapContent = tData.content_resumo_lacunas;
+              }
+            }
+
+            const newFormattedGapSummary = existingGapContent
+              ? `${existingGapContent}\n\n---\n\n${fullContent}`
+              : fullContent;
+
+            await setDoc(topicRef, {
+              content_resumo_lacunas: newFormattedGapSummary,
+              lastUpdated: new Date().toISOString()
+            }, { merge: true });
+
+            // Also mirror to global topics collection if user topic
+            if (userId) {
+              const globalRef = doc(db, 'topics', topicObj.id);
+              await setDoc(globalRef, {
+                content_resumo_lacunas: newFormattedGapSummary,
+                lastUpdated: new Date().toISOString()
+              }, { merge: true }).catch(() => {});
+            }
+          } catch (e) {
+            console.error('Error appending gap summary to topic:', e);
+          }
+        }
+      }
+
+      if (onProgressUpdate) onProgressUpdate();
 
       setGeneratedSessionSummaryResult({
         title: mainTitle,
@@ -2514,19 +2660,19 @@ export default function FlashcardModule({
 
               {/* GAP REPAIR SUMMARY SUGGESTION BOX */}
               {(diagnosticResult.failedCount > 0 || diagnosticResult.hardCount > 0) && (
-                <div className="p-6 bg-gradient-to-r from-amber-50/80 via-orange-50/50 to-amber-50/80 border border-amber-200/90 rounded-2xl space-y-4 shadow-sm">
+                <div className="p-6 bg-gradient-to-r from-indigo-50/90 via-purple-50/60 to-amber-50/90 border border-indigo-200/90 rounded-2xl space-y-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-sm shrink-0">
-                        <BookOpen className="w-5 h-5" />
+                      <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md shrink-0">
+                        <Sparkles className="w-5 h-5 text-amber-300" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-display font-black text-amber-950 flex items-center gap-2">
-                          Resumo de Cobertura de Erros & Reparo de Lacunas
-                          <Badge className="bg-amber-200 text-amber-900 border-amber-300 text-[9px] font-extrabold uppercase">Novo Resumo no Tópico</Badge>
+                        <h4 className="text-sm font-display font-black text-indigo-950 flex items-center gap-2">
+                          Criar Resumo no Assistente com IA (Foco em Erros)
+                          <Badge className="bg-indigo-100 text-indigo-900 border-indigo-300 text-[9px] font-extrabold uppercase">Personalizado & Adaptado</Badge>
                         </h4>
-                        <p className="text-xs text-amber-800 font-medium mt-0.5">
-                          Gerar um resumo novo e separado no tópico focado 100% em sanar e dissecando os conceitos que você errou nesta sessão.
+                        <p className="text-xs text-stone-700 font-medium mt-0.5">
+                          Abre o assistente de resumos já configurado com a pré-análise e os capítulos gerados a partir do relatório de erros desta sessão.
                         </p>
                       </div>
                     </div>
@@ -2544,22 +2690,13 @@ export default function FlashcardModule({
                           {gapSummaryErrorMsg}
                         </p>
                       )}
+                      
                       <Button
-                        onClick={handleGenerateGapRepairSummary}
-                        disabled={isGeneratingGapSummary}
-                        className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-widest h-13 rounded-xl gap-2 shadow-md shadow-amber-600/20 cursor-pointer"
+                        onClick={handleOpenWizardForGapSummary}
+                        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-xs uppercase tracking-widest h-14 rounded-xl gap-2 shadow-lg shadow-indigo-600/25 cursor-pointer"
                       >
-                        {isGeneratingGapSummary ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Sintetizando Resumo de Reparo de Lacunas pela IA...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-4 h-4" />
-                            Gerar Resumo Novo de Cobertura de Erros (Reparo de Lacunas 🎯)
-                          </>
-                        )}
+                        <Sparkles className="w-4 h-4 text-amber-300 fill-amber-300 animate-pulse" />
+                        Abrir Assistente de Resumos do Tópico 🚀
                       </Button>
                     </div>
                   )}
@@ -2689,19 +2826,19 @@ export default function FlashcardModule({
 
                     {/* GAP REPAIR SUMMARY SUGGESTION BOX */}
                     {(erredCount > 0 || hardCount > 0) && (
-                      <div className="p-6 bg-gradient-to-r from-amber-50/80 via-orange-50/50 to-amber-50/80 border border-amber-200/90 rounded-2xl space-y-4 shadow-sm">
+                      <div className="p-6 bg-gradient-to-r from-indigo-50/90 via-purple-50/60 to-amber-50/90 border border-indigo-200/90 rounded-2xl space-y-4 shadow-sm">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-sm shrink-0">
-                              <BookOpen className="w-5 h-5" />
+                            <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md shrink-0">
+                              <Sparkles className="w-5 h-5 text-amber-300" />
                             </div>
                             <div>
-                              <h4 className="text-sm font-display font-black text-amber-950 flex items-center gap-2">
-                                Resumo de Cobertura de Erros & Reparo de Lacunas
-                                <Badge className="bg-amber-200 text-amber-900 border-amber-300 text-[9px] font-extrabold uppercase">Novo Resumo no Tópico</Badge>
+                              <h4 className="text-sm font-display font-black text-indigo-950 flex items-center gap-2">
+                                Criar Resumo no Assistente com IA (Foco em Erros)
+                                <Badge className="bg-indigo-100 text-indigo-900 border-indigo-300 text-[9px] font-extrabold uppercase">Personalizado & Adaptado</Badge>
                               </h4>
-                              <p className="text-xs text-amber-800 font-medium mt-0.5">
-                                Gerar um resumo novo e separado no tópico focado 100% em sanar os {erredCount + hardCount} conceitos que você errou/teve dúvidas nesta sessão.
+                              <p className="text-xs text-stone-700 font-medium mt-0.5">
+                                Gerar um resumo adaptado no assistente de resumos focado 100% em sanar os {erredCount + hardCount} conceitos que você errou ou teve dúvidas nesta sessão.
                               </p>
                             </div>
                           </div>
@@ -2719,23 +2856,14 @@ export default function FlashcardModule({
                                 {gapSummaryErrorMsg}
                               </p>
                             )}
-                            <Button
-                              onClick={handleGenerateGapRepairSummary}
-                              disabled={isGeneratingGapSummary}
-                              className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-widest h-13 rounded-xl gap-2 shadow-md shadow-amber-600/20 cursor-pointer"
-                            >
-                              {isGeneratingGapSummary ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                  Sintetizando Resumo de Reparo de Lacunas pela IA...
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="w-4 h-4" />
-                                  Gerar Resumo Novo de Cobertura de Erros (Reparo de Lacunas 🎯)
-                                </>
-                              )}
-                            </Button>
+                            
+                              <Button
+                                onClick={handleOpenWizardForGapSummary}
+                                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-xs uppercase tracking-widest h-14 rounded-xl gap-2 shadow-lg shadow-indigo-600/25 cursor-pointer"
+                              >
+                                <Sparkles className="w-4 h-4 text-amber-300 fill-amber-300 animate-pulse" />
+                                Abrir Assistente de Resumos do Tópico 🚀
+                              </Button>
                           </div>
                         )}
                       </div>

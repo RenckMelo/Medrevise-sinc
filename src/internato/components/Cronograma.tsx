@@ -684,9 +684,14 @@ export default function Cronograma({
       let targetSubject: any;
       let targetTopic: any;
 
-      // 1. Fast path: check in-memory cache and topics list using O(1) cache map and findMatchingTopic
+      // 1. Fast path: check in-memory cache and topics list using O(1) cache map, findMatchingTopic, and normalized loose match
+      const targetNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
       const matchedFromCache = getMatchedDbTopic(rawTitle, topicIdToTry, scheduleTopic?.type) || getMatchedDbTopic(cleanTitle, topicIdToTry, scheduleTopic?.type);
-      const matchedInMemory = matchedFromCache || findMatchingTopic(cleanTitle, topics || [], topicIdToTry) || matchTopicForSchedule(cleanTitle, topics || []);
+      const looseMatchInMemory = (topics || []).find(t => {
+        const tNorm = (t.title || t.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+        return tNorm === targetNorm || (tNorm && targetNorm && (tNorm.includes(targetNorm) || targetNorm.includes(tNorm)));
+      });
+      const matchedInMemory = matchedFromCache || findMatchingTopic(cleanTitle, topics || [], topicIdToTry) || matchTopicForSchedule(cleanTitle, topics || []) || looseMatchInMemory;
 
       if (matchedInMemory) {
         targetTopic = { ...matchedInMemory, title: matchedInMemory.title || cleanTitle };
@@ -698,10 +703,10 @@ export default function Cronograma({
           color: 'bg-blue-100 text-[#0066cc]'
         };
       } else {
-        // 2. Query Firestore before creating a new topic to prevent duplicate empty topic creation
+        // 2. Fast single-doc Firestore lookup before creating a new topic
         let foundInFirestore: any = null;
 
-        // A. If topicIdToTry exists, fetch by ID (only accept if title matches)
+        // A. If topicIdToTry exists, fetch by ID
         if (topicIdToTry && typeof topicIdToTry === 'string' && !topicIdToTry.startsWith('local_')) {
           try {
             const topicDocRef = doc(db, 'users', user.uid, 'topics', topicIdToTry);
@@ -709,7 +714,6 @@ export default function Cronograma({
             if (topicSnap.exists()) {
               const fsData = { id: topicSnap.id, ...topicSnap.data() as any };
               const fsTitleNorm = (fsData.title || fsData.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-              const targetNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
               if (!targetNorm || fsTitleNorm === targetNorm || fsTitleNorm.includes(targetNorm) || targetNorm.includes(fsTitleNorm)) {
                 foundInFirestore = fsData;
               }
@@ -719,7 +723,7 @@ export default function Cronograma({
           }
         }
 
-        // B. Query users/{uid}/topics by exact cleanTitle
+        // B. Query users/{uid}/topics by exact cleanTitle (single document limit 1)
         if (!foundInFirestore && cleanTitle) {
           try {
             const qTitle = query(collection(db, 'users', user.uid, 'topics'), where('title', '==', cleanTitle), limit(1));
@@ -729,19 +733,6 @@ export default function Cronograma({
             }
           } catch (err) {
             console.warn('Error querying topic by title from Firestore:', err);
-          }
-        }
-
-        // C. Fallback: fetch user topics from Firestore and run findMatchingTopic
-        if (!foundInFirestore) {
-          try {
-            const userTopicsSnap = await getDocs(collection(db, 'users', user.uid, 'topics'));
-            if (!userTopicsSnap.empty) {
-              const allUserTopics = userTopicsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-              foundInFirestore = findMatchingTopic(cleanTitle, allUserTopics, topicIdToTry);
-            }
-          } catch (err) {
-            console.warn('Error querying all user topics from Firestore:', err);
           }
         }
 
@@ -10149,6 +10140,99 @@ export default function Cronograma({
                     </Button>
                   </>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* SYNC CONFIRMATION MODAL */}
+        {syncConfirmModalOpen && pendingStudyArgs && (
+          <div className="fixed inset-0 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-[#E2E0D9] w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col font-sans"
+            >
+              <div className="bg-[#1A1A1A] p-5 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl">
+                    <Sparkles className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-tight">Como deseja estudar este tópico?</h3>
+                    <p className="text-[10.5px] text-stone-400 font-mono mt-0.5">
+                      {extractTopicTitleFromScheduleItem(pendingStudyArgs.scheduleTopic)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSyncConfirmModalOpen(false)}
+                  className="p-1.5 rounded-lg text-stone-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <p className="text-xs text-stone-600 leading-relaxed">
+                  Você pode escolher sincronizar esta sessão de estudos com o acervo do <strong>MedRevise</strong> ou mantê-la contida apenas no <strong>MedInternato</strong>.
+                </p>
+
+                <div className="space-y-2.5">
+                  <button
+                    onClick={() => {
+                      const args = pendingStudyArgs;
+                      setSyncConfirmModalOpen(false);
+                      if (rememberSyncChoice) {
+                        updateSyncMode('sync');
+                      }
+                      if (args) {
+                        handleContinueStudy(args.scheduleTopic, args.targetView, 'sync');
+                      }
+                    }}
+                    className="w-full p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100/80 text-left transition-all cursor-pointer flex items-center justify-between group"
+                  >
+                    <div>
+                      <span className="text-xs font-extrabold text-emerald-950 block">Sincronizar com MedRevise</span>
+                      <span className="text-[10px] text-emerald-800">Cria/vincula a matéria no acervo geral e atualiza o histórico</span>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-emerald-600 group-hover:translate-x-1 transition-transform shrink-0" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const args = pendingStudyArgs;
+                      setSyncConfirmModalOpen(false);
+                      if (rememberSyncChoice) {
+                        updateSyncMode('internato_only');
+                      }
+                      if (args) {
+                        handleContinueStudy(args.scheduleTopic, args.targetView, 'internato_only');
+                      }
+                    }}
+                    className="w-full p-4 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-left transition-all cursor-pointer flex items-center justify-between group"
+                  >
+                    <div>
+                      <span className="text-xs font-bold text-stone-900 block">Apenas MedInternato</span>
+                      <span className="text-[10px] text-stone-500">Estudar no planejamento sem criar no acervo principal</span>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-stone-400 group-hover:translate-x-1 transition-transform shrink-0" />
+                  </button>
+                </div>
+
+                <div className="pt-3 border-t border-stone-100 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="rememberSyncChoice"
+                    checked={rememberSyncChoice}
+                    onChange={(e) => setRememberSyncChoice(e.target.checked)}
+                    className="rounded border-stone-300 text-[#D44E3D] focus:ring-[#D44E3D] cursor-pointer"
+                  />
+                  <label htmlFor="rememberSyncChoice" className="text-[11px] text-stone-600 cursor-pointer font-medium">
+                    Lembrar minha escolha para os próximos tópicos
+                  </label>
+                </div>
               </div>
             </motion.div>
           </div>

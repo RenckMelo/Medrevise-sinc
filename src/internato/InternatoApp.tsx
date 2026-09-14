@@ -94,6 +94,23 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
   const [cronogramaMode, setCronogramaMode] = useState<'study' | 'exam'>('study');
   const [availableCredits, setAvailableCredits] = useState<number>(100);
 
+  // Summary Generation Wizard Preset state (e.g. from Flashcards error analysis)
+  const [summaryWizardPreset, setSummaryWizardPreset] = useState<{
+    open: boolean;
+    initialAnalysis?: any;
+    initialDepth?: string;
+  } | null>(null);
+
+  const handleOpenSummaryWizardFromFlashcards = (topic: Topic, initialAnalysis?: any) => {
+    setSelectedTopic(topic);
+    setSummaryWizardPreset({
+      open: true,
+      initialAnalysis,
+      initialDepth: 'custom_analyzed'
+    });
+    setCurrentView('topicDetail');
+  };
+
   // Tour, Provider Modal, FAQ Modal and Suggestions Box
   const [showTour, setShowTour] = useState(false);
   const [showProviderStatusModal, setShowProviderStatusModal] = useState(false);
@@ -579,6 +596,10 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             onToggleAppMode={onToggleAppMode}
             availableCredits={availableCredits}
             setAvailableCredits={setAvailableCredits}
+            initialOpenWizard={summaryWizardPreset?.open}
+            initialAnalysis={summaryWizardPreset?.initialAnalysis}
+            initialDepth={summaryWizardPreset?.initialDepth as any}
+            onWizardClosed={() => setSummaryWizardPreset(null)}
           />
         )}
 
@@ -608,6 +629,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             onProgressUpdate={loadUserProgress}
             availableCredits={availableCredits}
             setAvailableCredits={setAvailableCredits}
+            onOpenSummaryWizard={handleOpenSummaryWizardFromFlashcards}
           />
         )}
 

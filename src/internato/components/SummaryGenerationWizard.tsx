@@ -32,8 +32,8 @@ export default function SummaryGenerationWizard({
   onRunAnalysis
 }: SummaryGenerationWizardProps) {
   const topicTitle = (rawTopicTitle && rawTopicTitle !== 'undefined' && rawTopicTitle !== 'null' && rawTopicTitle.toLowerCase() !== 'undefined') ? rawTopicTitle.trim() : 'Tópico de Estudo';
-  const [step, setStep] = useState<number>(1);
-  const [depth, setDepth] = useState<string>('standard');
+  const [step, setStep] = useState<number>(() => (initialAnalysis ? 2 : 1));
+  const [depth, setDepth] = useState<string>(() => (initialAnalysis ? 'custom_analyzed' : 'standard'));
   const [illustrationLevel, setIllustrationLevel] = useState<'minimum' | 'moderate' | 'maximum'>('moderate');
   const [alertBoxLevel, setAlertBoxLevel] = useState<string>('light');
   const [referencePref, setReferencePref] = useState<string>('');
@@ -60,6 +60,15 @@ export default function SummaryGenerationWizard({
 
   const [isAnalyzingLocal, setIsAnalyzingLocal] = useState<boolean>(false);
   const [newChapter, setNewChapter] = useState<string>('');
+
+  useEffect(() => {
+    if (initialAnalysis) {
+      setAnalysis(initialAnalysis);
+      setHasRunAnalysis(true);
+      setDepth('custom_analyzed');
+      setStep(2);
+    }
+  }, [initialAnalysis]);
 
   // Clear analysis error when depth changes
   useEffect(() => {

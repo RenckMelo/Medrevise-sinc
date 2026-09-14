@@ -1731,20 +1731,27 @@ Forneça uma pré-análise em JSON estrito planejando um RESUMO ADAPTADO DE LACU
 1. "diagnosis": Análise de 2 a 3 frases explicando as principais lacunas identificadas nos erros do aluno.
 2. "chapters": Array com 4 a 6 títulos de capítulos encadeados para montar um Resumo Adaptado Completo focado nesses erros.
 3. "clinicalHighlights": Array com 3 a 5 alertas de prova específicos sobre os erros cometidos.
-4. "recommendedCredits": Custo fixo em créditos para a geração desse resumo adaptado (ex: 5).
+4. "recommendedCredits": Custo em créditos para a geração desse resumo adaptado (calculado a 10 créditos por capítulo, ex: 4 capítulos = 40cr).
 
 Formato JSON estrito:
 {
   "diagnosis": "...",
   "chapters": ["Capítulo 1: ...", "Capítulo 2: ...", "Capítulo 3: ...", "Capítulo 4: ..."],
   "clinicalHighlights": ["...", "..."],
-  "recommendedCredits": 5
+  "recommendedCredits": 40
 }`;
 
   try {
     await checkUsageLimit();
-    const result = await callGemini('generateJson', prompt);
-    return result as { diagnosis: string; chapters: string[]; clinicalHighlights: string[]; recommendedCredits: number };
+    const rawResult = await callGemini('generateJson', prompt) as any;
+    const chaptersCount = Array.isArray(rawResult?.chapters) ? rawResult.chapters.length : 4;
+    const computedCost = Math.max(10, chaptersCount * 10);
+    return {
+      diagnosis: rawResult?.diagnosis || 'Análise de lacunas da sessão.',
+      chapters: Array.isArray(rawResult?.chapters) ? rawResult.chapters : ['Capítulo 1: Revisão dos Conceitos Mapeados'],
+      clinicalHighlights: Array.isArray(rawResult?.clinicalHighlights) ? rawResult.clinicalHighlights : [],
+      recommendedCredits: computedCost
+    };
   } catch (err) {
     console.error('Error analyzing flashcard session for summary:', err);
     throw err;
@@ -1942,6 +1949,18 @@ Nível de Profundidade Desejado: ${depthText}
 
 Seu objetivo é definir as necessidades exatas para que o aluno receba um resumo completo, profundamente detalhado, didático e autossuficiente (capaz de substituir livros-texto), cobrindo a BASE DIDÁTICA FISIOPATOLÓGICA/FISIOLÓGICA, DEFINIÇÕES CONCEITUAIS IMPECÁVEIS e o CONTEÚDO PRÁTICO DE PROVA E MANEJO COMPLETO (critérios oficiais na íntegra, doses exatas mg/kg, checklists de procedimento, todas as escalas e escores relevantes e pegadinhas de bancas).
 
+PROTOCOLOS DA MATRIZ UNIVERSAL E 3 PILARES DE EXCELÊNCIA MÉDICA:
+PILAR 1 - MATRIZ UNIVERSAL DE ELEMENTOS CLÍNICOS OBRIGATÓRIOS:
+- Se o tema possuir QUALQUER sistema de classificação por estágios, graus, classes, fases ou tipos (ex: HAS, Diabetes, DRC, IC, DPOC, Queimaduras, Retinopatia, Sepse, Asma, TEP, Cirrose, Tumores, etc.), VOCÊ DEVE OBRIGATORIAMENTE incluir um capítulo ou subseção explícita dedicada para: "Classificações Oficiais, Estágios e Escores em Tabelas Integrais".
+- Se o tema possuir exames com valores de corte numéricos (ex: medidas de consultório vs monitorização residencial/ambulatorial, marcadores laboratoriais, parâmetros de imagem/gráficos), GARANTA que haja capítulo ou subseção de "Critérios Diagnósticos e Valores de Corte das Sociedades Especializadas".
+
+PILAR 2 - FILTRO UNIVERSAL DE CONSENSOS E DIRETRIZES VIGENTES (INVIOLÁVEL):
+- A IA DEVE utilizar OBRIGATORIAMENTE os consensos e diretrizes oficiais VIGENTES MAIS RECENTES das Sociedades Brasileiras de Especialidade (SBC, SBPT, SBP, FEBRASGO, CBC, SBED, SBN, SBD, etc.) e Internacionais de referência (UpToDate, Harrison, ESC, AHA, GINA, GOLD, KDIGO, Sepsis-3, etc.).
+- É TERMINANTEMENTE PROIBIDO utilizar Manuais de Atenção Básica antigos do Ministério da Saúde ou critérios históricos obsoletos que foram superados por consensos recentes.
+
+PILAR 3 - CHECKLIST INTELIGENTE DE PRÉ-ANÁLISE:
+- A IA avalia dinamicamente o tema no planejador: se o tema envolve estagiamento ou valores de corte, insira na lista "chapters" um capítulo dedicado às classificações/estágios e na lista "clinicalHighlights" os alertas numéricos exatos de corte das diretrizes.
+
 DIRETRIZES MANDATÓRIAS DE DIDÁTICA, DEFINIÇÕES E ENCADEMENTO DOS CAPÍTULOS:
 1. REGRA DA DEFINIÇÃO IMPECÁVEL E COMPLETA (NUNCA DEIXAR RASA):
    - O primeiro capítulo do resumo DEVE OBRIGATORIAMENTE ser dedicado a "Introdução, Definição Formal Rigorosa, Consensos Históricos, Conceito Termo a Termo e Fisiopatologia Fundamental". NUNCA permita que a definição seja tratada como mera formalidade superficial ou deixada de canto. Ela deve ser profunda, dissecada termo a termo e ancorada nos consensos mais recentes.
@@ -2110,7 +2129,8 @@ export async function generateCustomAnalyzedSummary(
     // Se já houver conteúdo existente, verifica se o sumário contém os capítulos originais planejados
     if (existingContent && existingContent.trim().length > 100) {
       const extractedChapters = getChaptersFromMonograph(existingContent);
-      if (extractedChapters.length > chapters.length) {
+      const matchesCount = chapters.filter(ch => extractedChapters.some(ex => ex.toLowerCase().includes(ch.toLowerCase()) || ch.toLowerCase().includes(ex.toLowerCase()))).length;
+      if (matchesCount > 0 && extractedChapters.length > chapters.length) {
         console.log(`[Gemini] Preservando todos os ${extractedChapters.length} capítulos do sumário original do documento (em vez de ${chapters.length}).`);
         chapters = extractedChapters;
       }
@@ -2183,7 +2203,11 @@ export async function generateCustomAnalyzedSummary(
     }
 
     if (startChapterIndex === 0) {
-      fullContent = `# ${safeTitle.toUpperCase()}\n\n*Tratado Personalizado de Alta Performance - Gerado por Preceptor IA (Análise Prévia de Requisitos)*\n\n---\n\n## SUMÁRIO DE NAVEGAÇÃO\n\n`;
+      if (existingContent && existingContent.trim().length > 100) {
+        fullContent = `${existingContent.trim()}\n\n---\n\n# ADENDO ADAPTADO: MÓDULO DE REPARO DE LACUNAS (FLASHCARDS)\n\n## SUMÁRIO DE NOVOS CAPÍTULOS\n\n`;
+      } else {
+        fullContent = `# ${safeTitle.toUpperCase()}\n\n*Tratado Personalizado de Alta Performance - Gerado por Preceptor IA (Análise Prévia de Requisitos)*\n\n---\n\n## SUMÁRIO DE NAVEGAÇÃO\n\n`;
+      }
       
       // Gerar links de ancoragem
       chapters.forEach((chapter) => {
@@ -2238,6 +2262,11 @@ ${previousSignatures}
 * É ESTRITAMENTE PROIBIDO REPETIR QUALQUER TABELA, ESCORE OU CAIXA DE DICA LISTADA ACIMA.
 
 DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO, DIDÁTICA E NÃO REPETIÇÃO:
+0. PROTOCOLO DA MATRIZ UNIVERSAL E 3 PILARES DE EXCELÊNCIA MÉDICA:
+   - PILAR 1 (CLASSIFICAÇÕES & ESTÁGIOS OBRIGATÓRIOS): Se este capítulo ou o tema abordado possuir qualquer sistema oficial de estagiamento, classificação por graus, fases, classes ou tipos (ex: HAS, Diabetes, DRC, IC, DPOC, Queimaduras, Retinopatia, Sepse, Asma, TEP, Cirrose, Tumores, etc.), VOCÊ DEVE OBRIGATORIAMENTE INCLUIR A TABELA COMPLETA de estagiamento/classificação com todos os valores numéricos de corte numéricos exatos de cada fase.
+   - PILAR 2 (FILTRO DE DIRETRIZES VIGENTES INVIOLÁVEL): Utilize estritamente as diretrizes vigentes mais recentes das Sociedades de Especialidades Médicas (SBC, SBPT, SBP, FEBRASGO, CBC, SBED, SBN, SBD, UpToDate, Harrison, ESC, AHA, GINA, GOLD, KDIGO, Sepsis-3, etc.). É proibido utilizar manuais desatualizados ou critérios defasados.
+   - PILAR 3 (CRITÉRIOS DIAGNÓSTICOS E VALORES DE CORTE): Apresente em tabelas comparativas limpas todos os métodos diagnósticos com seus respectivos valores de corte exatos.
+
 1. COMECE PELO TÍTULO SEGUIDO OBRIGATORIAMENTE DE UMA PONTE DIDÁTICA:
    - A primeira linha DEVE conter "## ${chapterTitle}".
    - ${i > 0 ? `SEGUNDO PARÁGRAFO MANDATÓRIO (PONTE DIDÁTICA DE TRANSIÇÃO): Logo após o título "## ${chapterTitle}", escreva um curto parágrafo de 1 a 2 frases conectando pedagogicamente o aprendizado do capítulo anterior (${previousChaptersStr}) com o tema deste novo capítulo. Exemplo: *"Conforme fundamentado no capítulo anterior quanto aos mecanismos de [conceito anterior], avançamos agora para a caracterização detalhada de [tema deste capítulo]..."*. Isso garante uma narrativa contínua, integrada e extremamente didática como em um livro-texto de medicina de alto nível.` : `PRIMEIRO PARÁGRAFO (DEFINIÇÃO CONCEITUAL RIGOROSA E DEFINITIVA): Como este é o capítulo inicial, forneça a Definição Formal Exaustiva e Impecável termo a termo, resgatando consensos atualizados, evolução de critérios históricos e o pilar fisiopatológico central. NUNCA resuma ou deixe a definição superficial ou secundária.`}

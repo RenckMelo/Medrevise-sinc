@@ -59,48 +59,31 @@ const detectRealDepth = (topic: Topic): GenerationDepth | 'none' => {
     return 'standard';
   }
 
-  // 1. Check if resumo_lacunas or custom analyzed is explicitly stored
-  if (isRealContent(topic.content_resumo_lacunas)) return 'resumo_lacunas';
+  // 1. Check if custom analyzed, monograph, master, elite, deep or standard are stored
   if (isRealContent(topic.content_custom_analyzed)) return 'custom_analyzed';
-
-  // 2. Check if monograph is explicitly stored
   if (isRealContent(topic.content_monograph)) return 'monograph';
-  
-  // 3. Check if master (Extensivo) is explicitly stored
   if (isRealContent(topic.content_master)) return 'master';
-  
-  // 4. Check if elite is explicitly stored
   if (isRealContent(topic.content_elite)) return 'elite';
-  
-  // 5. Check if deep (Avançado) is explicitly stored
   if (isRealContent(topic.content_deep)) return 'deep';
   
-  // 6. Inspect standard or legacy fields for content length
+  // 2. Check standard or legacy fields for content length
   const standardText = topic.content_standard || topic.content || '';
   if (isRealContent(standardText)) {
     const len = standardText.length;
     const numChapters = (standardText.match(/Capítulo \d+/gi) || []).length;
     const hasTratado = standardText.includes('Tratado Médico Especializado') || standardText.includes('MONOGRAFIA') || standardText.includes('Sumário') || standardText.includes('SUMÁRIO');
     
-    // Legacy monograph check
-    if (len > 11000 || numChapters >= 5 || (len > 8000 && hasTratado)) {
-      return 'monograph';
-    }
-    // Legacy extensivo check
-    if (len > 6500) {
-      return 'master';
-    }
-    // Legacy elite check
-    if (len > 4000) {
-      return 'elite';
-    }
-    // Legacy deep check
-    if (len > 1800) {
-      return 'deep';
-    }
+    if (len > 35000 || numChapters >= 10) return 'monograph';
+    if (len > 20000 || numChapters >= 8) return 'master';
+    if (len > 12000 || numChapters >= 6) return 'elite';
+    if (len > 6000 || numChapters >= 4) return 'deep';
+    if (hasTratado) return 'elite';
     return 'standard';
   }
-  
+
+  // 3. Fallback to gap summary if it's the only summary created
+  if (isRealContent(topic.content_resumo_lacunas)) return 'resumo_lacunas';
+
   return 'none';
 };
 
@@ -860,9 +843,32 @@ interface TopicDetailProps {
   onToggleAppMode?: () => void;
   availableCredits?: number;
   setAvailableCredits?: (credits: number) => void;
+  initialOpenWizard?: boolean;
+  initialAnalysis?: any;
+  initialDepth?: GenerationDepth;
+  onWizardClosed?: () => void;
 }
 
-export default function TopicDetail({ topic: initialTopic, userProgress, onBack, onComplete, subjects, userId, userEmail = '', onTopicUpdate, onStartPractice, onStartFlashcards, onProgressUpdate, onToggleAppMode, availableCredits, setAvailableCredits }: TopicDetailProps) {
+export default function TopicDetail({ 
+  topic: initialTopic, 
+  userProgress, 
+  onBack, 
+  onComplete, 
+  subjects, 
+  userId, 
+  userEmail = '', 
+  onTopicUpdate, 
+  onStartPractice, 
+  onStartFlashcards, 
+  onProgressUpdate, 
+  onToggleAppMode, 
+  availableCredits, 
+  setAvailableCredits,
+  initialOpenWizard,
+  initialAnalysis,
+  initialDepth,
+  onWizardClosed
+}: TopicDetailProps) {
   const [localTopic, setLocalTopic] = useState<Topic>(initialTopic);
   const topic = localTopic;
   
@@ -926,6 +932,22 @@ export default function TopicDetail({ topic: initialTopic, userProgress, onBack,
   });
   const [editedChapters, setEditedChapters] = useState<string[]>([]);
   const [newChapterName, setNewChapterName] = useState('');
+
+  // Handle preset wizard opening from flashcards or external flows
+  useEffect(() => {
+    if (initialOpenWizard) {
+      if (initialAnalysis) {
+        setAnalysisResult(initialAnalysis);
+        if (initialAnalysis.chapters) {
+          setEditedChapters(initialAnalysis.chapters);
+        }
+      }
+      if (initialDepth) {
+        setDepth(initialDepth);
+      }
+      setShowSummaryWizard(true);
+    }
+  }, [initialOpenWizard, initialAnalysis, initialDepth]);
 
   // Subscription and credit limits modal states
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
@@ -3788,7 +3810,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
 
     const fieldName = `content_${targetDepth}`;
-    const existingContent = localTopic[fieldName as keyof typeof localTopic] || '';
+    const existingContent = (localTopic[fieldName as keyof typeof localTopic] as string) || (localTopic.content_custom_analyzed as string) || (localTopic.content_standard as string) || (localTopic.content as string) || '';
 
     try {
       const content = await generateCustomAnalyzedSummary(
@@ -5493,32 +5515,6 @@ th { background: #F8F7F4; font-weight: bold; }
                   </Button>
                 )}
 
-                {/* PDF Download Button (All users) */}
-                {!isPlaceholder && (
-                  <Button
-                    variant="ghost"
-                    onClick={downloadPDF}
-                    disabled={isGeneratingPDF}
-                    className="h-8 px-3 rounded-xl bg-white border border-[#E2E0D9] hover:bg-[#F3F1EC] text-[10.5px] font-bold uppercase tracking-wider text-[#2C2B29] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    title="Baixar resumo formatado em PDF"
-                  >
-                    <Download className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                    <span>{isGeneratingPDF ? 'Gerando...' : 'Baixar PDF'}</span>
-                  </Button>
-                )}
-
-                {/* HTML Download Button (Restricted exclusively to allowed users) */}
-                {isAllowedHtmlDownloadUser && !isPlaceholder && (
-                  <Button
-                    variant="ghost"
-                    onClick={downloadHTML}
-                    className="h-8 px-3 rounded-xl bg-white border border-[#E2E0D9] hover:bg-[#F3F1EC] text-[10.5px] font-bold uppercase tracking-wider text-[#2C2B29] transition-all flex items-center gap-1.5 cursor-pointer"
-                    title="Exclusivo: Baixar resumo em HTML autônomo"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                    <span>Baixar HTML</span>
-                  </Button>
-                )}
               </div>
 
               {/* Right Group: Interactive Reading Suite */}
@@ -7566,17 +7562,7 @@ th { background: #F8F7F4; font-weight: bold; }
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {isAllowedHtmlDownloadUser && (
-                    <Button 
-                      variant="outline"
-                      onClick={downloadHTML}
-                      className="text-[10px] uppercase tracking-widest font-bold h-10 px-4 rounded-xl bg-white hover:bg-slate-50 text-blue-700 border-blue-200 flex items-center gap-1.5 cursor-pointer"
-                      title="Exclusivo: Baixar resumo em HTML"
-                    >
-                      <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span>Baixar HTML</span>
-                    </Button>
-                  )}
+
 
                   <Button 
                     variant="outline"

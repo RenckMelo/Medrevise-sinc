@@ -1730,8 +1730,8 @@ const MarkdownImage = ({ src, alt, ...props }: any) => {
   );
 };
 
-function hastToHtml(node: any): string {
-  if (!node) return '';
+function hastToHtml(node: any, depth = 0): string {
+  if (!node || depth > 25) return '';
   if (node.type === 'text') {
     return node.value || '';
   }
@@ -1779,7 +1779,7 @@ function hastToHtml(node: any): string {
       .filter(Boolean)
       .join(' ');
       
-    const childrenHtml = (node.children || []).map(hastToHtml).join('');
+    const childrenHtml = (node.children || []).map((child: any) => hastToHtml(child, depth + 1)).join('');
     return attrs ? `<${tagName} ${attrs}>${childrenHtml}</${tagName}>` : `<${tagName}>${childrenHtml}</${tagName}>`;
   }
   return '';
@@ -2318,12 +2318,14 @@ export const syncSummaryTableOfContents = (content: string): string => {
   }
 };
 
-const getParagraphText = (node: any): string => {
-  if (!node) return '';
+const getParagraphText = (node: any, depth = 0): string => {
+  if (!node || depth > 15) return '';
   if (typeof node === 'string') return node;
   if (typeof node === 'number') return String(node);
-  if (Array.isArray(node)) return node.map(getParagraphText).join('');
-  if (node.props && node.props.children) return getParagraphText(node.props.children);
+  if (Array.isArray(node)) return node.map(item => getParagraphText(item, depth + 1)).join('');
+  if (typeof node === 'object' && node.props && node.props.children) {
+    return getParagraphText(node.props.children, depth + 1);
+  }
   return '';
 };
 

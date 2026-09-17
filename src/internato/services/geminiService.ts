@@ -2803,9 +2803,10 @@ function getPromptPreferenceInstructions(illustrationLevel: string = 'moderate',
 
   instructions += `REGRA DE SINTAXE E LIMPEZA DE TABELAS MARKDOWN:
 - Toda tabela Markdown DEVE ter exatamente 1 linha de cabeçalho (ex: | Coluna 1 | Coluna 2 |), 1 linha de separador (ex: | --- | --- |) e N linhas de dados (ex: | Dado 1 | Dado 2 |).
+- PREENCHIMENTO OBRIGATÓRIO DE TODAS AS CÉLULAS: É expressamente proibido deixar qualquer célula de tabela em branco ou vazia (| | ou ||). Se um parâmetro não se aplicar, não for conhecido ou for ausente para determinado item, preencha a célula explicitamente com "N/A", "Não se aplica" ou "—" (traço).
 - NUNCA repita ou acumule linhas de separadores (| --- | --- |) em sequência.
 - NUNCA insira pipes vazios ou colunas duplas sem texto (ex: ||, || ||, | | |).
-- NUNCA quebre a linha dentro da mesma célula de tabela. CADA linha da tabela DEVE ser emitida inteira em uma única linha física com quebra de linha (\\n) no final.
+- NUNCA quebre a linha dentro da mesma célula de tabela. CADA linha da tabela DEVE ser emitida inteira em uma única linha física com quebra de linha (\n) no final.
 \n`;
 
   instructions += `REGRA DE SUMÁRIO DE NAVEGAÇÃO:

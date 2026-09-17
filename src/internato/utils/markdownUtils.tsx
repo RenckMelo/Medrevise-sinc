@@ -1959,7 +1959,7 @@ export function cleanAndFixMarkdownTables(text: string): string {
     // Header (Row 0)
     const header = rows[0];
     while (header.length < maxCols) header.push('');
-    result.push(`| ${header.map(c => c || ' ').join(' | ')} |`);
+    result.push(`| ${header.map(c => (c && c.trim()) ? c : 'Item').join(' | ')} |`);
 
     // Separator line
     result.push(`| ${Array(maxCols).fill('---').join(' | ')} |`);
@@ -1968,7 +1968,7 @@ export function cleanAndFixMarkdownTables(text: string): string {
     for (let rIdx = 1; rIdx < rows.length; rIdx++) {
       const row = rows[rIdx];
       while (row.length < maxCols) row.push('');
-      result.push(`| ${row.slice(0, maxCols).map(c => c || ' ').join(' | ')} |`);
+      result.push(`| ${row.slice(0, maxCols).map(c => (c && c.trim()) ? c : '—').join(' | ')} |`);
     }
 
     result.push('');
@@ -5657,11 +5657,17 @@ export const markdownComponents: any = {
     </th>
   ),
 
-  td: ({ children, ...props }: any) => (
-    <td className="px-4 py-3.5 sm:px-5 sm:py-4 text-stone-800 font-medium leading-relaxed border-b border-stone-100 align-top break-words max-w-xs sm:max-w-md min-w-[140px]" {...props}>
-      {children}
-    </td>
-  ),
+  td: ({ children, ...props }: any) => {
+    const isEmpty = !children ||
+      (typeof children === 'string' && !children.trim()) ||
+      (Array.isArray(children) && (children.length === 0 || (children.length === 1 && typeof children[0] === 'string' && !children[0].trim())));
+
+    return (
+      <td className="px-4 py-3.5 sm:px-5 sm:py-4 text-stone-800 font-medium leading-relaxed border-b border-stone-100 align-top break-words max-w-xs sm:max-w-md min-w-[140px]" {...props}>
+        {isEmpty ? <span className="text-stone-400 font-sans italic text-xs font-normal">—</span> : children}
+      </td>
+    );
+  },
 
   ul: ({ children, ...props }: any) => (
     <ul className="my-4 space-y-2 pl-5 text-stone-800 list-disc marker:text-[#D44E3D]" {...props}>

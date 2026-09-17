@@ -1201,9 +1201,10 @@ export async function generateQuestions(
   const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
   await checkUsageLimit();
 
-  const chunkSize = Math.min(count, 2); // Generate 2 questions at a time to strictly guarantee complete, unabridged clinical vignettes and full options without model summarization
+  const chunkSize = Math.min(count, 5); // Generate in chunks up to 5 questions
   const allQuestions: any[] = [];
-  const currentExisting = [...existingQuestions];
+  // Keep existing questions list concise (snippets) to prevent prompt token bloat on Groq/Gemini
+  const currentExisting = existingQuestions.map(t => (t || '').substring(0, 70));
 
   const { residencyFocus } = await getUserFocusSettings(userId);
   let examFocusText = `Você DEVE priorizar com 100% de rigidez as seguintes bancas de residência médica de interesse do candidato: **${residencyFocus}** (2022 a 2026).`;
@@ -1217,7 +1218,11 @@ export async function generateQuestions(
   }
 
   let remaining = count;
-  while (remaining > 0) {
+  let attempts = 0;
+  const maxAttempts = 3;
+
+  while (remaining > 0 && attempts < maxAttempts) {
+    attempts++;
     const currentChunkSize = Math.min(chunkSize, remaining);
     
     const chunkPrompt = `Você é uma autoridade em concursos de residência médica no Brasil e um banco de dados de exames de seleção médica.
@@ -1258,12 +1263,12 @@ export async function generateQuestions(
 
     REQUISITOS ADICIONAIS:
     1. DIVERSIDADE REAL DE ORIGEM E ANO: Cada questão gerada/recuperada DEVE possuir a sua banca e o seu ano ESPECÍFICOS e REAIS (ex: varie entre ENARE, SES-DF, SES-GO, UFG, UnB, USP, UNIFESP, UNICAMP, PSU-MG, AMRIGS e anos entre 2021 e 2026). É ESTRITAMENTE PROIBIDO atribuir a mesma banca e o mesmo ano fixo a todas as questões de um lote, a menos que o candidato tenha selecionado um filtro específico de banca única.
-    2. Evite repetir enunciados parecidos com: ${currentExisting.join(', ')}.
+    2. Evite repetir enunciados parecidos com: ${currentExisting.join(' | ')}.
     3. Estatísticas Regionais ("regionalIncidenceStats") e Termômetro ("heatLevel"): Frequência aproximada de cobrança do tema e termômetro ('baixo', 'medio', 'alto', 'extremo').
     4. Pegadinhas ("frequentMistakesExplanation"): Detalhes do distrator da banca em português.
     5. Gabarito Conflitante ("gabaritoConflict"): Anulações ou divergências em português.
 
-    FORMATO DE RESPOSTA (APENAS JSON ESTREITO):
+    FORMATO DE RESPOSTA (APENAS JSON ESTREITO - UM ARRAY DE OBJETOS):
     [
       {
         "text": "Texto completo, extenso e detalhado do caso clínico e enunciado da prova em português...",
@@ -1289,31 +1294,48 @@ export async function generateQuestions(
 
     try {
       let result = await callGemini('generateJson', chunkPrompt);
-      if (!result || !Array.isArray(result) || result.length === 0) {
-        // Fallback retry with simplified prompt if needed
-        const retryPrompt = `Gere ${currentChunkSize} questões de residência médica sobre "${topicTitle}" (${area}) em formato JSON estrito para a banca ${residencyFocus}.\n` + chunkPrompt;
-        result = await callGemini('generateJson', retryPrompt);
+      
+      // Helper to normalize JSON objects into flat question array if provider returns wrapped object
+      const normalizeQuestionArray = (resData: any): any[] => {
+        if (!resData) return [];
+        if (Array.isArray(resData)) return resData;
+        if (typeof resData === 'object') {
+          if (Array.isArray(resData.questions)) return resData.questions;
+          if (Array.isArray(resData.data)) return resData.data;
+          if (Array.isArray(resData.result)) return resData.result;
+          if (Array.isArray(resData.items)) return resData.items;
+          const vals = Object.values(resData).filter((item: any) => item && typeof item === 'object' && ('text' in item || 'options' in item));
+          if (vals.length > 0) return vals;
+        }
+        return [];
+      };
+
+      let normalizedQuestions = normalizeQuestionArray(result);
+
+      if (normalizedQuestions.length === 0) {
+        // Fallback retry with simplified prompt
+        const retryPrompt = `Gere exatamente ${currentChunkSize} questões de residência médica sobre "${topicTitle}" (${area}) em formato de array JSON estrito [...].\n` + chunkPrompt;
+        const retryResult = await callGemini('generateJson', retryPrompt);
+        normalizedQuestions = normalizeQuestionArray(retryResult);
       }
 
-      if (result && Array.isArray(result)) {
-        allQuestions.push(...result);
-        for (const q of result) {
-          if (q && q.text) {
-            currentExisting.push(q.text);
+      if (normalizedQuestions.length > 0) {
+        for (const q of normalizedQuestions) {
+          if (q && q.text && q.options && Array.isArray(q.options)) {
+            allQuestions.push(q);
+            currentExisting.push((q.text || '').substring(0, 70));
           }
         }
+        remaining -= normalizedQuestions.length;
       }
     } catch (chunkError: any) {
       console.error(`Error generating chunk of questions:`, chunkError);
       if (allQuestions.length === 0 && remaining === count) {
-        // First chunk failed completely - do NOT charge any credits!
         throw new Error(`A IA não conseguiu estruturar as questões neste momento (${chunkError?.message || 'erro de resposta'}). Nenhum crédito foi cobrado da sua conta.`);
       }
-      // If some questions were already generated, break and keep generated ones
-      break;
+      // Pause briefly and attempt next iteration
+      await new Promise(r => setTimeout(r, 600));
     }
-
-    remaining -= currentChunkSize;
   }
 
   if (allQuestions.length === 0) {

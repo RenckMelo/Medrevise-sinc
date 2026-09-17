@@ -1203,16 +1203,33 @@ export default function FlashcardModule({
     }
 
     // 4. Advance to next card immediately (zero latency)
-    if (currentIndex + 1 < flashcards.length) {
-      setIsFlipped(false);
-      setCurrentIndex(prev => prev + 1);
-    } else {
-      // Finished deck
-      saveSessionToFirestore(updatedSessionScores, activeTab);
-      if (activeTab === 'diagnostic') {
-        finishDiagnosticSession([...diagnosticScores, { card: currentCard, rating }]);
+    if (onlyUndoneCards) {
+      const remainingCards = activeDeckCards.filter(c => c.id !== currentCard.id);
+      if (remainingCards.length === 0) {
+        saveSessionToFirestore(updatedSessionScores, activeTab);
+        if (activeTab === 'diagnostic') {
+          finishDiagnosticSession([...diagnosticScores, { card: currentCard, rating }]);
+        } else {
+          setSessionCompleted(true);
+        }
       } else {
-        setSessionCompleted(true);
+        setIsFlipped(false);
+        if (currentIndex >= remainingCards.length) {
+          setCurrentIndex(0);
+        }
+      }
+    } else {
+      if (currentIndex + 1 < flashcards.length) {
+        setIsFlipped(false);
+        setCurrentIndex(prev => prev + 1);
+      } else {
+        // Finished deck
+        saveSessionToFirestore(updatedSessionScores, activeTab);
+        if (activeTab === 'diagnostic') {
+          finishDiagnosticSession([...diagnosticScores, { card: currentCard, rating }]);
+        } else {
+          setSessionCompleted(true);
+        }
       }
     }
   };
@@ -1370,24 +1387,43 @@ export default function FlashcardModule({
   const nextCard = () => {
     setIsFlipped(false);
     setTimeout(() => {
-      setCurrentIndex(prev => (prev + 1) % flashcards.length);
+      const deckLen = activeDeckCards.length > 0 ? activeDeckCards.length : flashcards.length;
+      if (deckLen > 0) {
+        setCurrentIndex(prev => (prev + 1) % deckLen);
+      }
     }, 150);
   };
 
   const prevCard = () => {
     setIsFlipped(false);
     setTimeout(() => {
-      setCurrentIndex(prev => (prev - 1 + flashcards.length) % flashcards.length);
+      const deckLen = activeDeckCards.length > 0 ? activeDeckCards.length : flashcards.length;
+      if (deckLen > 0) {
+        setCurrentIndex(prev => (prev - 1 + deckLen) % deckLen);
+      }
     }, 150);
   };
 
   const activeDeckCards = useMemo(() => {
     if (!onlyUndoneCards) return flashcards;
-    const filtered = flashcards.filter(c => !sessionRatings[c.id]);
-    return filtered.length > 0 ? filtered : flashcards;
-  }, [flashcards, onlyUndoneCards, sessionRatings]);
+    
+    // First: filter cards not rated in current session
+    const undoneInSession = flashcards.filter(c => !sessionRatings[c.id]);
+    
+    // If there are unstudied/unreviewed cards in SRS, prioritize those
+    const completelyIneditos = undoneInSession.filter(c => {
+      const rev = srsReviewsMap[c.id];
+      return !rev || !rev.lastReviewed || rev.repetitions === 0;
+    });
 
-  const currentCard = activeDeckCards[currentIndex] || flashcards[currentIndex];
+    if (completelyIneditos.length > 0) {
+      return completelyIneditos;
+    }
+
+    return undoneInSession;
+  }, [flashcards, onlyUndoneCards, sessionRatings, srsReviewsMap]);
+
+  const currentCard = activeDeckCards[currentIndex] || activeDeckCards[0] || flashcards[currentIndex];
 
   // Derived current card SRS values preview
   const currentCardSRS = useMemo(() => {

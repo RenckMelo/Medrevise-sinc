@@ -114,6 +114,24 @@ export interface QuizAttempt {
   type: 'individual' | 'simulado';
 }
 
+export interface PausedQuestionSession {
+  id: string;
+  userId?: string;
+  title: string;
+  questions: Question[];
+  currentIndex: number;
+  score: number;
+  examAnswers: Record<string, number>;
+  currentQuizResults: QuestionAttempt[];
+  seconds: number;
+  secondsRemaining: number;
+  quizMode: 'study' | 'exam';
+  timerType: 'up' | 'down';
+  selectedTopicIds: string[];
+  selectedSubjectIds: string[];
+  timestamp: string;
+}
+
 export interface StudySession {
   id: string;
   subjectId: string | 'multidisciplinary';

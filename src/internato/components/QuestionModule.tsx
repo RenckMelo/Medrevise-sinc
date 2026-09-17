@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Subject, Topic, Question, UserProgress, QuestionAttempt, QuizAttempt } from '../types';
+import { Subject, Topic, Question, UserProgress, QuestionAttempt, QuizAttempt, PausedQuestionSession } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { CheckCircle2, XCircle, ChevronRight, ChevronLeft, ArrowLeft, HelpCircle, Trophy, RefreshCcw, Sparkles, Loader2, Clock, Filter, Layers, Brain, BookCheck, RotateCcw, List, Bookmark, Trash2, SlidersHorizontal, AlertCircle, Building2, Calendar, Eye, Search, Plus, Check } from 'lucide-react';
+import { CheckCircle2, XCircle, ChevronRight, ChevronLeft, ArrowLeft, HelpCircle, Trophy, RefreshCcw, Sparkles, Loader2, Clock, Filter, Layers, Brain, BookCheck, RotateCcw, List, Bookmark, Trash2, SlidersHorizontal, AlertCircle, Building2, Calendar, Eye, Search, Plus, Check, Pause, Play, PauseCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { db, collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove, addDoc, setDoc, getDoc, increment, orderBy, limit, deleteDoc } from '../firebase';
@@ -149,6 +149,8 @@ export default function QuestionModule({
   const [secondsRemaining, setSecondsRemaining] = useState(15 * 60);
   const [examAnswers, setExamAnswers] = useState<Record<string, number>>({});
   const [seconds, setSeconds] = useState(0);
+  const [isActive, setIsActive] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // MedRevise Integration State
   const [medReviseMinutes, setMedReviseMinutes] = useState<number>(15);
@@ -173,6 +175,148 @@ export default function QuestionModule({
       localStorage.setItem('medinternato_sync_medrevise_mode', mode === 'auto' ? 'sync' : 'internato_only');
     } catch (e) {}
   };
+
+  // Paused Question Session State & Auto-Save Key
+  const PAUSED_SESSION_KEY = `medinternato_paused_question_session_${userId || 'guest'}`;
+  const [pausedSession, setPausedSession] = useState<PausedQuestionSession | null>(() => {
+    try {
+      const saved = localStorage.getItem(`medinternato_paused_question_session_${userId || 'guest'}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  const clearPausedSession = () => {
+    try {
+      localStorage.removeItem(PAUSED_SESSION_KEY);
+    } catch (e) {}
+    setPausedSession(null);
+  };
+
+  // Explicit Pause Session handler
+  const handlePauseSession = () => {
+    if (questions.length === 0) return;
+
+    setIsActive(false);
+
+    let title = 'Bloco de Questões';
+    if (selectedTopicIds.length > 0) {
+      const matchedTopics = topics.filter(t => selectedTopicIds.includes(t.id));
+      if (matchedTopics.length > 0) {
+        title = matchedTopics.map(t => t.title).join(', ');
+      }
+    } else if (selectedSubjectIds.length > 0) {
+      const matchedSubjects = subjects.filter(s => selectedSubjectIds.includes(s.id));
+      if (matchedSubjects.length > 0) {
+        title = matchedSubjects.map(s => s.name).join(', ');
+      }
+    }
+
+    const sessionToSave: PausedQuestionSession = {
+      id: pausedSession?.id || Math.random().toString(36).substr(2, 9),
+      userId,
+      title,
+      questions,
+      currentIndex,
+      score,
+      examAnswers,
+      currentQuizResults,
+      seconds,
+      secondsRemaining,
+      quizMode,
+      timerType,
+      selectedTopicIds,
+      selectedSubjectIds,
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      localStorage.setItem(PAUSED_SESSION_KEY, JSON.stringify(sessionToSave));
+      setPausedSession(sessionToSave);
+    } catch (e) {
+      console.error('Error saving paused session:', e);
+    }
+
+    setQuestions([]);
+    setIsSelecting(true);
+  };
+
+  // Resume paused session
+  const handleResumeSession = () => {
+    if (!pausedSession) return;
+
+    setQuestions(pausedSession.questions);
+    setCurrentIndex(pausedSession.currentIndex || 0);
+    setScore(pausedSession.score || 0);
+    setExamAnswers(pausedSession.examAnswers || {});
+    setCurrentQuizResults(pausedSession.currentQuizResults || []);
+    setSeconds(pausedSession.seconds || 0);
+    setSecondsRemaining(pausedSession.secondsRemaining || 15 * 60);
+    setQuizMode(pausedSession.quizMode || 'study');
+    setTimerType(pausedSession.timerType || 'up');
+    setSelectedTopicIds(pausedSession.selectedTopicIds || []);
+    setSelectedSubjectIds(pausedSession.selectedSubjectIds || []);
+
+    setIsAnswered(false);
+    setSelectedOption(null);
+    setAiExplanation(null);
+    setShowResults(false);
+    setIsSelecting(false);
+    setIsActive(true);
+  };
+
+  // Discard paused session
+  const handleDiscardPausedSession = () => {
+    if (window.confirm('Tem certeza que deseja descartar o bloco de questões pausado? O progresso salvo será apagado.')) {
+      clearPausedSession();
+    }
+  };
+
+  // Auto-save in-progress session on index / progress update
+  useEffect(() => {
+    if (isActive && questions.length > 0 && !showResults) {
+      let title = 'Bloco de Questões';
+      if (selectedTopicIds.length > 0) {
+        const matchedTopics = topics.filter(t => selectedTopicIds.includes(t.id));
+        if (matchedTopics.length > 0) {
+          title = matchedTopics.map(t => t.title).join(', ');
+        }
+      } else if (selectedSubjectIds.length > 0) {
+        const matchedSubjects = subjects.filter(s => selectedSubjectIds.includes(s.id));
+        if (matchedSubjects.length > 0) {
+          title = matchedSubjects.map(s => s.name).join(', ');
+        }
+      }
+
+      const sessionToSave: PausedQuestionSession = {
+        id: pausedSession?.id || Math.random().toString(36).substr(2, 9),
+        userId,
+        title,
+        questions,
+        currentIndex,
+        score,
+        examAnswers,
+        currentQuizResults,
+        seconds,
+        secondsRemaining,
+        quizMode,
+        timerType,
+        selectedTopicIds,
+        selectedSubjectIds,
+        timestamp: new Date().toISOString()
+      };
+
+      try {
+        localStorage.setItem(PAUSED_SESSION_KEY, JSON.stringify(sessionToSave));
+        setPausedSession(sessionToSave);
+      } catch (e) {}
+    }
+  }, [isActive, currentIndex, score, seconds, questions.length, showResults]);
 
   useEffect(() => {
     if (showResults) {
@@ -798,8 +942,7 @@ export default function QuestionModule({
   }, [countdownMinutes, timerType]);
   
   // Timer state
-  const [isActive, setIsActive] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
 
   useEffect(() => {
     if (showHistory) {
@@ -1522,6 +1665,7 @@ export default function QuestionModule({
     } else {
       setShowResults(true);
       setIsActive(false);
+      clearPausedSession();
       
       // Save Quiz Attempt summary
       const finalDuration = Math.max(15, seconds);
@@ -1590,6 +1734,7 @@ export default function QuestionModule({
     } else {
       setShowResults(true);
       setIsActive(false);
+      clearPausedSession();
 
       const finalDuration = Math.max(15, seconds);
       const totalAnsweredSoFar = Math.max(1, currentQuizResults.length);
@@ -1768,6 +1913,7 @@ export default function QuestionModule({
       setCurrentQuizResults(quizResults);
       setShowResults(true);
       setIsActive(false);
+      clearPausedSession();
     } catch (err) {
       console.error('Error submitting exam:', err);
     } finally {
@@ -1775,8 +1921,10 @@ export default function QuestionModule({
     }
   };
 
-  const redoQuestions = (selectedQuestions: Question[]) => {
-    setQuestions(selectedQuestions.sort(() => Math.random() - 0.5));
+  const redoQuestions = (selectedQuestions: Question[], shuffle = false) => {
+    if (!selectedQuestions || selectedQuestions.length === 0) return;
+    const qs = shuffle ? [...selectedQuestions].sort(() => Math.random() - 0.5) : [...selectedQuestions];
+    setQuestions(qs);
     setCurrentIndex(0);
     setScore(0);
     setShowResults(false);
@@ -1787,13 +1935,16 @@ export default function QuestionModule({
     setSeconds(0);
     setSecondsRemaining(countdownMinutes * 60);
     setExamAnswers({});
+    setCurrentQuizResults([]);
     setIsSelecting(false);
     setShowAnswered(false);
     setShowHistory(false);
     setShowSaved(false);
+    setSelectedQuizForDetail(null);
+    clearPausedSession();
   };
 
-  const restart = () => redoQuestions(questions);
+  const restart = () => redoQuestions(questions, false);
 
   const handleShowQuizDetail = async (quiz: QuizAttempt) => {
     setSelectedQuizForDetail(quiz);
@@ -2726,6 +2877,60 @@ export default function QuestionModule({
             </Button>
           </div>
         </div>
+
+        {pausedSession && !showHistory && !showAnswered && !showSaved && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-amber-500/15 border-2 border-amber-400/80 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xl shadow-amber-500/10 relative overflow-hidden"
+          >
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <Badge className="bg-amber-500 text-white font-black text-[10px] uppercase tracking-wider px-3 py-1 flex items-center gap-1.5 shadow-xs">
+                    <Pause className="w-3.5 h-3.5 fill-white" />
+                    Sessão Pausada
+                  </Badge>
+                  <span className="text-xs text-amber-900 font-bold">
+                    Pausada em {new Date(pausedSession.timestamp).toLocaleDateString('pt-BR')} às {new Date(pausedSession.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-display font-black text-[#1A1A1A] leading-tight">
+                  {pausedSession.title || 'Bloco de Questões Em Andamento'}
+                </h3>
+                <div className="flex items-center gap-3 text-xs text-[#5C584E] font-medium flex-wrap pt-1">
+                  <span className="bg-white/80 px-3 py-1 rounded-lg border border-amber-200/80 font-bold text-amber-950">
+                    📋 Questão {pausedSession.currentIndex + 1} de {pausedSession.questions.length}
+                  </span>
+                  <span className="bg-white/80 px-3 py-1 rounded-lg border border-amber-200/80 font-bold text-amber-950">
+                    ⏱️ Tempo Decorrido: {formatTime(pausedSession.seconds)}
+                  </span>
+                  <span className="bg-white/80 px-3 py-1 rounded-lg border border-amber-200/80 font-bold text-amber-950">
+                    🎯 {pausedSession.score} Acertos
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 pt-2 sm:pt-0">
+                <Button
+                  onClick={handleResumeSession}
+                  className="flex-1 sm:flex-initial h-12 px-6 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-md shadow-amber-500/20 gap-2.5 cursor-pointer transition-all active:scale-95"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  Retomar Bloco de Questões
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleDiscardPausedSession}
+                  className="h-12 px-4 border-amber-300 text-amber-900 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300 font-extrabold text-xs rounded-2xl transition-all cursor-pointer bg-white/80"
+                  title="Descartar este bloco pausado"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {showHistory && (
           <div className="space-y-6">
@@ -4549,10 +4754,20 @@ export default function QuestionModule({
                   )}
                 </div>
 
-                <div className="p-8 border-t border-[#E2E0D9] bg-white flex justify-end">
+                <div className="p-8 border-t border-[#E2E0D9] bg-white flex justify-between items-center flex-wrap gap-4">
+                  {detailQuestions.length > 0 && (
+                    <Button 
+                      onClick={() => redoQuestions(detailQuestions, false)}
+                      className="bg-primary hover:bg-primary/95 text-white px-6 h-12 text-[10px] uppercase font-black tracking-widest rounded-xl flex items-center gap-2 cursor-pointer shadow-sm"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Refazer Este Simulado Inteiro ({detailQuestions.length} questões)
+                    </Button>
+                  )}
                   <Button 
                     onClick={() => setSelectedQuizForDetail(null)}
-                    className="bg-[#1A1A1A] hover:bg-black text-white px-8 h-12 text-[10px] uppercase font-black tracking-widest rounded-xl"
+                    variant="outline"
+                    className="border-[#E2E0D9] hover:bg-stone-100 px-8 h-12 text-[10px] uppercase font-black tracking-widest rounded-xl"
                   >
                     Fechar Revisão
                   </Button>
@@ -4876,10 +5091,20 @@ export default function QuestionModule({
           </div>
         </div>
         
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap sm:flex-nowrap">
           <Button 
             variant="outline"
-            className="h-11 border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 text-[10px] uppercase font-black tracking-widest px-4 rounded-xl flex items-center gap-2 cursor-pointer shadow-xs"
+            className="h-11 border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-[10px] uppercase font-black tracking-widest px-4 rounded-xl flex items-center gap-2 cursor-pointer shadow-xs transition-all"
+            onClick={handlePauseSession}
+            title="Pausar execução e continuar depois"
+          >
+            <Pause className="w-4 h-4 text-amber-600 fill-amber-600" />
+            Pausar e Salvar
+          </Button>
+
+          <Button 
+            variant="outline"
+            className="h-11 border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 text-[10px] uppercase font-black tracking-widest px-4 rounded-xl flex items-center gap-2 cursor-pointer shadow-xs transition-all"
             onClick={handleFinishEarly}
             title="Finalizar agora e ver relatório de desempenho até o momento"
           >
@@ -4891,7 +5116,7 @@ export default function QuestionModule({
             variant="ghost"
             className="h-11 text-stone-500 hover:text-stone-900 text-[10px] uppercase font-black tracking-widest px-3 rounded-xl cursor-pointer"
             onClick={() => {
-              if (window.confirm('Deseja sair e configurar um novo teste? O progresso não finalizado será descartado.')) {
+              if (window.confirm('Deseja sair sem pausar? O progresso não salvo será descartado.')) {
                 setSelectedTopicIds([]);
                 setSelectedSubjectIds([]);
                 setQuestions([]);

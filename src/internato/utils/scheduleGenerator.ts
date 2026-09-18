@@ -313,19 +313,7 @@ export function generatePlan(
     const topic = masterTopicQueue[idx];
     topicPointer++;
 
-    if (cycle === 0) {
-      return topic;
-    } else if (cycle === 1) {
-      return {
-        ...topic,
-        title: `⚡ [QUESTÕES AVANÇADAS] ${topic.title}`
-      };
-    } else {
-      return {
-        ...topic,
-        title: `🔄 [REVISÃO DE REFORÇO] ${topic.title}`
-      };
-    }
+    return topic;
   };
 
   for (let w = 1; w <= totalWeeks; w++) {
@@ -372,7 +360,7 @@ export function generatePlan(
       }
 
       const revisionTopic: StudyPlanTopic = {
-        title: `Revisão Ativa + Flashcards: ${revisionTopicData.title.replace('⚡ [QUESTÕES AVANÇADAS] ', '').replace('🔄 [REVISÃO DE REFORÇO] ', '')}`,
+        title: revisionTopicData.title,
         subjectName: revisionTopicData.subjectName,
         historicalIncidence: revisionTopicData.incidence,
         isPriority: revisionTopicData.incidence >= 23 || prioritySubjectsList.includes(revisionTopicData.subjectName),
@@ -1195,7 +1183,7 @@ export function extendScheduleWithScientificRevisions(
 
           const rev = pendingRevisions.splice(i, 1)[0];
           dayTopics.push({
-            title: `🔄 [${rev.revisionName}] ${rev.topicTitle}`,
+            title: rev.topicTitle,
             subjectName: rev.subjectName,
             historicalIncidence: 100,
             isPriority: true,
@@ -1229,7 +1217,7 @@ export function extendScheduleWithScientificRevisions(
 
         if (selected) {
           dayTopics.push({
-            title: `⚡ [MANUTENÇÃO EBBINGHAUS] ${selected.cleanTitle}`,
+            title: selected.cleanTitle,
             subjectName: selected.subjectName,
             historicalIncidence: 100,
             isPriority: true,

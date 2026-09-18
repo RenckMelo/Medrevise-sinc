@@ -366,109 +366,32 @@ const findMatchingTopic = (title: string, userTopics: any[], manualTopicId?: str
 
   const titleClean = cleanAndNormalize(title);
 
-  // 0. ID matching (if manually linked) - ONLY if topic name matches or is similar
+  // 0. ID matching (if manually linked)
   if (manualTopicId) {
     const foundById = userTopics.find(t => t.id === manualTopicId);
     if (foundById) {
-      const foundNameClean = cleanAndNormalize(foundById.title || foundById.name || '');
-      if (
-        titleClean &&
-        foundNameClean &&
-        (foundNameClean === titleClean ||
-         foundNameClean.includes(titleClean) ||
-         titleClean.includes(foundNameClean))
-      ) {
-        return foundById;
-      }
+      return foundById;
     }
   }
 
-  const stopWords = new Set(["de", "da", "do", "em", "com", "e", "o", "a", "os", "as", "para", "por", "um", "uma", "tipo", "apos", "pos"]);
-
-  const getCleanWords = (text: string): string[] => {
-    return cleanAndNormalize(text)
-      .split(" ")
-      .filter(w => w.length > 0 && !stopWords.has(w));
-  };
-
   const titleExpanded = expandPhrase(titleClean);
 
-  // Rule 1: Exact or expanded exact match (highest confidence)
+  // Rule 1: Exact normalized or exact expanded phrase match
   for (const t of userTopics) {
     const tTitle = t.title || t.name || '';
     const tClean = cleanAndNormalize(tTitle);
-    const tExpanded = expandPhrase(tClean);
+    
+    if (tClean === titleClean && tClean.length > 0) {
+      return t;
+    }
 
+    const tExpanded = expandPhrase(tClean);
     for (const te of titleExpanded) {
       for (const tte of tExpanded) {
         if (te === tte && te.length > 0) {
           return t;
         }
       }
-    }
-  }
-
-  // Helper to compare word roots/prefixes to handle suffixes like Anestesiologia vs Anestesio
-  const areWordsSimilar = (w1: string, w2: string): boolean => {
-    if (w1 === w2) return true;
-    if (w1.startsWith(w2) && w2.length >= 5) return true;
-    if (w2.startsWith(w1) && w1.length >= 5) return true;
-    return false;
-  };
-
-  // Rule 2: Substring matching with multi-word terms (to avoid matching single generic words like "aguda")
-  // e.g. "Insuficiência Cardíaca Congestiva" should match "Insuficiência Cardíaca" because "Insuficiência Cardíaca" has >= 2 words.
-  for (const t of userTopics) {
-    const tTitle = t.title || t.name || '';
-    const tClean = cleanAndNormalize(tTitle);
-    
-    // Check if one clean title is a subset of another, BUT only if both have at least 2 words
-    const wordsTitle = getCleanWords(title);
-    const wordsTopic = getCleanWords(tTitle);
-
-    if (wordsTitle.length >= 2 && wordsTopic.length >= 2) {
-      if (tClean.includes(titleClean) || titleClean.includes(tClean)) {
-        // Double check they share the primary medical noun (first word) to prevent wrong mappings
-        if (areWordsSimilar(wordsTitle[0], wordsTopic[0])) {
-          return t;
-        }
-      }
-    }
-  }
-
-  // Rule 3: Jaccard similarity / Token overlap with stem/prefix support (very strict)
-  // Requires at least 70% of the non-stop words of the shorter topic to be present in the longer topic,
-  // and they must share at least one key noun (the first or second word) to be considered a match.
-  // Also, we exclude generic words from being the only match.
-  const genericWords = new Set(["aguda", "agudo", "cronica", "cronico", "doenca", "sindrome", "infantil", "clinica", "cirurgia", "geral", "tratamento", "diagnostico", "exame", "prevencao", "fisiopatologia", "quadro", "clinico"]);
-
-  for (const t of userTopics) {
-    const tTitle = t.title || t.name || '';
-    const wordsTitle = getCleanWords(title);
-    const wordsTopic = getCleanWords(tTitle);
-
-    if (wordsTitle.length === 0 || wordsTopic.length === 0) continue;
-
-    let intersectionCount = 0;
-    let sharedKeyWord = false;
-
-    for (const w1 of wordsTitle) {
-      // Check if there is any similar word in wordsTopic
-      const hasSimilar = wordsTopic.some(w2 => areWordsSimilar(w1, w2));
-      if (hasSimilar) {
-        intersectionCount++;
-        if (!genericWords.has(w1)) {
-          sharedKeyWord = true;
-        }
-      }
-    }
-
-    const minWords = Math.min(wordsTitle.length, wordsTopic.length);
-    const matchRatio = intersectionCount / minWords;
-
-    // Strict threshold: at least 70% overlap of words, and must share at least one non-generic word
-    if (matchRatio >= 0.70 && sharedKeyWord) {
-      return t;
     }
   }
 
@@ -675,7 +598,7 @@ export default function Cronograma({
         if (foundWithId) {
           const tNameNorm = (foundWithId.title || foundWithId.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
           const targetNameNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-          if (tNameNorm && targetNameNorm && tNameNorm !== targetNameNorm && !tNameNorm.includes(targetNameNorm) && !targetNameNorm.includes(tNameNorm)) {
+          if (tNameNorm && targetNameNorm && tNameNorm !== targetNameNorm) {
             topicIdToTry = undefined;
           }
         }
@@ -684,14 +607,14 @@ export default function Cronograma({
       let targetSubject: any;
       let targetTopic: any;
 
-      // 1. Fast path: check in-memory cache and topics list using O(1) cache map, findMatchingTopic, and normalized loose match
+      // 1. Fast path: check in-memory cache and topics list using exact normalized title match
       const targetNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
       const matchedFromCache = getMatchedDbTopic(rawTitle, topicIdToTry, scheduleTopic?.type) || getMatchedDbTopic(cleanTitle, topicIdToTry, scheduleTopic?.type);
-      const looseMatchInMemory = (topics || []).find(t => {
+      const exactMatchInMemory = (topics || []).find(t => {
         const tNorm = (t.title || t.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-        return tNorm === targetNorm || (tNorm && targetNorm && (tNorm.includes(targetNorm) || targetNorm.includes(tNorm)));
+        return tNorm && targetNorm && tNorm === targetNorm;
       });
-      const matchedInMemory = matchedFromCache || findMatchingTopic(cleanTitle, topics || [], topicIdToTry) || matchTopicForSchedule(cleanTitle, topics || []) || looseMatchInMemory;
+      const matchedInMemory = matchedFromCache || findMatchingTopic(cleanTitle, topics || [], topicIdToTry) || exactMatchInMemory;
 
       if (matchedInMemory) {
         targetTopic = { ...matchedInMemory, title: matchedInMemory.title || cleanTitle };
@@ -714,7 +637,7 @@ export default function Cronograma({
             if (topicSnap.exists()) {
               const fsData = { id: topicSnap.id, ...topicSnap.data() as any };
               const fsTitleNorm = (fsData.title || fsData.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-              if (!targetNorm || fsTitleNorm === targetNorm || fsTitleNorm.includes(targetNorm) || targetNorm.includes(fsTitleNorm)) {
+              if (!targetNorm || fsTitleNorm === targetNorm) {
                 foundInFirestore = fsData;
               }
             }
@@ -1065,20 +988,11 @@ export default function Cronograma({
 
       const titleClean = cleanAndNormalize(title);
 
-      // 0. ID matching (ONLY if title matches or is similar)
+      // 0. ID matching
       if (manualTopicId) {
         const foundById = userTopicsById.get(manualTopicId);
         if (foundById) {
-          const foundTitleNorm = cleanAndNormalize(foundById.title || foundById.name || '');
-          if (
-            titleClean &&
-            foundTitleNorm &&
-            (foundTitleNorm === titleClean ||
-             foundTitleNorm.includes(titleClean) ||
-             titleClean.includes(foundTitleNorm))
-          ) {
-            return foundById;
-          }
+          return foundById;
         }
       }
 
@@ -1089,45 +1003,6 @@ export default function Cronograma({
         if (te.length > 0) {
           const matched = userTopicsByExpandedPhrase.get(te);
           if (matched) return matched;
-        }
-      }
-
-      // Rule 2: Substring matching with multi-word terms (fall back to list if Rule 1 misses)
-      const wordsTitle = getCleanWords(title);
-      for (const t of preprocessedUserTopics) {
-        const wordsTopic = t.cleanWords;
-        if (wordsTitle.length >= 2 && wordsTopic.length >= 2) {
-          if (t.cleanTitle.includes(titleClean) || titleClean.includes(t.cleanTitle)) {
-            if (areWordsSimilar(wordsTitle[0], wordsTopic[0])) {
-              return t.topic;
-            }
-          }
-        }
-      }
-
-      // Rule 3: Jaccard similarity / Token overlap
-      for (const t of preprocessedUserTopics) {
-        const wordsTopic = t.cleanWords;
-        if (wordsTitle.length === 0 || wordsTopic.length === 0) continue;
-
-        let intersectionCount = 0;
-        let sharedKeyWord = false;
-
-        for (const w1 of wordsTitle) {
-          const hasSimilar = wordsTopic.some(w2 => areWordsSimilar(w1, w2));
-          if (hasSimilar) {
-            intersectionCount++;
-            if (!genericWords.has(w1)) {
-              sharedKeyWord = true;
-            }
-          }
-        }
-
-        const minWords = Math.min(wordsTitle.length, wordsTopic.length);
-        const matchRatio = intersectionCount / minWords;
-
-        if (matchRatio >= 0.70 && sharedKeyWord) {
-          return t.topic;
         }
       }
 
@@ -2493,7 +2368,7 @@ export default function Cronograma({
           const tData = { id: snap.id, ...(snap.data() as any) };
           const tDataTitleNorm = (tData.title || tData.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
           const cleanTitleNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-          if (!cleanTitleNorm || tDataTitleNorm === cleanTitleNorm || tDataTitleNorm.includes(cleanTitleNorm) || cleanTitleNorm.includes(tDataTitleNorm)) {
+          if (!cleanTitleNorm || tDataTitleNorm === cleanTitleNorm) {
             if (setTopics) setTopics(prev => prev.some(x => x.id === tData.id) ? prev : [...prev, tData]);
             return tData;
           }
@@ -2649,9 +2524,7 @@ export default function Cronograma({
         progress
       } as any);
 
-      const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
-        ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
-        : targetTopic.title;
+      const canonicalTitle = getCleanTopicTitle(targetTopic.title);
 
       if (medReviseSyncMode !== 'internato_only') {
         let foundTopic = await ensureTopicInMedRevise(
@@ -2748,9 +2621,7 @@ export default function Cronograma({
         progress
       } as any);
 
-      const canonicalTitle = targetTopic.type === 'revisao' && targetTopic.title.startsWith('Revisão Ativa + Flashcards: ')
-        ? targetTopic.title.replace('Revisão Ativa + Flashcards: ', '')
-        : targetTopic.title;
+      const canonicalTitle = getCleanTopicTitle(targetTopic.title);
 
       showToast(`Tópico "${canonicalTitle}" desmarcado.`, "info");
       setTopicCompletionModal(null);
@@ -3324,7 +3195,7 @@ export default function Cronograma({
 
           if (revisionTopicData) {
             dayTopics.push({
-              title: `Revisão Ativa + Flashcards: ${revisionTopicData.title}`,
+              title: getCleanTopicTitle(revisionTopicData.title),
               subjectName: revisionTopicData.subjectName,
               historicalIncidence: revisionTopicData.incidence,
               isPriority: selectedCollegeTopics.includes(revisionTopicData.title),
@@ -5133,7 +5004,7 @@ export default function Cronograma({
                 // Clean name
                 const isRev = topic.type === 'revisao';
                 const titleStr = typeof topic.title === 'string' ? topic.title : '';
-                const cleanTitle = titleStr.replace('Revisão Ativa + Flashcards: ', '').trim();
+                const cleanTitle = getCleanTopicTitle(titleStr);
                 uniqueScheduledTitles.add(cleanTitle);
 
                 if (!topicDetailsMap[cleanTitle]) {
@@ -6897,7 +6768,7 @@ export default function Cronograma({
                                         <h3 className={`text-sm font-bold leading-snug tracking-tight transition-all duration-300 ${
                                           isTopicDone(topic) ? 'line-through text-stone-400 font-normal' : 'text-[#1A1A1A]'
                                         }`}>
-                                          {topic.title.replace('Revisão Ativa + Flashcards: ', '')}
+                                          {getCleanTopicTitle(topic.title)}
                                         </h3>
 
                                         {/* Forgetting Curve & MedRevise Integration Row */}
@@ -7277,7 +7148,7 @@ export default function Cronograma({
                                         <h3 className={`text-xs font-bold leading-tight transition-all duration-300 ${
                                           isTopicDone(topic) ? 'line-through text-stone-400 font-normal' : 'text-[#1A1A1A]'
                                         }`}>
-                                          {topic.title.replace('Revisão Ativa + Flashcards: ', '')}
+                                          {getCleanTopicTitle(topic.title)}
                                         </h3>
 
                                         {/* Forgetting Curve & MedRevise Integration Row */}
@@ -8062,7 +7933,7 @@ export default function Cronograma({
                                         )}
                                       </div>
                                       <p className={`text-xs font-bold truncate ${done ? 'line-through text-stone-400 font-normal' : 'text-[#1A1A1A]'}`}>
-                                        {topic.title.replace('Revisão Ativa + Flashcards: ', '')}
+                                        {getCleanTopicTitle(topic.title)}
                                       </p>
                                       <p className="text-[10px] text-stone-500">{topic.subjectName}</p>
 

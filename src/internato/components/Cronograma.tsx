@@ -43,7 +43,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { recordUsage, importPdfSchedule, analyzeSummaryNeeds } from '../services/geminiService';
+import { recordUsage, importPdfSchedule, analyzeSummaryNeeds, rebalanceScheduleWithAI } from '../services/geminiService';
 import { extractTextFromPdf } from '../utils/pdfExtractor';
 import { safeLocalStorageSet } from '../utils/storageUtils';
 import { MEDICAL_EXAMS_DB, GLOBAL_RESIDENCY_TOPICS, CANONICAL_SUBTOPICS_MAP } from '../data/medicalExams';
@@ -1902,7 +1902,8 @@ export default function Cronograma({
   // Delay catch-up / restructuring modal states
   const [showRestructureModal, setShowRestructureModal] = useState(false);
   const [restructureMode, setRestructureMode] = useState<'postpone' | 'prioritize' | 'add_day'>('postpone');
-  const [restructureDays, setRestructureDays] = useState<number>(5); // default to 5 study days
+  const [restructureDays, setRestructureDays] = useState<number>(10); // default to 10 study days
+  const [useFullRemainingPeriod, setUseFullRemainingPeriod] = useState<boolean>(true); // default to full remaining period (no snowball)
   const [restructureSaving, setRestructureSaving] = useState(false);
 
   const uncompletedBacklogList = useMemo(() => {
@@ -1929,9 +1930,6 @@ export default function Cronograma({
           if ((isPastWeek || isPastDayInCurrentWeek) && Array.isArray(topicsArr)) {
             topicsArr.forEach(t => {
               if (t && t.title) {
-                // EXCLUDE REVISIONS - Backlog is strictly scoped to primary study plan topics
-                if (isRevisionTopic(t)) return;
-
                 const done = isTopicDone(t);
                 if (!done) {
                   backlog.push({
@@ -1972,8 +1970,13 @@ export default function Cronograma({
     }
 
     let tempDayPos = startIdx < 0 ? 0 : startIdx;
-    const targetDaysCount = Math.max(1, restructureDays);
     
+    let targetDaysCount = Math.max(1, restructureDays);
+    if (useFullRemainingPeriod) {
+      const remainingWeeksCount = Math.max(1, schedule.weeks.length - todayTarget.weekIndex);
+      targetDaysCount = Math.max(1, remainingWeeksCount * activeStudyDays.length);
+    }
+
     const distribution: { dayName: string; count: number }[] = [];
     for (let i = 0; i < targetDaysCount; i++) {
       if (tempDayPos < 0 || tempDayPos >= activeStudyDays.length) {
@@ -4749,94 +4752,92 @@ export default function Cronograma({
     }
   };
 
-  // Trigger Restructuring catching-up logic ("Desatrasar Planejamento / Recuperar Atraso")
+  // Trigger Restructuring catching-up logic ("Desatrasar Planejamento com IA / Equalização Sem Bola de Neve")
   const handleRestructureSubmit = async () => {
-    if (!schedule) return;
+    if (!schedule || !user) return;
+
+    // Check credits upfront (5 credits)
+    const cost = 5;
+    if (availableCredits < cost) {
+      showToast(`Créditos insuficientes! Você precisa de ${cost} créditos para desatrasar com IA, mas possui apenas ${availableCredits}.`, 'error');
+      return;
+    }
 
     try {
       setRestructureSaving(true);
-      const updatedWeeks = [...schedule.weeks];
+      const updatedWeeks = JSON.parse(JSON.stringify(schedule.weeks));
       const startDateStr = (schedule as any)?.startDate || schedule?.createdAt;
       const chronologicalWeekDays = getChronologicalWeekDays(startDateStr);
 
-      // ALWAYS calculate atrasos and redistribution starting from TODAY
       const todayTarget = getTodayWeekAndDay(schedule);
       const todayWeekIdx = todayTarget.weekIndex;
       const todayDayTab = todayTarget.dayTab;
       const todayDayPos = chronologicalWeekDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(todayDayTab));
 
-      // Gather ALL uncompleted topics from past weeks AND past days of the current week relative to TODAY
-      const uncompletedBacklog: StudyPlanTopic[] = [];
+      // 1. Separate Intact Past vs Pending Items
+      const uncompletedStudyTopics: StudyPlanTopic[] = [];
+      const uncompletedReviews: StudyPlanTopic[] = [];
 
       for (let w = 0; w < updatedWeeks.length; w++) {
         const week = updatedWeeks[w];
         const isPastWeek = w < todayWeekIdx;
         const isCurrentWeek = w === todayWeekIdx;
 
-        if (isPastWeek || isCurrentWeek) {
-          Object.entries(week.days || {}).forEach(([dayName, topicsArr]) => {
-            const dayPos = chronologicalWeekDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(dayName));
-            const isPastDayInCurrentWeek = isCurrentWeek && todayDayPos !== -1 && dayPos !== -1 && dayPos < todayDayPos;
+        Object.entries(week.days || {}).forEach(([dayName, topicsArr]) => {
+          const dayPos = chronologicalWeekDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(dayName));
+          const isPastSlot = isPastWeek || (isCurrentWeek && todayDayPos !== -1 && dayPos !== -1 && dayPos < todayDayPos);
 
-            if ((isPastWeek || isPastDayInCurrentWeek) && Array.isArray(topicsArr)) {
-              const remainingTopics: StudyPlanTopic[] = [];
-              topicsArr.forEach(t => {
-                if (t && t.title) {
-                  // EXCLUDE REVISIONS - Keep reviews in their original days, do not pull them into backlog
+          if (Array.isArray(topicsArr)) {
+            const preservedInSlot: StudyPlanTopic[] = [];
+
+            topicsArr.forEach(t => {
+              if (!t || !t.title) return;
+
+              const isDone = isTopicDone(t);
+
+              if (isPastSlot) {
+                // In past slots, KEEP finished items where they are
+                if (isDone) {
+                  preservedInSlot.push(t);
+                } else {
+                  // Collect uncompleted items from past into pending pool
                   if (isRevisionTopic(t)) {
-                    remainingTopics.push(t);
-                    return;
-                  }
-
-                  if (!isTopicDone(t)) {
-                    uncompletedBacklog.push({
-                      ...t,
-                      isCompleted: false,
-                      isPriority: true, // Mark as priority because it's delayed!
-                      isRescheduled: true // Tag as recalculated delayed topic!
-                    });
+                    uncompletedReviews.push({ ...t, isCompleted: false, isPriority: true });
                   } else {
-                    remainingTopics.push(t);
+                    uncompletedStudyTopics.push({ ...t, isCompleted: false, isPriority: true, isRescheduled: true });
                   }
                 }
-              });
-              // Keep completed study topics and all reviews in past days
-              week.days[dayName] = remainingTopics;
-            }
-          });
-        }
+              } else {
+                // In future slots (today or future)
+                if (isDone) {
+                  preservedInSlot.push(t);
+                } else {
+                  if (isRevisionTopic(t)) {
+                    uncompletedReviews.push({ ...t, isCompleted: false });
+                  } else {
+                    uncompletedStudyTopics.push({ ...t, isCompleted: false });
+                  }
+                }
+              }
+            });
+
+            week.days[dayName] = preservedInSlot;
+          }
+        });
       }
 
-      if (uncompletedBacklog.length === 0) {
-        showToast("Você não possui matérias pendentes/atrasadas anteriores ao dia de hoje!", "info");
+      if (uncompletedStudyTopics.length === 0 && uncompletedReviews.length === 0) {
+        showToast("Você não possui matérias pendentes/atrasadas para organizar!", "info");
         setShowRestructureModal(false);
         setRestructureSaving(false);
         return;
       }
 
-      // Collect only the study days marked by the user
       const activeStudyDays = schedule.studyDays && schedule.studyDays.length > 0
         ? schedule.studyDays
         : ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
 
-      // Sort backlog by priority: Extremo > Alto > Médio > Baixo, then higher incidence first
-      const getImportanceScore = (degree?: string) => {
-        switch (degree) {
-          case 'extremo': return 4;
-          case 'alto': return 3;
-          case 'medio': return 2;
-          case 'baixo': return 1;
-          default: return 0;
-        }
-      };
-
-      uncompletedBacklog.sort((a, b) => {
-        const scoreDiff = getImportanceScore(b.importanceDegree) - getImportanceScore(a.importanceDegree);
-        if (scoreDiff !== 0) return scoreDiff;
-        return (b.historicalIncidence || 0) - (a.historicalIncidence || 0);
-      });
-
-      // Generate sequence of the next N study days starting from TODAY
+      // 2. Determine target future study days sequence
       const studyDaysSequence: { weekIdx: number; dayName: string }[] = [];
       let tempW = todayWeekIdx;
       let startIdx = activeStudyDays.findIndex(d => getDayIndexInOrder(d) === getDayIndexInOrder(todayDayTab));
@@ -4855,11 +4856,14 @@ export default function Cronograma({
       }
       if (startIdx < 0) startIdx = 0;
 
-      let tempDayPos = startIdx;
-      const targetDaysCount = Math.max(1, restructureDays);
+      let targetDaysCount = Math.max(1, restructureDays);
+      if (useFullRemainingPeriod) {
+        const remainingWeeksCount = Math.max(1, updatedWeeks.length - todayWeekIdx);
+        targetDaysCount = Math.max(1, remainingWeeksCount * activeStudyDays.length);
+      }
 
+      let tempDayPos = startIdx;
       for (let i = 0; i < targetDaysCount; i++) {
-        // Safe check for day position index
         if (tempDayPos < 0 || tempDayPos >= activeStudyDays.length) {
           tempDayPos = 0;
         }
@@ -4885,41 +4889,125 @@ export default function Cronograma({
         }
       }
 
-      // Distribute sorted backlog sequentially across the calculated sequence of study days
-      uncompletedBacklog.forEach((backlogTopic, index) => {
-        const targetDay = studyDaysSequence[index % studyDaysSequence.length];
-        const week = updatedWeeks[targetDay.weekIdx];
-        if (!week.days[targetDay.dayName]) {
-          week.days[targetDay.dayName] = [];
-        }
-        week.days[targetDay.dayName].push(backlogTopic);
-      });
+      // 3. AI Pedagogical Reordering (Gemini 3.1 Flash)
+      showToast("Conectando à IA para reorganizar seus tópicos pedagogicamente...", "info");
+      
+      let orderedTopics: StudyPlanTopic[] = [...uncompletedStudyTopics];
+      try {
+        const aiReordered = await rebalanceScheduleWithAI(
+          uncompletedStudyTopics.map(t => ({
+            topicId: t.topicId,
+            title: t.title,
+            subjectName: t.subjectName,
+            importanceDegree: t.importanceDegree,
+            historicalIncidence: t.historicalIncidence
+          })),
+          studyDaysSequence.length
+        );
 
-      // Sort topics within each modified study day so highest priority sit on top
-      studyDaysSequence.forEach(targetDay => {
-        const week = updatedWeeks[targetDay.weekIdx];
-        if (week.days[targetDay.dayName]) {
-          week.days[targetDay.dayName].sort((a, b) => {
-            const scoreDiff = getImportanceScore(b.importanceDegree) - getImportanceScore(a.importanceDegree);
-            if (scoreDiff !== 0) return scoreDiff;
-            return (b.historicalIncidence || 0) - (a.historicalIncidence || 0);
+        if (aiReordered && aiReordered.length > 0) {
+          const mapped: StudyPlanTopic[] = [];
+          const remainingPool = [...uncompletedStudyTopics];
+
+          aiReordered.forEach(item => {
+            const foundIdx = remainingPool.findIndex(p => 
+              (item.topicId && p.topicId === item.topicId) || 
+              (p.title && item.title && p.title.toLowerCase().trim() === item.title.toLowerCase().trim())
+            );
+            if (foundIdx >= 0) {
+              mapped.push(remainingPool[foundIdx]);
+              remainingPool.splice(foundIdx, 1);
+            }
           });
+
+          orderedTopics = [...mapped, ...remainingPool];
+        }
+
+        setAvailableCredits(prev => Math.max(0, prev - cost));
+      } catch (aiErr) {
+        console.warn("AI rebalancing fallback to priority sort:", aiErr);
+      }
+
+      // 4. Equal & Homogeneous Distribution across target future study days
+      orderedTopics.forEach((topic, index) => {
+        const targetSlot = studyDaysSequence[index % studyDaysSequence.length];
+        const week = updatedWeeks[targetSlot.weekIdx];
+        if (!week.days[targetSlot.dayName]) {
+          week.days[targetSlot.dayName] = [];
+        }
+        week.days[targetSlot.dayName].push({
+          ...topic,
+          isCompleted: false,
+          isRescheduled: true
+        });
+      });
+
+      // 5. Interleave Pending & Rescheduled Reviews on subsequent study days
+      orderedTopics.forEach((topic, index) => {
+        if (topic.review24h || topic.type === 'estudo') {
+          const studySlotIdx = index % studyDaysSequence.length;
+          const reviewSlotIdx = (studySlotIdx + 1) % studyDaysSequence.length;
+          const reviewTargetSlot = studyDaysSequence[reviewSlotIdx];
+          const reviewWeek = updatedWeeks[reviewTargetSlot.weekIdx];
+
+          const reviewTopicObj: StudyPlanTopic = {
+            topicId: topic.topicId ? `${topic.topicId}_rev_24h` : undefined,
+            title: `Revisão Ativa + Flashcards: ${getCleanTopicTitle(topic.title)}`,
+            subjectName: topic.subjectName,
+            historicalIncidence: topic.historicalIncidence,
+            isPriority: true,
+            isCompleted: false,
+            type: 'revisao',
+            importanceDegree: topic.importanceDegree,
+            review24h: true,
+            review7d: false,
+            review30d: false
+          };
+
+          if (!reviewWeek.days[reviewTargetSlot.dayName]) {
+            reviewWeek.days[reviewTargetSlot.dayName] = [];
+          }
+
+          const existsAlready = reviewWeek.days[reviewTargetSlot.dayName].some(existing => 
+            existing.title.toLowerCase().trim() === reviewTopicObj.title.toLowerCase().trim()
+          );
+
+          if (!existsAlready) {
+            reviewWeek.days[reviewTargetSlot.dayName].push(reviewTopicObj);
+          }
         }
       });
 
-      // Recalculate progress
+      uncompletedReviews.forEach((rev, idx) => {
+        const revSlot = studyDaysSequence[idx % studyDaysSequence.length];
+        const week = updatedWeeks[revSlot.weekIdx];
+        if (!week.days[revSlot.dayName]) {
+          week.days[revSlot.dayName] = [];
+        }
+        const existsAlready = week.days[revSlot.dayName].some(existing => 
+          existing.title.toLowerCase().trim() === rev.title.toLowerCase().trim()
+        );
+        if (!existsAlready) {
+          week.days[revSlot.dayName].push(rev);
+        }
+      });
+
+      // 6. Recalculate progress
       let totalTopicsCount = 0;
       let completedCount = 0;
-      updatedWeeks.forEach(w => {
-        Object.values(w.days).forEach(arr => {
-          arr.forEach(t => {
-            totalTopicsCount++;
-            if (isTopicDone(t)) completedCount++;
-          });
+      updatedWeeks.forEach((w: any) => {
+        Object.values(w.days || {}).forEach((arr: any) => {
+          if (Array.isArray(arr)) {
+            arr.forEach((t: any) => {
+              totalTopicsCount++;
+              if (isTopicDone(t)) completedCount++;
+            });
+          }
         });
       });
       const progress = totalTopicsCount > 0 ? Math.round((completedCount / totalTopicsCount) * 100) : 0;
 
+      // 7. Save to Firestore
       const scheduleRef = doc(db, 'users', user.uid, 'schedules', schedule.id);
       await updateDoc(scheduleRef, {
         weeks: updatedWeeks,
@@ -4935,10 +5023,10 @@ export default function Cronograma({
       });
 
       setShowRestructureModal(false);
-      showToast(`${uncompletedBacklog.length} tópicos em atraso foram redistribuídos prioritariamente em ${targetDaysCount} dias de estudo!`, "success");
+      showToast(`Planejamento desatrasado com sucesso! ${orderedTopics.length} tópicos e suas revisões foram redistribuídos com IA de forma equalitária.`, "success");
     } catch (e) {
       console.error("Erro ao reestruturar cronograma:", e);
-      showToast("Houve um erro ao reorganizar o plano.", "error");
+      showToast("Houve um erro ao reorganizar o plano com IA.", "error");
     } finally {
       setRestructureSaving(false);
     }
@@ -9331,49 +9419,117 @@ export default function Cronograma({
               </div>
 
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
-                <p className="text-xs text-[#8E8A82] leading-relaxed">
-                  Não se preocupe em ficar para trás! O algoritmo médico irá reorganizar seus tópicos atrasados por **ordem de prioridade**, distribuindo-os uniformemente nos dias que você escolheu estudar.
-                </p>
+                <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                        <span>Desatrasar Inteligente com IA</span>
+                        <Badge className="bg-amber-500 text-white hover:bg-amber-600 border-none text-[10px] px-2 py-0.5 font-mono">
+                          5⚡ créditos
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-amber-800 leading-tight mt-0.5">
+                        Redistribui todos os conteúdos e suas revisões com reordenação pedagógica pela IA.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
                 <div className="space-y-4">
-                  <div>
-                    <label className="text-[11px] font-bold text-[#1A1A1A] uppercase tracking-wider block mb-2">
-                      Redistribuir em quantos dias de estudo?
+                  {/* Mode Selector Option */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-[#1A1A1A] uppercase tracking-wider block">
+                      Como você deseja redistribuir os atrasos?
                     </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[3, 5, 7, 10, 14, 21].map((days) => (
-                        <button
-                          key={days}
-                          type="button"
-                          onClick={() => setRestructureDays(days)}
-                          className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all text-center ${
-                            restructureDays === days
-                              ? "bg-[#D44E3D] text-white border-[#D44E3D] shadow-sm"
-                              : "bg-stone-50 text-[#1A1A1A] border-stone-200 hover:bg-stone-100/70"
-                          }`}
-                        >
-                          {days} {days === 1 ? "dia" : "dias"}
-                        </button>
-                      ))}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setUseFullRemainingPeriod(true)}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          useFullRemainingPeriod
+                            ? "bg-[#D44E3D]/10 border-[#D44E3D] text-[#1A1A1A] ring-1 ring-[#D44E3D]"
+                            : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100/70"
+                        }`}
+                      >
+                        <div className="text-xs font-bold flex items-center justify-between">
+                          <span>Equalizar sem Bola de Neve</span>
+                          {useFullRemainingPeriod && <CheckCircle2 className="w-3.5 h-3.5 text-[#D44E3D]" />}
+                        </div>
+                        <p className="text-[10px] text-[#8E8A82] mt-1 leading-tight">
+                          Dilui o atraso uniformemente por todas as semanas restantes até a prova/fim do plano.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setUseFullRemainingPeriod(false)}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          !useFullRemainingPeriod
+                            ? "bg-[#D44E3D]/10 border-[#D44E3D] text-[#1A1A1A] ring-1 ring-[#D44E3D]"
+                            : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100/70"
+                        }`}
+                      >
+                        <div className="text-xs font-bold flex items-center justify-between">
+                          <span>Concentrar em N Dias</span>
+                          {!useFullRemainingPeriod && <CheckCircle2 className="w-3.5 h-3.5 text-[#D44E3D]" />}
+                        </div>
+                        <p className="text-[10px] text-[#8E8A82] mt-1 leading-tight">
+                          Recupera todo o atraso em uma janela de dias mais curta escolhida por você.
+                        </p>
+                      </button>
                     </div>
                   </div>
 
-                  <div className="pt-2">
-                    <label className="text-[11px] font-bold text-[#1A1A1A] uppercase tracking-wider block mb-1.5">
-                      Quantidade Personalizada:
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        max="60"
-                        value={restructureDays}
-                        onChange={(e) => setRestructureDays(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-20 px-3 py-1.5 text-xs font-bold font-mono border border-[#E2E0D9] rounded-xl text-center bg-stone-50 focus:outline-none focus:ring-1 focus:ring-[#D44E3D]"
-                      />
-                      <span className="text-xs text-[#8E8A82]">dias de estudo selecionados</span>
-                    </div>
-                  </div>
+                  {!useFullRemainingPeriod && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-3 pt-1 border-t border-stone-100"
+                    >
+                      <div>
+                        <label className="text-[11px] font-bold text-[#1A1A1A] uppercase tracking-wider block mb-2">
+                          Selecione o número de dias de estudo:
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[3, 5, 7, 10, 14, 21].map((days) => (
+                            <button
+                              key={days}
+                              type="button"
+                              onClick={() => setRestructureDays(days)}
+                              className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all text-center ${
+                                restructureDays === days
+                                  ? "bg-[#D44E3D] text-white border-[#D44E3D] shadow-sm"
+                                  : "bg-stone-50 text-[#1A1A1A] border-stone-200 hover:bg-stone-100/70"
+                              }`}
+                            >
+                              {days} {days === 1 ? "dia" : "dias"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-[#1A1A1A] uppercase tracking-wider block mb-1.5">
+                          Quantidade Personalizada:
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="60"
+                            value={restructureDays}
+                            onChange={(e) => setRestructureDays(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-20 px-3 py-1.5 text-xs font-bold font-mono border border-[#E2E0D9] rounded-xl text-center bg-stone-50 focus:outline-none focus:ring-1 focus:ring-[#D44E3D]"
+                          />
+                          <span className="text-xs text-[#8E8A82]">dias de estudo selecionados</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
 
                   {uncompletedBacklogList.length > 0 ? (
                     <div className="pt-2 space-y-3">
@@ -9384,16 +9540,20 @@ export default function Cronograma({
                             Total de Atrasos Identificados
                           </div>
                           <div className="text-lg font-black font-mono text-[#1A1A1A]">
-                            {uncompletedBacklogList.length} {uncompletedBacklogList.length === 1 ? 'tópico' : 'tópicos'}
+                            {uncompletedBacklogList.length} {uncompletedBacklogList.length === 1 ? 'item' : 'itens'} (teoria + revisões)
                           </div>
                           <div className="text-[11px] text-[#8E8A82] font-medium">
-                            Serão redistribuídos em <strong className="text-[#1A1A1A]">{restructureDays} {restructureDays === 1 ? 'dia' : 'dias'}</strong> de estudo
+                            {useFullRemainingPeriod ? (
+                              <span>Distribuído igualmente por <strong className="text-[#1A1A1A]">todo o período restante</strong> do cronograma</span>
+                            ) : (
+                              <span>Redistribuído em <strong className="text-[#1A1A1A]">{restructureDays} {restructureDays === 1 ? 'dia' : 'dias'}</strong> de estudo</span>
+                            )}
                           </div>
                         </div>
                         <div className="text-right shrink-0 bg-white/80 backdrop-blur px-3 py-2 rounded-xl border border-[#D44E3D]/20 shadow-2xs">
                           <div className="text-[10px] text-stone-500 font-bold uppercase">Média Diária</div>
                           <div className="text-base font-black font-mono text-[#D44E3D]">
-                            +{(uncompletedBacklogList.length / Math.max(1, restructureDays)).toFixed(1)} <span className="text-[10px] font-normal text-stone-500">/dia</span>
+                            +{(uncompletedBacklogList.length / Math.max(1, useFullRemainingPeriod ? (Math.max(1, schedule.weeks.length - getTodayWeekAndDay(schedule).weekIndex) * (schedule.studyDays?.length || 5)) : restructureDays)).toFixed(1)} <span className="text-[10px] font-normal text-stone-500">/dia</span>
                           </div>
                         </div>
                       </div>
@@ -9404,27 +9564,32 @@ export default function Cronograma({
                             📊 Estimativa de Acréscimo por Dia
                           </label>
                           <span className="text-[10px] font-black bg-[#D44E3D]/10 text-[#D44E3D] px-2 py-0.5 rounded-full font-mono border border-[#D44E3D]/20">
-                            {uncompletedBacklogList.length} {uncompletedBacklogList.length === 1 ? 'tópico' : 'tópicos'} no total
+                            {uncompletedBacklogList.length} {uncompletedBacklogList.length === 1 ? 'item' : 'itens'} no total
                           </span>
                         </div>
                         <div className="max-h-36 overflow-y-auto pr-1 space-y-1.5 border border-stone-200/40 p-2.5 rounded-xl bg-stone-50/50">
-                          {getRestructurePreview().map((item, idx) => (
+                          {getRestructurePreview().slice(0, 14).map((item, idx) => (
                             <div key={idx} className="flex items-center justify-between py-1.5 px-2.5 bg-white rounded-lg border border-stone-200/30 shadow-3xs text-xs">
                               <div className="flex items-center gap-2">
                                 <span className="font-mono text-[10px] text-stone-400 font-bold">Dia {idx + 1}</span>
                                 <span className="font-bold text-[#1A1A1A]">{item.dayName}</span>
                               </div>
                               <span className="font-black text-[#D44E3D] bg-[#D44E3D]/5 px-2.5 py-0.5 rounded-lg text-[11px] font-mono border border-[#D44E3D]/10">
-                                +{item.count} {item.count === 1 ? 'tópico' : 'tópicos'}
+                                +{item.count} {item.count === 1 ? 'item' : 'itens'}
                               </span>
                             </div>
                           ))}
+                          {getRestructurePreview().length > 14 && (
+                            <p className="text-[10px] text-center text-stone-500 font-mono pt-1">
+                              ...e mais {getRestructurePreview().length - 14} dias futuros homogeneamente equalizados!
+                            </p>
+                          )}
                         </div>
                       </div>
 
                       <div className="space-y-1.5">
                         <label className="text-[11px] font-bold text-[#1A1A1A] uppercase tracking-wider block">
-                          📋 Lista de Tópicos em Atraso Identificados ({uncompletedBacklogList.length})
+                          📋 Conteúdos & Revisões Atrasadas ({uncompletedBacklogList.length})
                         </label>
                         <div className="max-h-36 overflow-y-auto pr-1 space-y-1.5 border border-stone-200/40 p-2.5 rounded-xl bg-stone-50/50">
                           {uncompletedBacklogList.map((topic, idx) => (
@@ -9434,11 +9599,15 @@ export default function Cronograma({
                                   {topic.title}
                                 </span>
                                 <span className="text-[10px] text-[#8E8A82] font-semibold">
-                                  {topic.subjectName}
+                                  {topic.subjectName || (isRevisionTopic(topic) ? 'Revisão Agendada' : 'Teoria')}
                                 </span>
                               </div>
-                              <span className="shrink-0 font-bold text-[#D44E3D] bg-[#D44E3D]/5 px-2 py-0.5 rounded-lg text-[10px] font-mono">
-                                {topic.importanceDegree ? topic.importanceDegree.toUpperCase() : 'ESTUDO'}
+                              <span className={`shrink-0 font-bold px-2 py-0.5 rounded-lg text-[10px] font-mono ${
+                                isRevisionTopic(topic) 
+                                  ? 'bg-amber-100 text-amber-800' 
+                                  : 'bg-[#D44E3D]/5 text-[#D44E3D]'
+                              }`}>
+                                {isRevisionTopic(topic) ? 'REVISÃO' : (topic.importanceDegree ? topic.importanceDegree.toUpperCase() : 'ESTUDO')}
                               </span>
                             </div>
                           ))}
@@ -9459,30 +9628,46 @@ export default function Cronograma({
 
                   <div className="p-3 bg-stone-50 border border-stone-200/50 rounded-xl space-y-1.5">
                     <span className="text-[10px] font-bold text-[#D44E3D] flex items-center gap-1">
-                      💡 Regra de Priorização Inteligente:
+                      <Sparkles className="w-3 h-3 text-amber-500" />
+                      <span>Inteligência Artificial de Redistribuição:</span>
                     </span>
                     <p className="text-[10px] text-[#8E8A82] leading-relaxed">
-                      O cronograma posicionará primeiro os tópicos com classificação de importância **Extremo** e **Alto** e com maiores índices históricos de incidência nas bancas de concurso, garantindo que você estude o mais relevante primeiro!
+                      A IA reagrupa tópicos da mesma especialidade médica juntas, preserva seu histórico já concluído e agenda automaticamente as revisões espaçadas de acordo com o intervalo do modelo Ebbinghaus.
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="p-4 bg-stone-50 border-t border-[#E2E0D9] flex justify-end gap-2 shrink-0">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowRestructureModal(false)}
-                  className="border-[#E2E0D9] text-[#1A1A1A]"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={handleRestructureSubmit}
-                  disabled={restructureSaving}
-                  className="bg-[#D44E3D] hover:bg-[#D44E3D]/90 text-white font-bold"
-                >
-                  {restructureSaving ? 'Reorganizando...' : 'Confirmar Reestruturação'}
-                </Button>
+              <div className="p-4 bg-stone-50 border-t border-[#E2E0D9] flex items-center justify-between gap-2 shrink-0">
+                <div className="text-xs font-bold text-stone-700 bg-white px-2.5 py-1 rounded-lg border border-[#E2E0D9]">
+                  Seus créditos: {availableCredits} ⚡
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowRestructureModal(false)}
+                    className="border-[#E2E0D9] text-[#1A1A1A]"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleRestructureSubmit}
+                    disabled={restructureSaving || availableCredits < 5}
+                    className="bg-[#D44E3D] hover:bg-[#D44E3D]/90 text-white font-bold flex items-center gap-1.5"
+                  >
+                    {restructureSaving ? (
+                      <>
+                        <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Organizando com IA...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Desatrasar com IA (5⚡)</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </motion.div>
           </div>

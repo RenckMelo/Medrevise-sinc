@@ -3580,7 +3580,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
         if (prog.partialContent) {
           setCurrentContent(sanitizeMarkdown(prog.partialContent));
         }
-      }, targetIllLvl, targetAlertLvl, analysisResult?.chapters || editedChapters);
+      }, targetIllLvl, targetAlertLvl, overrideConfig?.chapters || analysisResult?.chapters || editedChapters);
       
       if (content) {
         const sanitized = sanitizeMarkdown(content);
@@ -8476,6 +8476,7 @@ th { background: #F8F7F4; font-weight: bold; }
             <div className="fixed inset-0 z-[9999] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
               <SummaryGenerationWizard
                 topicTitle={topic?.title || (topic as any)?.name || (topic as any)?.titulo || (topic as any)?.topicTitle || 'Tópico de Estudo'}
+                initialDepth={depth}
                 availableCredits={availableCredits !== undefined ? availableCredits : (globalQuota?.available ?? 0)}
                 isGenerating={isGenerating}
                 initialAnalysis={analysisResult}

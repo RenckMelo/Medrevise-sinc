@@ -3627,6 +3627,82 @@ NÃO inclua formatação markdown, tags \`\`\`json, explicações ou texto extra
   }
 }
 
+/**
+ * AI-powered schedule rebalancing for delayed/uncompleted medical topics and active reviews.
+ * Re-sorts pending study topics into an optimal pedagogical sequence and charges 5 credits.
+ */
+export async function rebalanceScheduleWithAI(
+  pendingTopics: { topicId?: string; title: string; subjectName?: string; importanceDegree?: string; historicalIncidence?: number }[],
+  remainingDaysCount: number
+): Promise<{ topicId?: string; title: string }[]> {
+  const creditsCost = 5; // 5 credits per AI schedule rebalance
+  try {
+    await checkUsageLimit();
+
+    if (!pendingTopics || pendingTopics.length === 0) {
+      return [];
+    }
+
+    const simplified = pendingTopics.map(t => ({
+      topicId: t.topicId || '',
+      title: t.title,
+      subjectName: t.subjectName || '',
+      importanceDegree: t.importanceDegree || 'medio',
+      historicalIncidence: t.historicalIncidence || 50
+    }));
+
+    const prompt = `Você é o Coordenador Pedagógico do MedInternato.
+Temos ${pendingTopics.length} tópicos de estudo da residência médica que estão pendentes/atrasados.
+Eles serão redistribuídos homogeneamente ao longo dos próximos ${remainingDaysCount} dias de estudo.
+
+Sua tarefa é REORDENAR esta lista de tópicos para formar a sequência de estudo teoricamente mais eficiente:
+1. Agrupe tópicos da mesma especialidade (ex: Cardiologia juntas, Cirurgia Geral juntas, Pediatria juntas) para evitar dispersão mental.
+2. Posicione os tópicos com maior grau de importância ('extremo' e 'alto') mais cedo na sequência.
+3. Garanta que a transição entre temas pesados e leves seja suave.
+
+Lista de tópicos pendentes:
+${JSON.stringify(simplified)}
+
+Retorne APENAS um array JSON contendo os objetos na nova ordem, exatamente com este formato:
+[
+  { "topicId": "...", "title": "..." }
+]
+IMPORTANTE:
+- Não remova e nem adicione nenhum tópico. Mantenha os exatos ${pendingTopics.length} tópicos da lista.
+- Mantenha os títulos e topicIds originais sem nenhuma alteração.
+- Retorne apenas o JSON puro, sem textos adicionais e sem markdown.`;
+
+    const result = await callGemini('generateContent', prompt, "gemini-3.1-flash-lite");
+    await recordUsage(creditsCost);
+
+    if (!result) return pendingTopics.map(t => ({ topicId: t.topicId, title: t.title }));
+
+    let cleanJson = typeof result === 'string' ? result.trim() : JSON.stringify(result);
+    if (cleanJson.startsWith('```json')) {
+      cleanJson = cleanJson.replace(/^```json/, '').replace(/```$/, '').trim();
+    } else if (cleanJson.startsWith('```')) {
+      cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '').trim();
+    }
+
+    try {
+      const parsed = JSON.parse(cleanJson);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((item: any) => ({
+          topicId: item.topicId || undefined,
+          title: String(item.title || '').trim()
+        })).filter(x => x.title.length > 0);
+      }
+    } catch (e) {
+      console.error("Error parsing rebalanceScheduleWithAI response:", e);
+    }
+
+    return pendingTopics.map(t => ({ topicId: t.topicId, title: t.title }));
+  } catch (error) {
+    console.error('Error in rebalanceScheduleWithAI:', error);
+    throw error;
+  }
+}
+
 
 
 

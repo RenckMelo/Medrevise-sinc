@@ -2,6 +2,7 @@
 import { db, doc, getDoc, updateDoc, increment, setDoc, auth } from '../firebase';
 import { safeLocalStorageGet } from '../utils/storageUtils';
 import { cleanAndFixMarkdownTables } from '../utils/markdownUtils';
+import { logSystemError } from './errorLogger';
 
 export const AI_LIMIT_PER_DAY = 3000; // Shared admin pool is 3000, other plans have custom limits
 
@@ -175,6 +176,12 @@ async function callGemini(action: 'generateContent' | 'generateJson', prompt: st
         action,
         model
       });
+      logSystemError({
+        action: `IA: ${action}`,
+        error: error,
+        module: 'GeminiService',
+        metadata: { model, action }
+      }).catch(() => {});
       throw error;
     }
   });

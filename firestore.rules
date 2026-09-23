@@ -152,5 +152,12 @@ service cloud.firestore {
     match /global/{docId} {
       allow read, write: if isAuthenticated();
     }
+    match /referralLogs/{logId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /systemErrors/{errorId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
   }
 }

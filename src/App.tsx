@@ -20,7 +20,9 @@ import {
   HelpCircle,
   Lightbulb,
   ArrowLeftRight,
-  Moon
+  Moon,
+  AlertTriangle,
+  Bug
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -37,6 +39,7 @@ import PerformanceStats from './components/PerformanceStats';
 import WeeklyView from './components/WeeklyView';
 import ExamsView from './components/ExamsView';
 import AdminPanel from './components/AdminPanel';
+import ErrorLogsManager from './components/ErrorLogsManager';
 import LegalTerms from './components/LegalTerms';
 import LandingPage from './components/LandingPage';
 import OnboardingTour from './components/OnboardingTour';
@@ -54,7 +57,8 @@ export default function App() {
   const { user, profile, loading, globalStats } = useAuth();
   const { sessions, subjects, topics, mockExams } = useStudyData();
   
-  const isAdmin = user?.email === 'lucas1renck2melo@gmail.com' || 
+  const isLucas = user?.email === 'lucas1renck2melo@gmail.com';
+  const isAdmin = isLucas || 
                   user?.email === 'ysabelleosaraiva@gmail.com' || 
                   user?.email === 'yasabelleosaraiva@gmail.com' || 
                   user?.email === '1111@admin.com' || 
@@ -416,6 +420,14 @@ export default function App() {
               label="ADMIN PANEL"
             />
           )}
+          {isLucas && (
+            <NavButton 
+              active={activeTab === 'errors'} 
+              onClick={() => { setActiveTab('errors'); setIsSidebarOpen(false); }}
+              icon={<Bug size={18} className="text-rose-600" />}
+              label="LOGS DE ERROS"
+            />
+          )}
           <NavButton 
             active={activeTab === 'terms'} 
             onClick={() => { setActiveTab('terms'); setIsSidebarOpen(false); }}
@@ -550,6 +562,7 @@ export default function App() {
               {activeTab === 'stats' && <PerformanceStats sessions={sessions} subjects={subjects} mockExams={mockExams} />}
               {activeTab === 'profile' && <ProfileView />}
               {activeTab === 'admin' && isAdmin && <AdminPanel />}
+              {activeTab === 'errors' && isLucas && <ErrorLogsManager />}
               {activeTab === 'terms' && <LegalTerms />}
               {activeTab === 'linker' && <SubjectLinkerInterface onSwitchMode={setAppMode} />}
             </motion.div>

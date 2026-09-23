@@ -19,6 +19,7 @@ import rehypeKatex from 'rehype-katex';
 import { markdownComponents, parseMarkdownAlerts } from '../utils/markdownUtils';
 import { safeLocalStorageGet, safeLocalStorageSet, safeLocalStorageRemove } from '../utils/storageUtils';
 import { accuracyToQuality, calculateNextReview } from '../../utils/srs';
+import { logSystemError } from '../services/errorLogger';
 
 const findTopicAndSubject = (tid: string, topicsList: Topic[], subjectsList: Subject[]) => {
   const cleanTid = String(tid || '').trim().toLowerCase();
@@ -178,6 +179,16 @@ export default function QuestionModule({
 
   // Paused Question Session State & Auto-Save Key
   const PAUSED_SESSION_KEY = `medinternato_paused_question_session_${userId || 'guest'}`;
+  
+  // Background Question Streaming State
+  const [backgroundLoading, setBackgroundLoading] = useState<{
+    isRunning: boolean;
+    targetCount: number;
+    currentCount: number;
+    isFinished: boolean;
+    message: string;
+  } | null>(null);
+  const backgroundAbortRef = useRef<boolean>(false);
   const [pausedSession, setPausedSession] = useState<PausedQuestionSession | null>(() => {
     try {
       const saved = localStorage.getItem(`medinternato_paused_question_session_${userId || 'guest'}`);
@@ -2110,129 +2121,205 @@ export default function QuestionModule({
     }
   }, [filterUnanswered, filterOnlyErrors, topicPrepQuestions, isTopicPreparing, userProgress, selectedCountFromExisting]);
 
-  const handleGenerateTopicQuestions = async (countToGen: number, isAddingMore: boolean = false) => {
-    const uniqueTids = Array.from(new Set(selectedTopicIds)).filter(Boolean);
-    if (uniqueTids.length === 0) return;
+  const fetchRemainingQuestionsInBackground = async (
+    targetTotalCount: number,
+    initialCount: number,
+    missingCount: number,
+    uniqueTids: string[],
+    targetExam?: string
+  ) => {
+    backgroundAbortRef.current = false;
+    setBackgroundLoading({
+      isRunning: true,
+      targetCount: targetTotalCount,
+      currentCount: initialCount,
+      isFinished: false,
+      message: 'Gerando questões adicionais em segundo plano com IA...'
+    });
 
-    setIsGeneratingTopicQuestions(true);
-    setGenerationProgress(5);
-    setGenerationStatus("Conectando ao preceptor IA de residência...");
+    const batchSize = 5;
+    const batchesCount = Math.ceil(missingCount / batchSize);
+    let accumulatedCount = initialCount;
 
-    const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
-    const targetExam = preset ? preset.name : undefined;
-    const allAdded: Question[] = [];
+    for (let b = 0; b < batchesCount; b++) {
+      if (backgroundAbortRef.current) break;
 
-    // Smooth progress simulation helper
-    let progressInterval: NodeJS.Timeout | null = null;
-    const simulateProgress = (start: number, end: number, durationMs: number) => {
-      if (progressInterval) clearInterval(progressInterval);
-      const steps = 20;
-      const stepTime = durationMs / steps;
-      const increment = (end - start) / steps;
-      let current = start;
-      progressInterval = setInterval(() => {
-        current += increment;
-        if (current >= end) {
-          current = end;
-          if (progressInterval) clearInterval(progressInterval);
-        }
-        setGenerationProgress(Math.min(98, Math.round(current)));
-      }, stepTime);
-    };
+      const currentBatchSize = Math.min(batchSize, missingCount - (b * batchSize));
+      const allAddedBatch: Question[] = [];
 
-    try {
-      // We will generate in batches of 5 questions to maintain progress updates
-      const batchSize = 5;
-      const batchesCount = Math.ceil(countToGen / batchSize);
+      for (const tid of uniqueTids) {
+        if (backgroundAbortRef.current) break;
 
-      for (let b = 0; b < batchesCount; b++) {
-        const currentBatchSize = Math.min(batchSize, countToGen - (b * batchSize));
-        const batchStartPct = Math.round((b / batchesCount) * 80) + 5;
-        const batchEndPct = Math.round(((b + 1) / batchesCount) * 80) + 5;
+        const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
+        
+        let currentExistingTexts: string[] = [];
+        setQuestions(prev => {
+          currentExistingTexts = prev.map(q => q.text);
+          return prev;
+        });
 
-        setGenerationStatus(`Gerando questões: lote ${b + 1} de ${batchesCount}...`);
-        simulateProgress(batchStartPct, batchEndPct - 10, 8000);
-
-        for (const tid of uniqueTids) {
-          const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
-          const existingTexts = [
-            ...topicPrepQuestions.map(q => q.text),
-            ...allAdded.map(q => q.text)
-          ];
-
+        try {
           const newQuestions = await generateQuestions(
-            topicTitle, 
-            subjectName, 
-            currentBatchSize, 
-            existingTexts, 
-            userId, 
+            topicTitle,
+            subjectName,
+            currentBatchSize,
+            currentExistingTexts,
+            userId,
             targetExam
           );
 
           if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
-            setGenerationStatus(`Gravando lote ${b + 1} de ${batchesCount} no banco de dados...`);
-            setGenerationProgress(batchEndPct - 5);
-
             for (const qData of newQuestions) {
               const docRef = await addDoc(collection(db, 'questions'), {
                 ...qData,
                 topicId: topicId,
                 subjectId: subjectId
               });
-              allAdded.push({ id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question);
+              const qObj = { id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question;
+              allAddedBatch.push(qObj);
             }
             safeLocalStorageRemove(`questions_topic_${topicId}`);
             if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
           }
+        } catch (err) {
+          console.warn(`[Background Generation] Batch ${b + 1} failed for topic ${tid}:`, err);
+          logSystemError({
+            action: `Geração de Questões em Segundo Plano (Lote ${b + 1})`,
+            error: err,
+            module: 'QuestionModule',
+            metadata: { topicId: tid, targetExam, batchSize: currentBatchSize }
+          });
         }
       }
 
-      if (progressInterval) clearInterval(progressInterval);
+      if (backgroundAbortRef.current) break;
+
+      if (allAddedBatch.length > 0) {
+        accumulatedCount += allAddedBatch.length;
+        setQuestions(prev => [...prev, ...allAddedBatch]);
+        setSecondsRemaining(prev => prev + (allAddedBatch.length * 90));
+        setBackgroundLoading({
+          isRunning: true,
+          targetCount: targetTotalCount,
+          currentCount: accumulatedCount,
+          isFinished: false,
+          message: `Progresso: ${accumulatedCount} de ${targetTotalCount} questões salvas...`
+        });
+      }
+    }
+
+    if (!backgroundAbortRef.current) {
+      try {
+        await loadSelectedTopicsStats(uniqueTids);
+      } catch (e) {}
+
+      setBackgroundLoading({
+        isRunning: false,
+        targetCount: targetTotalCount,
+        currentCount: accumulatedCount,
+        isFinished: true,
+        message: `Todas as ${accumulatedCount} questões foram geradas e carregadas no seu simulado com sucesso!`
+      });
+    }
+  };
+
+  const handleGenerateTopicQuestions = async (countToGen: number, isAddingMore: boolean = false) => {
+    const uniqueTids = Array.from(new Set(selectedTopicIds)).filter(Boolean);
+    if (uniqueTids.length === 0) return;
+
+    setIsGeneratingTopicQuestions(true);
+    setGenerationProgress(15);
+    setGenerationStatus("Conectando ao preceptor IA de residência...");
+
+    const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+    const targetExam = preset ? preset.name : undefined;
+    const initialBatch: Question[] = [];
+
+    try {
+      const firstBatchSize = Math.min(5, countToGen);
+      setGenerationStatus(`Gerando o 1º lote (${firstBatchSize} Qs) para liberar sua prova instantaneamente...`);
+      setGenerationProgress(50);
+
+      for (const tid of uniqueTids) {
+        const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
+        const existingTexts = topicPrepQuestions.map(q => q.text);
+
+        const newQuestions = await generateQuestions(
+          topicTitle, 
+          subjectName, 
+          firstBatchSize, 
+          existingTexts, 
+          userId, 
+          targetExam
+        );
+
+        if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
+          for (const qData of newQuestions) {
+            const docRef = await addDoc(collection(db, 'questions'), {
+              ...qData,
+              topicId: topicId,
+              subjectId: subjectId
+            });
+            initialBatch.push({ id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question);
+          }
+          safeLocalStorageRemove(`questions_topic_${topicId}`);
+          if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
+        }
+      }
+
       setGenerationProgress(95);
-      setGenerationStatus("Sincronizando banco de dados local...");
+      setGenerationStatus("Liberando simulado...");
 
-      // Reload topic stats to update the dashboard counter
-      await loadSelectedTopicsStats(uniqueTids);
+      const finalInitialPool = isAddingMore 
+        ? [...topicPrepQuestions, ...initialBatch]
+        : initialBatch;
 
-      // Consolidate the entire pool of questions
-      const finalQuestionsPool = isAddingMore 
-        ? [...topicPrepQuestions, ...allAdded]
-        : allAdded;
-
-      if (finalQuestionsPool.length > 0) {
-        setQuestions(finalQuestionsPool);
+      if (finalInitialPool.length > 0) {
+        setQuestions(finalInitialPool);
         setIsActive(true);
         setSeconds(0);
-        setSecondsRemaining(Math.ceil(finalQuestionsPool.length * 1.5) * 60);
+        setSecondsRemaining(Math.ceil(finalInitialPool.length * 1.5) * 60);
         setExamAnswers({});
         setCurrentIndex(0);
         setIsAnswered(false);
         setSelectedOption(null);
         setAiExplanation(null);
         setShowResults(false);
-        
-        setGenerationProgress(100);
-        setGenerationStatus("Pronto! Iniciando simulado...");
-        
-        setTimeout(() => {
-          setIsSelecting(false);
-          setIsTopicPreparing(false);
-          setIsGeneratingTopicQuestions(false);
-        }, 1000);
+
+        setIsSelecting(false);
+        setIsTopicPreparing(false);
+        setIsGeneratingTopicQuestions(false);
+
+        const remainingNeeded = countToGen - initialBatch.length;
+        if (remainingNeeded > 0) {
+          fetchRemainingQuestionsInBackground(
+            countToGen,
+            finalInitialPool.length,
+            remainingNeeded,
+            uniqueTids,
+            targetExam
+          );
+        } else {
+          setBackgroundLoading(null);
+        }
       } else {
-        throw new Error("Nenhuma questão pôde ser gerada.");
+        throw new Error("Nenhuma questão pôde ser gerada no 1º lote.");
       }
 
     } catch (err: any) {
-      if (progressInterval) clearInterval(progressInterval);
-      console.error('Error generating questions:', err);
+      console.error('Error generating initial questions batch:', err);
+      logSystemError({
+        action: 'Gerar Lote Inicial de Questões',
+        error: err,
+        module: 'QuestionModule',
+        metadata: { selectedTopicIds, countToGen, selectedPresetId }
+      });
       alert(`Erro ao gerar novas questões: ${err?.message || 'Falha na comunicação com a IA.'}`);
       setIsGeneratingTopicQuestions(false);
     }
   };
 
   const handleStartWithExisting = async (countToUse: number) => {
-    // Apply filters to topicPrepQuestions to get the actual list to slice
     let filteredList = [...topicPrepQuestions];
     if (filterUnanswered && userProgress) {
       const answeredIds = userProgress.answeredQuestionIds || [];
@@ -2245,87 +2332,23 @@ export default function QuestionModule({
       });
     }
 
-    // If the available filtered questions are fewer than the user selected, auto-generate the missing ones!
-    if (filteredList.length < countToUse) {
-      const missingCount = countToUse - filteredList.length;
-      const uniqueTids = Array.from(new Set(selectedTopicIds)).filter(Boolean);
-      
-      if (uniqueTids.length > 0) {
-        setIsGeneratingTopicQuestions(true);
-        setGenerationProgress(10);
-        setGenerationStatus(`Identificado: faltam ${missingCount} questões para atingir a meta de ${countToUse}. Gerando com IA...`);
-
-        const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
-        const targetExam = preset ? preset.name : undefined;
-        const allAdded: Question[] = [];
-
-        try {
-          const batchSize = 5;
-          const batchesCount = Math.ceil(missingCount / batchSize);
-
-          for (let b = 0; b < batchesCount; b++) {
-            const currentBatchSize = Math.min(batchSize, missingCount - (b * batchSize));
-            setGenerationStatus(`Gerando lote de questões faltantes: ${b + 1} de ${batchesCount}...`);
-            setGenerationProgress(Math.round(((b + 1) / (batchesCount + 1)) * 80) + 10);
-
-            for (const tid of uniqueTids) {
-              const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
-              const existingTexts = [
-                ...topicPrepQuestions.map(q => q.text),
-                ...allAdded.map(q => q.text)
-              ];
-
-              const newQuestions = await generateQuestions(
-                topicTitle,
-                subjectName,
-                currentBatchSize,
-                existingTexts,
-                userId,
-                targetExam
-              );
-
-              if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
-                for (const qData of newQuestions) {
-                  const docRef = await addDoc(collection(db, 'questions'), {
-                    ...qData,
-                    topicId: topicId,
-                    subjectId: subjectId
-                  });
-                  const qObj = { id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question;
-                  allAdded.push(qObj);
-                  filteredList.push(qObj);
-                }
-                safeLocalStorageRemove(`questions_topic_${topicId}`);
-                if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
-              }
-            }
-          }
-
-          setGenerationProgress(95);
-          setGenerationStatus("Sincronizando novas questões com seu simulado...");
-          await loadSelectedTopicsStats(uniqueTids);
-
-        } catch (err: any) {
-          console.warn('Auto-generation of missing questions failed:', err);
-          alert(`Aviso: não foi possível gerar todas as questões faltantes (${err.message || 'IA offline'}). Iniciando com as disponíveis.`);
-        } finally {
-          setIsGeneratingTopicQuestions(false);
-        }
-      }
-    }
-
     const shuffled = filteredList.sort(() => Math.random() - 0.5);
-    const finalSelection = shuffled.slice(0, countToUse);
+    const initialSelection = shuffled.slice(0, countToUse);
 
-    if (finalSelection.length === 0) {
-      alert('Nenhuma questão encontrada ou gerada para os filtros selecionados.');
+    if (initialSelection.length === 0 && countToUse > 0) {
+      await handleGenerateTopicQuestions(countToUse);
       return;
     }
 
-    setQuestions(finalSelection);
+    if (initialSelection.length === 0) {
+      alert('Nenhuma questão encontrada para os filtros selecionados.');
+      return;
+    }
+
+    setQuestions(initialSelection);
     setIsActive(true);
     setSeconds(0);
-    setSecondsRemaining(Math.ceil(finalSelection.length * 1.5) * 60);
+    setSecondsRemaining(Math.ceil(initialSelection.length * 1.5) * 60);
     setExamAnswers({});
     setCurrentIndex(0);
     setIsAnswered(false);
@@ -2335,6 +2358,25 @@ export default function QuestionModule({
     
     setIsSelecting(false);
     setIsTopicPreparing(false);
+
+    if (initialSelection.length < countToUse) {
+      const missingCount = countToUse - initialSelection.length;
+      const uniqueTids = Array.from(new Set(selectedTopicIds)).filter(Boolean);
+      const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+      const targetExam = preset ? preset.name : undefined;
+
+      if (uniqueTids.length > 0) {
+        fetchRemainingQuestionsInBackground(
+          countToUse,
+          initialSelection.length,
+          missingCount,
+          uniqueTids,
+          targetExam
+        );
+      }
+    } else {
+      setBackgroundLoading(null);
+    }
   };
 
   const handleGenerateMoreForTopic = async (tid: string, countToGen: number = 5) => {
@@ -5117,6 +5159,8 @@ export default function QuestionModule({
             className="h-11 text-stone-500 hover:text-stone-900 text-[10px] uppercase font-black tracking-widest px-3 rounded-xl cursor-pointer"
             onClick={() => {
               if (window.confirm('Deseja sair sem pausar? O progresso não salvo será descartado.')) {
+                backgroundAbortRef.current = true;
+                setBackgroundLoading(null);
                 setSelectedTopicIds([]);
                 setSelectedSubjectIds([]);
                 setQuestions([]);
@@ -5128,6 +5172,71 @@ export default function QuestionModule({
           </Button>
         </div>
       </div>
+
+      {backgroundLoading && (backgroundLoading.isRunning || backgroundLoading.isFinished) && (
+        <AnimatePresence>
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className={cn(
+              "p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm",
+              backgroundLoading.isRunning
+                ? "bg-indigo-50/90 border-indigo-200/90 text-indigo-950"
+                : "bg-emerald-50/90 border-emerald-200/90 text-emerald-950"
+            )}
+          >
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className={cn(
+                "w-9 h-9 rounded-xl text-white flex items-center justify-center shrink-0 shadow-xs font-bold",
+                backgroundLoading.isRunning ? "bg-indigo-600 animate-pulse" : "bg-emerald-600"
+              )}>
+                {backgroundLoading.isRunning ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4" />
+                )}
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md",
+                    backgroundLoading.isRunning ? "bg-indigo-100 text-indigo-800" : "bg-emerald-100 text-emerald-800"
+                  )}>
+                    {backgroundLoading.isRunning ? "Sua prova já começou!" : "Simulado Completo"}
+                  </span>
+                  <span className="text-xs font-black">
+                    {backgroundLoading.isRunning ? "Gerando mais questões em segundo plano com IA..." : "Todas as questões foram geradas!"}
+                  </span>
+                </div>
+                <p className="text-[11px] opacity-80 font-medium">
+                  {backgroundLoading.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto justify-end">
+              {backgroundLoading.isRunning ? (
+                <>
+                  <div className="w-28 sm:w-36 bg-indigo-200/80 rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, Math.round((backgroundLoading.currentCount / backgroundLoading.targetCount) * 100))}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-black font-mono bg-indigo-100 text-indigo-900 px-2.5 py-1 rounded-lg">
+                    {backgroundLoading.currentCount}/{backgroundLoading.targetCount} Qs
+                  </span>
+                </>
+              ) : (
+                <Badge className="bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl shadow-xs">
+                  ✓ {backgroundLoading.currentCount} / {backgroundLoading.targetCount} Questões Prontas
+                </Badge>
+              )}
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      )}
 
       <AnimatePresence mode="wait">
         <motion.div

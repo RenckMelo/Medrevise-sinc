@@ -43,7 +43,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { recordUsage, importPdfSchedule, analyzeSummaryNeeds, rebalanceScheduleWithAI } from '../services/geminiService';
+import { recordUsage, importPdfSchedule, analyzeSummaryNeeds, rebalanceScheduleWithAI, matchCollegeTopicsWithAI } from '../services/geminiService';
 import { extractTextFromPdf } from '../utils/pdfExtractor';
 import { safeLocalStorageSet } from '../utils/storageUtils';
 import { MEDICAL_EXAMS_DB, GLOBAL_RESIDENCY_TOPICS, CANONICAL_SUBTOPICS_MAP } from '../data/medicalExams';
@@ -3361,7 +3361,6 @@ export default function Cronograma({
         }
       });
 
-      const { matchCollegeTopicsWithAI } = await import('../services/geminiService');
       const matched = await matchCollegeTopicsWithAI(collegeInputText, canonicalTitles, user.uid);
 
       if (matched && matched.length > 0) {

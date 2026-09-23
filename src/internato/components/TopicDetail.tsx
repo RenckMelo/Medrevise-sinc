@@ -14,7 +14,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
 import { generateTopicContent, generateQuestions, generateFlashcards, GenerationDepth, deepenTopicSection, getGlobalUsage, importPdfWithAI, deepenNotebookArea, analyzeSummaryNeeds, generateCustomAnalyzedSummary, generateWithAI, resumeFailedSummaryContent, getChaptersFromMonograph, calculateExtraCredits } from '../services/geminiService';
 
-import { db, auth, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc } from '../firebase';
+import { db, auth, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, getCountFromServer } from '../firebase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { markdownComponents, parseMarkdownAlerts, cleanAndFixMarkdownTables, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml, syncSummaryTableOfContents } from '../utils/markdownUtils';
@@ -4995,7 +4995,6 @@ th { background: #F8F7F4; font-weight: bold; }
         return;
       }
       try {
-        const { getCountFromServer } = await import('../firebase');
         const qQuestions = query(collection(db, 'questions'), where('topicId', '==', topic.id));
         const qFlashcards = query(collection(db, 'flashcards'), where('topicId', '==', topic.id));
         

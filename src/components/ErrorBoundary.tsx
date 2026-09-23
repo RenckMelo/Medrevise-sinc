@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { logSystemError } from '../internato/services/errorLogger';
 
 interface Props {
   children: ReactNode;
@@ -21,6 +22,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
+    logSystemError({
+      action: 'Exceção Não Tratada na Interface (React ErrorBoundary)',
+      error: error,
+      module: 'ErrorBoundary',
+      metadata: { componentStack: errorInfo.componentStack?.slice(0, 1000) }
+    }).catch(() => {});
   }
 
   public render() {

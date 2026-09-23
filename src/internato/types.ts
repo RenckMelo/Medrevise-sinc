@@ -76,6 +76,7 @@ export interface Flashcard {
   id: string;
   topicId?: string;
   subjectId?: string;
+  subjectName?: string;
   front: string;
   back: string;
   concept?: string;
@@ -195,6 +196,7 @@ export interface FlashcardSessionScore {
   concept: string;
   rating: 'errei' | 'dificil' | 'bom' | 'facil';
   topicId?: string;
+  subjectName?: string;
 }
 
 export interface FlashcardSessionHistory {

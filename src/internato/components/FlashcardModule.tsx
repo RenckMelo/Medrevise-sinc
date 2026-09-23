@@ -82,9 +82,9 @@ interface DiagnosticResult {
   failedCount: number;
   levelLabel: string;
   levelColor: string;
-  failedItems: { concept: string; front: string; back: string }[];
-  hardItems: { concept: string; front: string; back: string }[];
-  masteredItems: { concept: string; front: string; back: string }[];
+  failedItems: { concept: string; front: string; back: string; subjectName?: string }[];
+  hardItems: { concept: string; front: string; back: string; subjectName?: string }[];
+  masteredItems: { concept: string; front: string; back: string; subjectName?: string }[];
   aiReport?: {
     overallMasteryLevel: string;
     whatToStudy: string[];
@@ -219,6 +219,134 @@ export default function FlashcardModule({
       content: found.content || (found as any).description || (found as any).conteudo || resolvedTitle
     } as Topic;
   }, [topics, selectedTopic]);
+
+  // Helper to extract medical subject from texts (title, concept, front, back, etc.)
+  const extractMedicalSubjectFromTexts = useCallback((textList: (string | undefined)[]): string | null => {
+    const combined = textList
+      .filter((t): t is string => Boolean(t && typeof t === 'string' && t.trim().length > 0))
+      .join(' | ')
+      .toLowerCase();
+
+    if (!combined) return null;
+
+    if (combined.includes('ginecologia') || combined.includes('obstetrícia') || combined.includes('obstetricia') || combined.includes('g.o') || combined.includes('tocoginecologia')) {
+      return 'Ginecologia e Obstetrícia';
+    }
+    if (combined.includes('pediatria') || combined.includes('puericultura') || combined.includes('neonatologia') || combined.includes('pediátric')) {
+      return 'Pediatria';
+    }
+    if (combined.includes('ortopedia') || combined.includes('traumatologia') || combined.includes('fratura') || combined.includes('entorse')) {
+      return 'Ortopedia';
+    }
+    if (combined.includes('cirurgia') || combined.includes('apendicite') || combined.includes('colecistite') || combined.includes('hérnia') || combined.includes('trauma abdominal')) {
+      return 'Cirurgia Geral';
+    }
+    if (combined.includes('preventiva') || combined.includes('coletiva') || combined.includes('epidemiologia') || combined.includes('sus') || combined.includes('atenção básica') || combined.includes('medicina de família') || combined.includes('mfc')) {
+      return 'Preventiva & Saúde Coletiva';
+    }
+    if (combined.includes('cardiologia') || combined.includes('insuficiência cardíaca') || combined.includes('infarto') || combined.includes('hipertensão') || combined.includes('arrritmia') || combined.includes('ecg')) {
+      return 'Cardiologia';
+    }
+    if (combined.includes('infectologia') || combined.includes('sepse') || combined.includes('h. pylori') || combined.includes('hiv') || combined.includes('tuberculose') || combined.includes('dengue') || combined.includes('meningite')) {
+      return 'Infectologia';
+    }
+    if (combined.includes('neurologia') || combined.includes('avc') || combined.includes('epilepsia') || combined.includes('cefaleia') || combined.includes('parkinson')) {
+      return 'Neurologia';
+    }
+    if (combined.includes('psiquiatria') || combined.includes('depressão') || combined.includes('ansiedade') || combined.includes('esquizofrenia')) {
+      return 'Psiquiatria';
+    }
+    if (combined.includes('dermatologia') || combined.includes('hanseníase') || combined.includes('psoríase')) {
+      return 'Dermatologia';
+    }
+    if (combined.includes('clínica médica') || combined.includes('clinica medica') || combined.includes('gastroenterologia') || combined.includes('pneumologia') || combined.includes('endocrinologia') || combined.includes('nefrologia') || combined.includes('hematologia') || combined.includes('reumatologia') || combined.includes('diabetes') || combined.includes('asma') || combined.includes('dpoc')) {
+      return 'Clínica Médica';
+    }
+
+    return null;
+  }, []);
+
+  // Helper to resolve Subject Name for any Flashcard card
+  const getSubjectNameForCard = useCallback((card: Flashcard | null | undefined): string => {
+    if (!card) return 'Clínica Médica';
+
+    // Helper to check if name is generic
+    const isGeneric = (name?: string) => {
+      if (!name || !name.trim()) return true;
+      const lower = name.trim().toLowerCase();
+      return lower.includes('faculdade') || lower.includes('geral') || lower.includes('internato') || lower === 'todas' || lower === 'indefinido';
+    };
+
+    // 1. Find matched topic to extract title or subject
+    const matchedTopic = card.topicId ? topics.find(t => t.id === card.topicId) : null;
+    const topicTitle = matchedTopic ? getTopicTitle(matchedTopic) : '';
+
+    // 2. Try extracting specific medical subject from text candidates
+    const extractedMedicalSubj = extractMedicalSubjectFromTexts([
+      card.subtopicTag,
+      card.concept,
+      topicTitle,
+      card.subjectName,
+      card.front,
+      card.back
+    ]);
+
+    if (extractedMedicalSubj) {
+      return extractedMedicalSubj;
+    }
+
+    // 3. Direct subjectName if NOT generic
+    if (card.subjectName && !isGeneric(card.subjectName)) {
+      return card.subjectName.trim();
+    }
+
+    // 4. Direct subjectId lookup if NOT generic
+    if (card.subjectId) {
+      const subj = subjects.find(s => s.id === card.subjectId);
+      if (subj && subj.name && !isGeneric(subj.name)) {
+        return subj.name.trim();
+      }
+    }
+
+    // 5. Topic lookup if NOT generic
+    if (matchedTopic) {
+      if (matchedTopic.subjectId) {
+        const subj = subjects.find(s => s.id === matchedTopic.subjectId);
+        if (subj && subj.name && !isGeneric(subj.name)) return subj.name.trim();
+      }
+      if ((matchedTopic as any).subjectName && !isGeneric((matchedTopic as any).subjectName)) {
+        return (matchedTopic as any).subjectName.trim();
+      }
+    }
+
+    // Fallback if card.subjectName is present even if generic or default
+    if (card.subjectName && card.subjectName.trim()) return card.subjectName.trim();
+    return 'Clínica Médica';
+  }, [subjects, topics, getTopicTitle, extractMedicalSubjectFromTexts]);
+
+  // Helper for color-coded subject tag styling
+  const getSubjectBadgeStyle = useCallback((subjectName: string): string => {
+    const s = (subjectName || '').toLowerCase();
+    if (s.includes('ginecologia') || s.includes('obstetrícia') || s.includes('g.o') || s.includes('go')) {
+      return 'bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-800';
+    }
+    if (s.includes('pediatria') || s.includes('puericultura')) {
+      return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800';
+    }
+    if (s.includes('ortopedia') || s.includes('traumatologia')) {
+      return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800';
+    }
+    if (s.includes('cirurgia')) {
+      return 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-300 dark:border-red-800';
+    }
+    if (s.includes('preventiva') || s.includes('coletiva') || s.includes('sus') || s.includes('epidemio')) {
+      return 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800';
+    }
+    if (s.includes('cardiologia') || s.includes('infectologia') || s.includes('neurologia') || s.includes('nefrologia')) {
+      return 'bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-800';
+    }
+    return 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800';
+  }, []);
 
   const displayTopics = useMemo(() => {
     const list = topics.map(t => {
@@ -952,6 +1080,8 @@ export default function FlashcardModule({
                   const front = cardData.front || cardData.question || cardData.pergunta || '';
                   const back = cardData.back || cardData.answer || cardData.resposta || '';
                   const concept = cardData.concept || topic.title;
+                  const cardSubjObj = subjects.find(s => s.id === topic.subjectId);
+                  const cardSubjName = cardSubjObj?.name || (topic as any).subjectName || cardData.subtopicTag || 'Clínica Médica';
 
                   if (front && back) {
                     try {
@@ -961,6 +1091,8 @@ export default function FlashcardModule({
                         concept,
                         topicId: topic.id,
                         subjectId: topic.subjectId || 'geral',
+                        subjectName: cardSubjName,
+                        subtopicTag: cardData.subtopicTag || '',
                         createdAt: new Date().toISOString()
                       });
 
@@ -970,7 +1102,9 @@ export default function FlashcardModule({
                         back,
                         concept,
                         topicId: topic.id,
-                        subjectId: topic.subjectId || 'geral'
+                        subjectId: topic.subjectId || 'geral',
+                        subjectName: cardSubjName,
+                        subtopicTag: cardData.subtopicTag || ''
                       };
                       stepBatch.push(newCardItem);
                       addedCards.push(newCardItem);
@@ -1041,6 +1175,8 @@ export default function FlashcardModule({
                   const front = cardData.front || cardData.question || cardData.pergunta || '';
                   const back = cardData.back || cardData.answer || cardData.resposta || '';
                   const concept = cardData.concept || topic.title;
+                  const cardSubjObj = subjects.find(s => s.id === topic.subjectId);
+                  const cardSubjName = cardSubjObj?.name || (topic as any).subjectName || cardData.subtopicTag || 'Clínica Médica';
 
                   if (front && back) {
                     try {
@@ -1050,6 +1186,8 @@ export default function FlashcardModule({
                         concept,
                         topicId: topic.id,
                         subjectId: topic.subjectId || 'geral',
+                        subjectName: cardSubjName,
+                        subtopicTag: cardData.subtopicTag || '',
                         createdAt: new Date().toISOString()
                       });
 
@@ -1059,7 +1197,9 @@ export default function FlashcardModule({
                         back,
                         concept,
                         topicId: topic.id,
-                        subjectId: topic.subjectId || 'geral'
+                        subjectId: topic.subjectId || 'geral',
+                        subjectName: cardSubjName,
+                        subtopicTag: cardData.subtopicTag || ''
                       };
                       stepBatch.push(newCardItem);
                       addedCards.push(newCardItem);
@@ -1107,6 +1247,7 @@ export default function FlashcardModule({
     try {
       const topicObj = topics.find(t => t.id === manualTopicId);
       const subjectId = topicObj ? topicObj.subjectId : subjects[0]?.id || '';
+      const subjectName = subjects.find(s => s.id === subjectId)?.name || 'Clínica Médica';
 
       const newCardDoc = {
         front: manualFront.trim(),
@@ -1114,6 +1255,7 @@ export default function FlashcardModule({
         concept: manualConcept.trim() || (topicObj ? topicObj.title : 'Conceito Médico'),
         topicId: manualTopicId,
         subjectId,
+        subjectName,
         createdAt: new Date().toISOString()
       };
 
@@ -1192,7 +1334,8 @@ export default function FlashcardModule({
       cardBack: currentCard.back,
       concept: currentCard.concept || currentCard.front,
       rating,
-      topicId: currentCard.topicId
+      topicId: currentCard.topicId,
+      subjectName: getSubjectNameForCard(currentCard)
     };
     const updatedSessionScores = [...currentSessionScores, scoreEntry];
     setCurrentSessionScores(updatedSessionScores);
@@ -1240,13 +1383,14 @@ export default function FlashcardModule({
     if (total === 0) return;
 
     let scorePoints = 0;
-    const failedItems: { concept: string; front: string; back: string }[] = [];
-    const hardItems: { concept: string; front: string; back: string }[] = [];
-    const masteredItems: { concept: string; front: string; back: string }[] = [];
+    const failedItems: { concept: string; front: string; back: string; subjectName?: string }[] = [];
+    const hardItems: { concept: string; front: string; back: string; subjectName?: string }[] = [];
+    const masteredItems: { concept: string; front: string; back: string; subjectName?: string }[] = [];
 
     scores.forEach(s => {
       const conceptStr = s.card.concept || s.card.front;
-      const item = { concept: conceptStr, front: s.card.front, back: s.card.back };
+      const subjName = getSubjectNameForCard(s.card);
+      const item = { concept: conceptStr, front: s.card.front, back: s.card.back, subjectName: subjName };
 
       if (s.rating === 'errei') {
         scorePoints += 0;
@@ -2635,10 +2779,17 @@ export default function FlashcardModule({
 
                   <div className="space-y-3">
                     {diagnosticResult.failedItems.map((item, idx) => (
-                      <div key={`fail-${idx}`} className="p-4 bg-white rounded-xl border border-rose-100 shadow-2xs space-y-1">
-                        <div className="flex items-center gap-2 text-xs font-bold text-rose-700">
-                          <XCircle className="w-4 h-4 shrink-0" />
-                          <span>{item.concept}</span>
+                      <div key={`fail-${idx}`} className="p-4 bg-white rounded-xl border border-rose-100 shadow-2xs space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-xs font-bold text-rose-700 min-w-0">
+                            <XCircle className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{item.concept}</span>
+                          </div>
+                          {item.subjectName && (
+                            <Badge className={cn('text-[9px] font-bold uppercase px-2 py-0.5 rounded-md border shrink-0', getSubjectBadgeStyle(item.subjectName))}>
+                              {item.subjectName}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-xs text-[#1A1A1A] font-medium pl-6">{item.front}</p>
                         <p className="text-xs text-[#8E8A82] italic pl-6">R: {item.back}</p>
@@ -2646,10 +2797,17 @@ export default function FlashcardModule({
                     ))}
 
                     {diagnosticResult.hardItems.map((item, idx) => (
-                      <div key={`hard-${idx}`} className="p-4 bg-white rounded-xl border border-amber-100 shadow-2xs space-y-1">
-                        <div className="flex items-center gap-2 text-xs font-bold text-amber-700">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          <span>{item.concept}</span>
+                      <div key={`hard-${idx}`} className="p-4 bg-white rounded-xl border border-amber-100 shadow-2xs space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-xs font-bold text-amber-700 min-w-0">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{item.concept}</span>
+                          </div>
+                          {item.subjectName && (
+                            <Badge className={cn('text-[9px] font-bold uppercase px-2 py-0.5 rounded-md border shrink-0', getSubjectBadgeStyle(item.subjectName))}>
+                              {item.subjectName}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-xs text-[#1A1A1A] font-medium pl-6">{item.front}</p>
                         <p className="text-xs text-[#8E8A82] italic pl-6">R: {item.back}</p>
@@ -2844,10 +3002,16 @@ export default function FlashcardModule({
                               badgeLabel = 'Difícil (Revisão em 2d)';
                             }
 
+                            const subjName = score.subjectName || 'Clínica Médica';
                             return (
                               <div key={`sess-score-${idx}`} className="p-3 bg-white rounded-xl border border-[#E2E0D9] flex items-center justify-between gap-4 text-xs">
-                                <div className="space-y-0.5 min-w-0 flex-1">
-                                  <p className="font-bold text-[#1A1A1A] truncate">{score.cardFront}</p>
+                                <div className="space-y-1 min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <Badge className={cn('text-[9px] font-bold uppercase px-2 py-0.5 rounded-md border shrink-0', getSubjectBadgeStyle(subjName))}>
+                                      {subjName}
+                                    </Badge>
+                                    <p className="font-bold text-[#1A1A1A] truncate">{score.cardFront}</p>
+                                  </div>
                                   <p className="text-[10px] text-[#8E8A82] italic truncate">R: {score.cardBack}</p>
                                 </div>
                                 <Badge className={cn('text-[9px] font-extrabold uppercase shrink-0 px-2.5 py-1 rounded-lg border', badgeStyle)}>
@@ -3033,10 +3197,15 @@ export default function FlashcardModule({
             >
               {/* FRONT (PERGUNTA) */}
               <Card className="absolute inset-0 backface-hidden flex flex-col items-center justify-between p-8 sm:p-12 text-center border-[#E2E0D9] shadow-sm rounded-3xl bg-white hover:border-primary/40 transition-colors">
-                <div className="w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82] border-b border-[#E2E0D9] pb-3">
-                  <span>Pergunta</span>
+                <div className="w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82] border-b border-[#E2E0D9] pb-3 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="shrink-0 text-[#8E8A82]">Pergunta</span>
+                    <Badge className={cn('text-[9px] font-extrabold tracking-wide uppercase px-2.5 py-0.5 rounded-md border truncate max-w-[190px] sm:max-w-[250px]', getSubjectBadgeStyle(getSubjectNameForCard(currentCard)))}>
+                      {getSubjectNameForCard(currentCard)}
+                    </Badge>
+                  </div>
                   {currentCard.concept && (
-                    <Badge variant="outline" className="text-[9px] font-bold border-[#E2E0D9] text-[#8E8A82]">
+                    <Badge variant="outline" className="text-[9px] font-bold border-[#E2E0D9] text-[#8E8A82] truncate max-w-[140px] shrink-0">
                       {currentCard.concept}
                     </Badge>
                   )}
@@ -3056,10 +3225,15 @@ export default function FlashcardModule({
 
               {/* BACK (RESPOSTA) */}
               <Card className="absolute inset-0 backface-hidden flex flex-col items-center justify-between p-8 sm:p-12 text-center border-none shadow-xl rounded-3xl [transform:rotateY(180deg)] bg-[#1A1A1A] text-white">
-                <div className="w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-extrabold text-white/50 border-b border-white/10 pb-3">
-                  <span>Resposta Médica</span>
+                <div className="w-full flex items-center justify-between text-[10px] uppercase tracking-widest font-extrabold text-white/50 border-b border-white/10 pb-3 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="shrink-0 text-white/70">Resposta Médica</span>
+                    <Badge className={cn('text-[9px] font-extrabold tracking-wide uppercase px-2.5 py-0.5 rounded-md border truncate max-w-[190px] sm:max-w-[250px]', getSubjectBadgeStyle(getSubjectNameForCard(currentCard)))}>
+                      {getSubjectNameForCard(currentCard)}
+                    </Badge>
+                  </div>
                   {currentCard.concept && (
-                    <span className="text-[9px] font-bold text-white/60 uppercase">{currentCard.concept}</span>
+                    <span className="text-[9px] font-bold text-white/60 uppercase truncate max-w-[140px] shrink-0">{currentCard.concept}</span>
                   )}
                 </div>
 

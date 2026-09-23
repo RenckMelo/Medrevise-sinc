@@ -1534,6 +1534,7 @@ REQUISITOS:
 - A frente deve ser uma pergunta curta ou conceito direto para completar.
 - O verso deve ser a resposta direta e concisa.
 - Adicione a chave "concept" para tag de diagnóstico de assunto (ex: "Diagnóstico", "Conduta de 1ª Linha", "Exame Padrão-Ouro", "Efeitos Colaterais").
+- Adicione a chave "subtopicTag" com a grande área médica (ex: "Ginecologia e Obstetrícia", "Pediatria", "Ortopedia", "Clínica Médica", "Cirurgia Geral", "Saúde Coletiva").
 - Foque em "pérolas" de prova de residência médica e condutas cruciais.
 
 Formato de Resposta (JSON estrito):
@@ -1541,7 +1542,8 @@ Formato de Resposta (JSON estrito):
   {
     "front": "Pergunta em português...",
     "back": "Resposta em português...",
-    "concept": "Conceito Médico (ex: Tratamento de 1ª linha)"
+    "concept": "Conceito Médico (ex: Tratamento de 1ª linha)",
+    "subtopicTag": "Grande Área (ex: Ginecologia e Obstetrícia)"
   }
 ]`;
 

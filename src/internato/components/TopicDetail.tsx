@@ -5063,12 +5063,39 @@ th { background: #F8F7F4; font-weight: bold; }
         for (const fData of newFlashcards) {
           const front = fData.front || fData.question || fData.pergunta || '';
           const back = fData.back || fData.answer || fData.resposta || '';
-          
+          const conceptVal = fData.concept || fData.subtopicTag || topic.title;
+
+          const rawSubjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
+          const combinedLower = [rawSubjectName, topic.title, conceptVal, front, back].filter(Boolean).join(' | ').toLowerCase();
+
+          let resolvedSubject = 'Clínica Médica';
+          if (combinedLower.includes('ginecologia') || combinedLower.includes('obstetrícia') || combinedLower.includes('g.o')) {
+            resolvedSubject = 'Ginecologia e Obstetrícia';
+          } else if (combinedLower.includes('pediatria') || combinedLower.includes('puericultura') || combinedLower.includes('neonatologia')) {
+            resolvedSubject = 'Pediatria';
+          } else if (combinedLower.includes('ortopedia') || combinedLower.includes('traumatologia')) {
+            resolvedSubject = 'Ortopedia';
+          } else if (combinedLower.includes('cirurgia') || combinedLower.includes('apendicite') || combinedLower.includes('colecistite')) {
+            resolvedSubject = 'Cirurgia Geral';
+          } else if (combinedLower.includes('preventiva') || combinedLower.includes('coletiva') || combinedLower.includes('sus') || combinedLower.includes('epidemiologia')) {
+            resolvedSubject = 'Preventiva & Saúde Coletiva';
+          } else if (combinedLower.includes('cardiologia') || combinedLower.includes('infarto') || combinedLower.includes('hipertensão')) {
+            resolvedSubject = 'Cardiologia';
+          } else if (combinedLower.includes('infectologia') || combinedLower.includes('sepse') || combinedLower.includes('hiv')) {
+            resolvedSubject = 'Infectologia';
+          } else if (combinedLower.includes('neurologia') || combinedLower.includes('avc')) {
+            resolvedSubject = 'Neurologia';
+          } else if (rawSubjectName && !rawSubjectName.toLowerCase().includes('faculdade') && !rawSubjectName.toLowerCase().includes('geral')) {
+            resolvedSubject = rawSubjectName;
+          }
+
           await addDoc(collection(db, 'flashcards'), {
             front,
             back,
             topicId: topic.id,
-            subjectId: topic.subjectId
+            subjectId: topic.subjectId,
+            subjectName: resolvedSubject,
+            concept: conceptVal
           });
         }
         setFlashcardCount(prev => prev + newFlashcards.length);

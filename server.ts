@@ -1085,7 +1085,10 @@ app.get("/api/search-web-images", async (req, res) => {
       }
     }
 
-    const BLOCKED_DOMAINS = ['fbsbx.com', 'facebook.com', 'fbcdn.net', 'instagram.com', 'tiktok.com', 'twimg.com', 'pinterest.com'];
+    const BLOCKED_DOMAINS = [
+      'fbsbx.com', 'facebook.com', 'fbcdn.net', 'instagram.com', 'tiktok.com',
+      'twimg.com', 'pinterest.com', 'ytimg.com', 'youtube.com', 'vimeocdn.com', 'vimeo.com'
+    ];
     const NON_CLINICAL_KEYWORDS = [
       'chart', 'graph', 'diagram', 'table', 'algorithm', 'schema', 'flowchart',
       'vector', 'icon', 'drawing', 'cartoon', 'infographic', 'structure',
@@ -1202,13 +1205,20 @@ app.get("/api/proxy-image", async (req, res) => {
       headers["Referer"] = "https://openi.nlm.nih.gov/";
     } else if (parsedUrl.hostname.includes("plos.org")) {
       headers["Referer"] = "https://journals.plos.org/";
-    } else {
-      headers["Referer"] = `${parsedUrl.protocol}//${parsedUrl.hostname}/`;
     }
 
     let response = await fetch(imageUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(8000) });
 
-    // Fallback: If a Wikimedia thumbnail URL fails, try to fetch the full resolution file directly
+    // Fallback 1: If fetch failed with Referer header, try without Referer header
+    if (!response.ok && headers["Referer"]) {
+      const { Referer, ...cleanHeaders } = headers;
+      try {
+        const retryRes = await fetch(imageUrl, { headers: cleanHeaders, redirect: 'follow', signal: AbortSignal.timeout(6000) });
+        if (retryRes.ok) response = retryRes;
+      } catch (e) {}
+    }
+
+    // Fallback 2: If a Wikimedia thumbnail URL fails, try to fetch the full resolution file directly
     if (!response.ok && (parsedUrl.hostname.includes("wikimedia.org") || parsedUrl.hostname.includes("wikipedia.org"))) {
       if (imageUrl.includes('/thumb/')) {
         const parts = imageUrl.split('/');

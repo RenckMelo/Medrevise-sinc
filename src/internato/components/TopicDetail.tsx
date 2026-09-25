@@ -7266,15 +7266,26 @@ th { background: #F8F7F4; font-weight: bold; }
                               return (
                                 <>
                                   {/* High-Res Image Display */}
-                                  <div className="bg-[#1A1A1A] rounded-2xl overflow-hidden border border-stone-800 flex flex-col items-center justify-center p-3 relative group min-h-[220px] max-h-[340px] shadow-lg shrink-0">
+                                  <div className="bg-stone-900 rounded-2xl overflow-hidden border border-stone-800 flex flex-col items-center justify-center p-3 relative group min-h-[220px] max-h-[340px] shadow-lg shrink-0">
+                                    <div className="preview-loading-spinner flex flex-col items-center justify-center gap-2 text-stone-400 z-0">
+                                      <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
+                                      <span className="text-[10px] font-mono uppercase tracking-wider text-stone-400">Carregando imagem...</span>
+                                    </div>
                                     <img
                                       src={getProxyImageUrl(selectedItem.url)}
                                       alt={selectedItem.title}
                                       referrerPolicy="no-referrer"
                                       className="max-w-full max-h-[310px] object-contain rounded-lg shadow-2xl z-10"
+                                      onLoad={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        const spinner = target.parentElement?.querySelector('.preview-loading-spinner');
+                                        if (spinner) (spinner as HTMLElement).style.display = 'none';
+                                      }}
                                       onError={(e) => {
                                         const target = e.target as HTMLImageElement;
                                         target.style.display = 'none';
+                                        const spinner = target.parentElement?.querySelector('.preview-loading-spinner');
+                                        if (spinner) (spinner as HTMLElement).style.display = 'none';
                                         const fallback = target.parentElement?.querySelector('.manual-fallback-box');
                                         if (fallback) (fallback as HTMLElement).style.display = 'flex';
                                       }}
@@ -7288,7 +7299,7 @@ th { background: #F8F7F4; font-weight: bold; }
                                       </span>
                                     </div>
                                     <div className="absolute bottom-2.5 right-2.5 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[9px] text-amber-300 font-mono uppercase tracking-widest border border-amber-500/30 z-20">
-                                      {selectedItem.sourceType === 'book' ? "Manual Bibliográfico" : "Acervo Científico"}
+                                      {selectedItem.sourceType === 'book' ? "Manual Bibliográfico" : selectedItem.sourceType === 'web' ? "Busca Web" : "Acervo Científico"}
                                     </div>
                                   </div>
 

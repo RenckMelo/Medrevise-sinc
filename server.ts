@@ -1025,6 +1025,132 @@ app.get("/api/proxy-scientific", async (req, res) => {
   }
 });
 
+// Endpoint for Web Image Search (DuckDuckGo Web Images) with optional Clinical Filter
+app.get("/api/search-web-images", async (req, res) => {
+  try {
+    const query = (req.query.query || req.query.q || '') as string;
+    const filterClinical = req.query.filter_clinical !== 'false' && req.query.filter_clinical !== '0';
+    const limit = Math.min(parseInt((req.query.limit || '30') as string) || 30, 60);
+
+    if (!query || query.trim().length === 0) {
+      return res.status(200).json({ query: "", filter_clinical: filterClinical, count: 0, results: [] });
+    }
+
+    const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+    
+    let searchTerms = [query.trim()];
+    if (!/medical|clinical|medicina|foto|lesion|exam/i.test(query)) {
+      searchTerms.push(`${query.trim()} medical clinical photo`);
+    }
+
+    const rawResults: any[] = [];
+    const seenUrls = new Set<string>();
+
+    for (const qTerm of searchTerms) {
+      try {
+        const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(qTerm)}`;
+        const initRes = await fetch(searchUrl, {
+          headers: { "User-Agent": userAgent },
+          signal: AbortSignal.timeout(5000)
+        });
+        if (!initRes.ok) continue;
+        const html = await initRes.text();
+        const vqdMatch = html.match(/vqd=["\x27]?([0-9a-zA-Z_\-]+)["\x27]?/) || html.match(/vqd=([0-9a-zA-Z_\-]+)/);
+        if (!vqdMatch) continue;
+
+        const vqd = vqdMatch[1];
+        const imgApiUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(qTerm)}&vqd=${vqd}&f=,,,`;
+        const imgRes = await fetch(imgApiUrl, {
+          headers: {
+            "User-Agent": userAgent,
+            "Accept": "application/json",
+            "Referer": "https://duckduckgo.com/"
+          },
+          signal: AbortSignal.timeout(6000)
+        });
+
+        if (!imgRes.ok) continue;
+        const data = await imgRes.json();
+        const list = data.results || [];
+
+        for (const item of list) {
+          if (!item.image) continue;
+          const norm = item.image.split('?')[0].toLowerCase();
+          if (seenUrls.has(norm)) continue;
+          seenUrls.add(norm);
+          rawResults.push(item);
+        }
+      } catch (err) {
+        console.warn("[search-web-images] Term search warning:", qTerm, err);
+      }
+    }
+
+    const NON_CLINICAL_KEYWORDS = [
+      'chart', 'graph', 'diagram', 'table', 'algorithm', 'schema', 'flowchart',
+      'vector', 'icon', 'drawing', 'cartoon', 'infographic', 'structure',
+      'pathway', 'tree', 'logo', 'slide', 'presentation', 'mindmap', 'clipart',
+      'slidetodoc', 'slideplayer', 'slideshare', 'freepik', 'stock-vector'
+    ];
+
+    let filtered = rawResults;
+
+    if (filterClinical) {
+      filtered = rawResults.filter((item: any) => {
+        const imgUrl = (item.image || '').toLowerCase();
+        const title = (item.title || '').toLowerCase();
+        const source = (item.source || '').toLowerCase();
+        const combined = `${title} ${imgUrl} ${source}`;
+
+        if (imgUrl.endsWith('.svg')) return false;
+
+        for (const kw of NON_CLINICAL_KEYWORDS) {
+          if (combined.includes(kw)) return false;
+        }
+
+        return true;
+      });
+    }
+
+    const finalResults = filtered.slice(0, limit).map((item: any, idx: number) => {
+      let sourceDomain = item.source || '';
+      if (!sourceDomain && item.url) {
+        try {
+          sourceDomain = new URL(item.url).hostname.replace('www.', '');
+        } catch (e) {
+          sourceDomain = 'Web';
+        }
+      }
+      if (!sourceDomain) sourceDomain = 'Web';
+
+      return {
+        id: `web-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+        title: item.title || query,
+        url: item.image,
+        thumbUrl: item.thumbnail || item.image,
+        sourceUrl: item.url,
+        sourceType: 'web',
+        sourceName: `Busca Web (${sourceDomain})`,
+        specialty: filterClinical ? 'Fotografia / Exame Clínico Real' : 'Resultado Web',
+        authors: sourceDomain,
+        caption: `Imagem obtida da web (${sourceDomain}). ${item.title || ''}`,
+        width: item.width,
+        height: item.height,
+        score: filterClinical ? 140 : 100
+      };
+    });
+
+    return res.json({
+      query,
+      filter_clinical: filterClinical,
+      count: finalResults.length,
+      results: finalResults
+    });
+  } catch (err: any) {
+    console.error("[search-web-images error]", err.message);
+    return res.status(200).json({ query: "", filter_clinical: false, count: 0, results: [] });
+  }
+});
+
 // Proxy endpoint to prevent browser Referer header issues with Wikimedia Commons, Open-i, and PLOS
 app.get("/api/proxy-image", async (req, res) => {
   try {

@@ -3,7 +3,7 @@ import { Topic, UserProgress, Subject } from '../types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, ArrowLeft, ArrowRight, BookOpen, Clock, Share2, Sparkles, Loader2, FileText, Brain, Download, ChevronDown, Zap, RefreshCcw, Printer, X, Play, Edit3, Trash2, Maximize2, Bookmark, FolderPlus, Notebook, Copy, Check, PenTool, Eye, EyeOff, Image as ImageIcon, ImageOff, Link as LinkIcon, Upload as UploadIcon, Search, ExternalLink, QrCode, CreditCard, Cpu, Award, ShieldCheck, Columns, Lightbulb, Stethoscope, AlertCircle, HardDriveDownload, WifiOff, MapPin, Plus } from 'lucide-react';
+import { CheckCircle2, ArrowLeft, ArrowRight, BookOpen, Clock, Share2, Sparkles, Loader2, FileText, Brain, Download, ChevronDown, Zap, RefreshCcw, Printer, X, Play, Edit3, Trash2, Maximize2, Bookmark, FolderPlus, Notebook, Copy, Check, PenTool, Eye, EyeOff, Image as ImageIcon, ImageOff, Link as LinkIcon, Upload as UploadIcon, Search, ExternalLink, QrCode, CreditCard, Cpu, Award, ShieldCheck, Columns, Lightbulb, Stethoscope, AlertCircle, HardDriveDownload, WifiOff, MapPin, Plus, Globe, Camera } from 'lucide-react';
 import { SmartPenCanvas } from './SmartPenCanvas';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -1107,6 +1107,8 @@ export default function TopicDetail({
   const [searchModalQuery, setSearchModalQuery] = useState('');
   const [searchModalSourceBooks, setSearchModalSourceBooks] = useState(true);
   const [searchModalSourceArticles, setSearchModalSourceArticles] = useState(true);
+  const [searchModalSourceWeb, setSearchModalSourceWeb] = useState(true);
+  const [filterClinicalPhotos, setFilterClinicalPhotos] = useState(true);
   const [searchModalResults, setSearchModalResults] = useState<any[]>([]);
   const [searchModalLoading, setSearchModalLoading] = useState(false);
   const [searchModalAiLoading, setSearchModalAiLoading] = useState(false);
@@ -1116,9 +1118,13 @@ export default function TopicDetail({
   const [selectedInsertionSectionId, setSelectedInsertionSectionId] = useState<string>('auto');
   const [modalStep, setModalStep] = useState<'select_image' | 'select_location'>('select_image');
 
-  // Prevent background body scroll when the image modal is open
+  // Prevent background body scroll and clear text selection ranges when the image modal is open
   useEffect(() => {
     if (showIllustrationSearchModal) {
+      clearSelection(true);
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       const prevOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       return () => {
@@ -1911,6 +1917,7 @@ export default function TopicDetail({
 
   const handleOpenIllustrationSearchModal = (queryTerm: string, replacingId: string | null = null) => {
     const defaultQuery = queryTerm || selectedText || '';
+    clearSelection(true);
     setSearchModalQuery(defaultQuery);
     setSearchModalReplacingId(replacingId);
     setShowIllustrationSearchModal(true);
@@ -2371,13 +2378,34 @@ DIRETRIZES OBRIGATÓRIAS:
         return wikimediaResults;
       };
 
-      const [openIRes, plosRes, wmRes] = await Promise.all([
-        fetchOpenI(),
-        fetchPLOS(),
-        fetchWikimedia()
+      // Real Web Images Fetcher (/api/search-web-images)
+      const fetchWebImages = async () => {
+        try {
+          const qTerm = queryTermsToSearch[0] || ptTerm;
+          const filterParam = filterClinicalPhotos ? 'true' : 'false';
+          const url = `/api/search-web-images?query=${encodeURIComponent(qTerm)}&filter_clinical=${filterParam}&limit=25`;
+          const res = await fetchWithTimeout(url, {}, 4500);
+          if (!res.ok) return [];
+          const data = await res.json();
+          return (data.results || []).map((item: any, idx: number) => ({
+            ...item,
+            id: `web-${idx}-${item.id || Math.random().toString(36).substring(2, 6)}`,
+            sourceType: 'web'
+          }));
+        } catch (err) {
+          console.warn('Web image fetch failed', err);
+          return [];
+        }
+      };
+
+      const [openIRes, plosRes, wmRes, webRes] = await Promise.all([
+        searchModalSourceArticles ? fetchOpenI() : Promise.resolve([]),
+        searchModalSourceArticles ? fetchPLOS() : Promise.resolve([]),
+        searchModalSourceBooks ? fetchWikimedia() : Promise.resolve([]),
+        searchModalSourceWeb ? fetchWebImages() : Promise.resolve([])
       ]);
 
-      const allWebResults = [...openIRes, ...plosRes, ...wmRes];
+      const allWebResults = [...webRes, ...openIRes, ...plosRes, ...wmRes];
 
       // FALLBACK SOFT-QUERYING: If domain filters returned 0 results, perform a relaxed search on Wikimedia so the user never gets an empty screen
       if (allWebResults.length === 0 && verifiedManualMatches.length === 0) {
@@ -7026,12 +7054,28 @@ th { background: #F8F7F4; font-weight: bold; }
                       </div>
 
                       <div className="flex items-center justify-between flex-wrap gap-2 pt-1.5 border-t border-[#E2E0D9]/50 text-[10px]">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center flex-wrap gap-1.5">
                           <span className="uppercase tracking-wider font-extrabold text-stone-400 font-mono text-[9px]">Fontes:</span>
                           <button
                             onClick={() => {
+                              const next = !searchModalSourceWeb;
+                              if (!next && !searchModalSourceBooks && !searchModalSourceArticles) return;
+                              setSearchModalSourceWeb(next);
+                              setTimeout(() => handleSearchScientificImages(searchModalQuery), 50);
+                            }}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                              searchModalSourceWeb 
+                                ? 'bg-blue-100 border-blue-300 text-blue-900 shadow-sm' 
+                                : 'bg-white border-[#E2E0D9] text-stone-400 hover:text-stone-600'
+                            }`}
+                          >
+                            <Globe className="w-3 h-3 text-blue-600" />
+                            Busca Web Ampla
+                          </button>
+                          <button
+                            onClick={() => {
                               const next = !searchModalSourceBooks;
-                              if (!next && !searchModalSourceArticles) return;
+                              if (!next && !searchModalSourceArticles && !searchModalSourceWeb) return;
                               setSearchModalSourceBooks(next);
                               setTimeout(() => handleSearchScientificImages(searchModalQuery), 50);
                             }}
@@ -7042,12 +7086,12 @@ th { background: #F8F7F4; font-weight: bold; }
                             }`}
                           >
                             <BookOpen className="w-3 h-3" />
-                            Manuais e Livros
+                            Manuais
                           </button>
                           <button
                             onClick={() => {
                               const next = !searchModalSourceArticles;
-                              if (!next && !searchModalSourceBooks) return;
+                              if (!next && !searchModalSourceBooks && !searchModalSourceWeb) return;
                               setSearchModalSourceArticles(next);
                               setTimeout(() => handleSearchScientificImages(searchModalQuery), 50);
                             }}
@@ -7058,14 +7102,27 @@ th { background: #F8F7F4; font-weight: bold; }
                             }`}
                           >
                             <FileText className="w-3 h-3" />
-                            Artigos Científicos
+                            Artigos
                           </button>
                         </div>
 
-                        <div className="flex items-center gap-1 text-indigo-700 font-semibold text-[10px]">
-                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>Acervo Verificado</span>
-                        </div>
+                        {/* Optional Clinical Photo Filter Toggle */}
+                        <button
+                          onClick={() => {
+                            const next = !filterClinicalPhotos;
+                            setFilterClinicalPhotos(next);
+                            setTimeout(() => handleSearchScientificImages(searchModalQuery), 50);
+                          }}
+                          className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                            filterClinicalPhotos
+                              ? 'bg-purple-100 border-purple-300 text-purple-900 shadow-sm ring-1 ring-purple-300/40'
+                              : 'bg-stone-100 border-[#E2E0D9] text-stone-500 hover:text-stone-800'
+                          }`}
+                          title="Filtro Clínico: Quando ativado, oculta esquemas, gráficos e desenhos, mantendo apenas fotografias e exames reais."
+                        >
+                          <Camera className={`w-3 h-3 ${filterClinicalPhotos ? 'text-purple-600' : 'text-stone-400'}`} />
+                          <span>Filtro Clínico: {filterClinicalPhotos ? 'Fotos & Exames Reais' : 'Todas as Imagens'}</span>
+                        </button>
                       </div>
                     </div>
 
@@ -7117,7 +7174,7 @@ th { background: #F8F7F4; font-weight: bold; }
                                   const isSelected = item.id === searchModalSelectedId;
                                   return (
                                     <button
-                                      key={`sm-res-${item.id || mapIdx}`}
+                                      key={`sm-res-${mapIdx}-${item.id || 'res'}`}
                                       onClick={() => setSearchModalSelectedId(item.id)}
                                       onDoubleClick={() => {
                                         setSearchModalSelectedId(item.id);

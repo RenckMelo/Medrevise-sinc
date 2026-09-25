@@ -1460,41 +1460,7 @@ export default function CalendarView() {
                 <span>Desfazer ({undoHistory.length})</span>
               </button>
 
-              {hasGoogleConnection ? (
-                <>
-                  <button 
-                    onClick={handleSync}
-                    disabled={isSyncing || isCleaning}
-                    className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2 border border-[#141414] font-mono text-[9px] sm:text-[10px] uppercase hover:bg-[#141414]/5 ${(isSyncing || isCleaning) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-                    {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
-                  </button>
-                  <button 
-                    onClick={() => triggerConfirm(
-                      'Desfazer Sincronização?', 
-                      'Deseja realmente desativar o Google Calendar? Todos os compromissos externos importados via API serão excluídos automaticamente do seu cronograma de estudos.',
-                      handleClearSync,
-                      'danger',
-                      'Desfazer Sincronização'
-                    )}
-                    disabled={isCleaning || isSyncing}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-200 px-3 sm:px-4 py-2 font-mono text-[9px] sm:text-[10px] uppercase hover:bg-red-100 disabled:opacity-50"
-                  >
-                    <Trash2 size={14} className={isCleaning ? 'animate-pulse' : ''} />
-                    {isCleaning ? 'Limpando...' : 'Desfazer Sincronização'}
-                  </button>
-                </>
-              ) : (
-                <button 
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2 border border-dashed border-[#141414] text-[#141414] font-mono text-[9px] sm:text-[10px] uppercase hover:bg-[#141414]/5 disabled:opacity-50 transition-colors"
-                >
-                  <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-                  {isSyncing ? 'Conectando...' : 'Conectar Google Calendar'}
-                </button>
-              )}
+
               {overdueTopics.length > 0 && (
                 <button 
                   onClick={handleRescheduleOverdue}
@@ -1953,7 +1919,21 @@ export default function CalendarView() {
               <div className="flex justify-between items-center mb-4 border-b pb-3 border-[#141414]/15">
                 <div className="flex items-center gap-2">
                   <BookOpen size={18} className="text-[#141414]" />
-                  <h3 className="font-serif italic text-xl font-bold">Revisão (SRS)</h3>
+                  <h3 className="font-serif italic text-xl font-bold">
+                    {editingTopic ? (() => {
+                      const rawName = editingTopic.name || editingTopic.title || '';
+                      let clean = rawName
+                        .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
+                        .replace(/^Revisão SRS[\s:\-\–\—]*/gi, '')
+                        .replace(/^Revisão[\s:\-\–\—]*/gi, '')
+                        .trim();
+                      if (!clean || clean.toLowerCase() === 'srs') {
+                        const subj = subjects.find(s => s.id === editingTopic.subjectId);
+                        clean = subj?.name || 'Tópico';
+                      }
+                      return `Revisão - ${clean}`;
+                    })() : 'Revisão'}
+                  </h3>
                 </div>
                 <button 
                   onClick={() => { setShowTopicForm(false); setEditingTopic(null); }}
@@ -2481,7 +2461,31 @@ function DraggableEvent({
           {event.completed && <Check size={8} strokeWidth={3} />}
         </button>
         <div onClick={(e) => { e.stopPropagation(); onEdit(); }} className="truncate flex-1 select-none hover:underline">
-          <span className="truncate flex-1 font-semibold">{event.title}</span>
+          <span className="truncate flex-1 font-semibold">
+            {(() => {
+              const rawTitle = event.title || '';
+              const rawTopicTitle = (event as any).cronogramaTopicTitle || '';
+              
+              // Clean up "Revisão SRS" or "🔄 [REVISÃO]" or "Revisão Ativa + Flashcards:"
+              let clean = rawTitle
+                .replace(/^🔄\s*\[REVISÃO\]\s*/i, '')
+                .replace(/^📖\s*\[[^\]]+\]\s*/i, '')
+                .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
+                .replace(/^Revisão SRS[\s:\-\–\—]*/gi, '')
+                .replace(/^Revisão[\s:\-\–\—]*/gi, '')
+                .trim();
+
+              if (!clean || clean.toLowerCase() === 'srs') {
+                clean = rawTopicTitle && rawTopicTitle.toLowerCase() !== 'srs' ? rawTopicTitle : '';
+              }
+
+              if (rawTitle.includes('[REVISÃO]') || rawTitle.toLowerCase().includes('revisão') || (event as any).isCronograma) {
+                if (clean) return `🔄 Revisão - ${clean}`;
+              }
+
+              return rawTitle;
+            })()}
+          </span>
         </div>
       </div>
     </div>
@@ -2617,7 +2621,20 @@ function DraggableReview({
             getDotColor()
           )}></div>
           <span className="truncate flex-1 font-medium">
-            {topic.name}
+            {(() => {
+              const rawName = topic.name || topic.title || '';
+              let clean = rawName
+                .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
+                .replace(/^Revisão SRS[\s:\-\–\—]*/gi, '')
+                .replace(/^Revisão[\s:\-\–\—]*/gi, '')
+                .trim();
+
+              if (!clean || clean.toLowerCase() === 'srs') {
+                clean = (topic as any).subjectName || 'Tópico';
+              }
+
+              return `Revisão - ${clean}`;
+            })()}
           </span>
         </div>
       </div>

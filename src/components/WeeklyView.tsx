@@ -419,7 +419,21 @@ export default function WeeklyView() {
               <div className="flex justify-between items-center mb-4 border-b pb-3 border-[#141414]/15">
                 <div className="flex items-center gap-2">
                   <BookOpen size={18} className="text-[#141414]" />
-                  <h3 className="font-serif italic text-xl font-bold">Editar Revisão (SRS)</h3>
+                  <h3 className="font-serif italic text-xl font-bold">
+                    {editingTopic ? (() => {
+                      const rawName = editingTopic.name || editingTopic.title || '';
+                      let clean = rawName
+                        .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
+                        .replace(/^Revisão SRS[\s:\-\–\—]*/gi, '')
+                        .replace(/^Revisão[\s:\-\–\—]*/gi, '')
+                        .trim();
+                      if (!clean || clean.toLowerCase() === 'srs') {
+                        const subj = subjects.find(s => s.id === editingTopic.subjectId);
+                        clean = subj?.name || 'Tópico';
+                      }
+                      return `Revisão - ${clean}`;
+                    })() : 'Editar Revisão'}
+                  </h3>
                 </div>
               </div>
 

@@ -1591,11 +1591,22 @@ export default function Cronograma({
               }
             }
 
+            const rawTopicTitle = topic.title || '';
+            let cleanTopicName = rawTopicTitle
+              .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
+              .replace(/^Revisão SRS[\s:\-\–\—]*/gi, '')
+              .replace(/^Revisão[\s:\-\–\—]*/gi, '')
+              .trim();
+
+            if (!cleanTopicName || cleanTopicName.toLowerCase() === 'srs') {
+              cleanTopicName = topic.subjectName || 'Tópico';
+            }
+
             eventsToCreate.push({
               title: topic.type === 'revisao' 
-                ? `🔄 [REVISÃO] ${topic.title}` 
-                : `📖 [${topic.subjectName}] ${topic.title}`,
-              description: `Estudo programado para ${topic.title}. Relevância histórica: ${topic.historicalIncidence}%. Grau de prioridade: ${topic.importanceDegree || 'NORMAL'}.`,
+                ? `🔄 Revisão - ${cleanTopicName}` 
+                : `📖 [${topic.subjectName || 'Estudo'}] ${topic.title}`,
+              description: `Estudo programado para ${cleanTopicName}. Relevância histórica: ${topic.historicalIncidence || 15}%. Grau de prioridade: ${topic.importanceDegree || 'NORMAL'}.`,
               start: startISO,
               end: endISO,
               subjectId: matchedSubject?.id || '',
@@ -1603,7 +1614,7 @@ export default function Cronograma({
               reminderMinutes: parseInt(syncReminderTime, 10) || 0,
               completed: !!isTopicDone(topic),
               isCronograma: true,
-              cronogramaTopicTitle: topic.title,
+              cronogramaTopicTitle: cleanTopicName,
               cronogramaWeekIdx: wIdx,
               cronogramaDayAbbr: dayAbbr,
               cronogramaTopicIdx: tIdx,

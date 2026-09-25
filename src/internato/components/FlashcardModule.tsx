@@ -637,112 +637,49 @@ export default function FlashcardModule({
       const topicsToFilter = filterTopicIds !== undefined ? filterTopicIds : (mode === 'srs' ? [] : selectedTopicIds);
       const subjectsToFilter = filterSubjectIds !== undefined ? filterSubjectIds : (mode === 'srs' ? [] : selectedSubjectIds);
 
-      if (mode === 'srs') {
-        const nowStr = new Date().toISOString();
+      // 1. Fetch global flashcards
+      let q;
+      if (topicsToFilter.length > 0) {
+        q = query(collection(db, 'flashcards'), where('topicId', 'in', topicsToFilter));
+      } else if (subjectsToFilter.length > 0) {
+        q = query(collection(db, 'flashcards'), where('subjectId', 'in', subjectsToFilter));
+      } else {
+        q = query(collection(db, 'flashcards'));
+      }
 
-        // 1. Identify all card IDs that are DUE TODAY (must have been reviewed previously AND nextReview <= nowStr)
-        const dueCardEntries = Object.entries(srsReviewsMap).filter(([_, rev]) => {
-          if (!rev || !rev.lastReviewed || !rev.nextReview) return false;
-          return rev.nextReview <= nowStr;
-        });
+      const snapshot = await getDocs(q);
+      fetched = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
 
-        const dueCardIds = dueCardEntries.map(([cardId]) => cardId);
-
-        if (dueCardIds.length === 0) {
-          setFlashcards([]);
-          setIsSelecting(false);
-          setLoading(false);
-          return;
-        }
-
-        const cardMap = new Map<string, Flashcard>();
-
-        // 1a. Query user subcollection first in batches of 30 if logged in
-        if (userId) {
-          try {
-            for (let i = 0; i < dueCardIds.length; i += 30) {
-              const batchIds = dueCardIds.slice(i, i + 30);
-              const userBatchQ = query(
-                collection(db, 'users', userId, 'flashcards'),
-                where(documentId(), 'in', batchIds)
-              );
-              const userBatchSnap = await getDocs(userBatchQ);
-              userBatchSnap.docs.forEach(d => {
-                cardMap.set(d.id, { id: d.id, ...(d.data() as any) } as Flashcard);
-              });
-            }
-          } catch (_) {}
-        }
-
-        // 1b. Query global flashcards collection for remaining due IDs
-        const missingIds = dueCardIds.filter(id => !cardMap.has(id));
-        if (missingIds.length > 0) {
-          for (let i = 0; i < missingIds.length; i += 30) {
-            const batchIds = missingIds.slice(i, i + 30);
-            try {
-              const globalBatchQ = query(
-                collection(db, 'flashcards'),
-                where(documentId(), 'in', batchIds)
-              );
-              const globalBatchSnap = await getDocs(globalBatchQ);
-              globalBatchSnap.docs.forEach(d => {
-                cardMap.set(d.id, { id: d.id, ...(d.data() as any) } as Flashcard);
-              });
-            } catch (_) {}
-          }
-        }
-
-        // 1c. Fallback for any reconstructed session card IDs
-        if (cardMap.size < dueCardIds.length) {
-          try {
-            const globalAllSnap = await getDocs(collection(db, 'flashcards'));
-            globalAllSnap.docs.forEach(d => {
-              if (dueCardIds.includes(d.id)) {
-                cardMap.set(d.id, { id: d.id, ...(d.data() as any) } as Flashcard);
+      // 2. Query user-specific flashcards if logged in
+      if (userId) {
+        try {
+          const userCol = collection(db, 'users', userId, 'flashcards');
+          const userSnap = await getDocs(userCol);
+          if (!userSnap.empty) {
+            const userFetched = userSnap.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
+            const existingIds = new Set(fetched.map(f => f.id));
+            userFetched.forEach(uf => {
+              if (!existingIds.has(uf.id)) {
+                if (topicsToFilter.length > 0) {
+                  if (topicsToFilter.includes(uf.topicId)) fetched.push(uf);
+                } else if (subjectsToFilter.length > 0) {
+                  if (subjectsToFilter.includes(uf.subjectId)) fetched.push(uf);
+                } else {
+                  fetched.push(uf);
+                }
               }
             });
-          } catch (_) {}
-        }
-
-        fetched = Array.from(cardMap.values());
-      } else {
-        // Deck or Diagnostic Mode
-        let q;
-        if (topicsToFilter.length > 0) {
-          q = query(collection(db, 'flashcards'), where('topicId', 'in', topicsToFilter));
-        } else if (subjectsToFilter.length > 0) {
-          q = query(collection(db, 'flashcards'), where('subjectId', 'in', subjectsToFilter));
-        } else {
-          q = query(collection(db, 'flashcards'));
-        }
-
-        const snapshot = await getDocs(q);
-        fetched = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
-
-        // Also query user-specific flashcards from users/${userId}/flashcards if logged in
-        if (userId) {
-          try {
-            const userCol = collection(db, 'users', userId, 'flashcards');
-            const userSnap = await getDocs(userCol);
-            if (!userSnap.empty) {
-              const userFetched = userSnap.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
-              const existingIds = new Set(fetched.map(f => f.id));
-              userFetched.forEach(uf => {
-                if (!existingIds.has(uf.id)) {
-                  if (topicsToFilter.length > 0) {
-                    if (topicsToFilter.includes(uf.topicId)) fetched.push(uf);
-                  } else if (subjectsToFilter.length > 0) {
-                    if (subjectsToFilter.includes(uf.subjectId)) fetched.push(uf);
-                  } else {
-                    fetched.push(uf);
-                  }
-                }
-              });
-            }
-          } catch (e) {
-            // Ignore subcollection read error
           }
-        }
+        } catch (_) {}
+      }
+
+      // 3. Filter for SRS due cards ("Devidos Hoje") if in SRS mode
+      if (mode === 'srs') {
+        const nowStr = new Date().toISOString();
+        fetched = fetched.filter(card => {
+          const rev = srsReviewsMap[card.id];
+          return rev && rev.lastReviewed && rev.nextReview && rev.nextReview <= nowStr;
+        });
       }
 
       // Shuffle deck
@@ -754,7 +691,6 @@ export default function FlashcardModule({
       if (shuffled.length > 0) {
         setIsSelecting(false);
       } else if (topicsToFilter.length > 0 || subjectsToFilter.length > 0) {
-        // Automatically open creation / generator panel when 0 cards exist for target topic
         setIsSelecting(true);
       }
     } catch (err) {
@@ -775,15 +711,8 @@ export default function FlashcardModule({
     return 'srs_default';
   }, [initialTopicIds, selectedTopic]);
 
-  const lastFetchedKeyRef = useRef<string | null>(null);
-
   // Auto-fetch if initialTopicIds or selectedTopic provided (only when topic selection key changes)
   useEffect(() => {
-    if (lastFetchedKeyRef.current === topicIdsKey) {
-      return;
-    }
-    lastFetchedKeyRef.current = topicIdsKey;
-
     if (initialTopicIds && initialTopicIds.length > 0) {
       setSelectedTopicIds(initialTopicIds);
       setActiveTab('deck');

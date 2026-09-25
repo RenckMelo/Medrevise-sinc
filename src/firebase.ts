@@ -158,8 +158,18 @@ export async function getDoc(docRef: any): Promise<any> {
         const mergedAnswered = Array.from(new Set([...(legacyData.answeredQuestionIds || []), ...(mainData.answeredQuestionIds || [])]));
         const mergedCorrect = Array.from(new Set([...(legacyData.correctQuestionIds || []), ...(mainData.correctQuestionIds || [])]));
         const mergedCompleted = Array.from(new Set([...(legacyData.completedTopicIds || []), ...(mainData.completedTopicIds || [])]));
-        const mergedSessions = [...(legacyData.studySessions || []), ...(mainData.studySessions || [])];
-        const mergedQuizHistory = [...(legacyData.quizHistory || []), ...(mainData.quizHistory || [])];
+        const dedupeItems = (arr: any[]) => {
+          const seen = new Set();
+          return (arr || []).filter(item => {
+            if (!item) return false;
+            const key = item.id || item.sessionId || item.createdAt || (typeof item === 'string' ? item : JSON.stringify(item));
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        };
+        const mergedSessions = dedupeItems([...(mainData.studySessions || []), ...(legacyData.studySessions || [])]);
+        const mergedQuizHistory = dedupeItems([...(mainData.quizHistory || []), ...(legacyData.quizHistory || [])]);
         const totalTime = Math.max(mainData.totalStudyTimeSeconds || 0, legacyData.totalStudyTimeSeconds || 0);
 
         data = {

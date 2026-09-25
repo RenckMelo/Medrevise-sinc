@@ -623,6 +623,28 @@ export default function FlashcardModule({
     };
   }, [userProgress, localSrsReviews]);
 
+  // Refs to stabilize fetchFlashcards dependencies and prevent re-rendering loops
+  const srsReviewsMapRef = useRef(srsReviewsMap);
+  const selectedTopicIdsRef = useRef(selectedTopicIds);
+  const selectedSubjectIdsRef = useRef(selectedSubjectIds);
+  const userIdRef = useRef(userId);
+
+  useEffect(() => {
+    srsReviewsMapRef.current = srsReviewsMap;
+  }, [srsReviewsMap]);
+
+  useEffect(() => {
+    selectedTopicIdsRef.current = selectedTopicIds;
+  }, [selectedTopicIds]);
+
+  useEffect(() => {
+    selectedSubjectIdsRef.current = selectedSubjectIds;
+  }, [selectedSubjectIds]);
+
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
+
   // Load Flashcards
   const fetchFlashcards = useCallback(async (mode: 'srs' | 'deck' | 'diagnostic' = 'deck', filterTopicIds?: string[], filterSubjectIds?: string[]) => {
     setLoading(true);
@@ -634,8 +656,8 @@ export default function FlashcardModule({
 
     try {
       let fetched: Flashcard[] = [];
-      const topicsToFilter = filterTopicIds !== undefined ? filterTopicIds : (mode === 'srs' ? [] : selectedTopicIds);
-      const subjectsToFilter = filterSubjectIds !== undefined ? filterSubjectIds : (mode === 'srs' ? [] : selectedSubjectIds);
+      const topicsToFilter = filterTopicIds !== undefined ? filterTopicIds : (mode === 'srs' ? [] : selectedTopicIdsRef.current);
+      const subjectsToFilter = filterSubjectIds !== undefined ? filterSubjectIds : (mode === 'srs' ? [] : selectedSubjectIdsRef.current);
 
       // 1. Fetch global flashcards
       let q;
@@ -651,9 +673,10 @@ export default function FlashcardModule({
       fetched = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
 
       // 2. Query user-specific flashcards if logged in
-      if (userId) {
+      const currentUserId = userIdRef.current;
+      if (currentUserId) {
         try {
-          const userCol = collection(db, 'users', userId, 'flashcards');
+          const userCol = collection(db, 'users', currentUserId, 'flashcards');
           const userSnap = await getDocs(userCol);
           if (!userSnap.empty) {
             const userFetched = userSnap.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
@@ -676,8 +699,9 @@ export default function FlashcardModule({
       // 3. Filter for SRS due cards ("Devidos Hoje") if in SRS mode
       if (mode === 'srs') {
         const nowStr = new Date().toISOString();
+        const currentSrsReviewsMap = srsReviewsMapRef.current;
         fetched = fetched.filter(card => {
-          const rev = srsReviewsMap[card.id];
+          const rev = currentSrsReviewsMap[card.id];
           return rev && rev.lastReviewed && rev.nextReview && rev.nextReview <= nowStr;
         });
       }
@@ -698,7 +722,7 @@ export default function FlashcardModule({
     } finally {
       setLoading(false);
     }
-  }, [selectedTopicIds, selectedSubjectIds, srsReviewsMap, userId]);
+  }, []);
 
   // Stable topic selection key to prevent unnecessary auto-fetching when parent re-renders
   const topicIdsKey = useMemo(() => {

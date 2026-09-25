@@ -91,7 +91,15 @@ const getProxyImageUrl = (url: string | undefined): string => {
   if (!url) return '';
   if (url.startsWith('data:') || url.startsWith('blob:')) return url;
   if (url.startsWith('/api/proxy-image')) return url;
-  return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  
+  // Academic repositories & Wikimedia work best via server proxy
+  if (url.includes('wikimedia.org') || url.includes('wikipedia.org') || url.includes('nih.gov') || url.includes('plos.org')) {
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  }
+
+  // Web images load cleanly directly in modern browsers using referrerPolicy="no-referrer"
+  // If direct browser load fails, onError handler retries via proxy or shows fallback
+  return url;
 };
 
 const VERIFIED_CLINICAL_MANUALS_ATLAS = [
@@ -1923,13 +1931,15 @@ export default function TopicDetail({
     setShowIllustrationSearchModal(true);
     setSearchModalSourceBooks(true);
     setSearchModalSourceArticles(true);
+    setSearchModalSourceWeb(true);
+    setFilterClinicalPhotos(true);
     setSearchModalSelectedId(null);
     setSearchModalResults([]);
     setSelectedInsertionSectionId('auto');
     setModalStep('select_image');
     
-    // Automatically trigger search
-    handleSearchScientificImages(defaultQuery);
+    // Automatically trigger search with explicit overrides
+    handleSearchScientificImages(defaultQuery, false, true, { books: true, articles: true, web: true });
   };
 
   const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 3500) => {
@@ -1954,9 +1964,15 @@ export default function TopicDetail({
       'survival curve', 'scatter plot', 'tree diagram', 'infographic', 'grafico', 
       'gráfico', 'fluxograma', 'curva', 'tabela', 'table', 'boxplot', 'statistics', 
       'survival rate', 'odds ratio', 'meta-analysis', 'forest-plot', 'funnel plot',
-      'pie-chart', 'bar-chart', 'flow-chart', 'bar graph'
+      'pie-chart', 'bar-chart', 'flow-chart', 'bar graph', 'schema', 'esquema',
+      'vector', 'vetor', 'drawing', 'desenho', 'cartoon', 'icon', 'icone', 'ícone',
+      'clipart', 'slide', 'presentation', 'slideshare', 'mindmap', 'mapa mental',
+      'logomarca', 'logo', 'infografico', 'infográfico', 'tree', 'arvore', 'algorithm',
+      'algoritmo', 'pathway', 'structure', 'slidetodoc', 'slideplayer'
     ];
-    return graphicTerms.some(term => lower.includes(term));
+    if (graphicTerms.some(term => lower.includes(term))) return true;
+    if (lower.includes('.svg')) return true;
+    return false;
   };
 
   const getLocalMedicalEnglishTranslation = (clean: string): string => {
@@ -2035,12 +2051,22 @@ export default function TopicDetail({
     return translated;
   };
 
-  const handleSearchScientificImages = async (queryStr: string, useAi: boolean = false) => {
+  const handleSearchScientificImages = async (
+    queryStr: string,
+    useAi: boolean = false,
+    customFilterClinical?: boolean,
+    sourcesOverride?: { books?: boolean; articles?: boolean; web?: boolean }
+  ) => {
     if (!queryStr || queryStr.trim().length < 2) return;
     setSearchModalLoading(true);
     if (useAi) setSearchModalAiLoading(true);
     setSearchModalResults([]);
     setSearchModalSelectedId(null);
+
+    const activeFilterClinical = customFilterClinical !== undefined ? customFilterClinical : filterClinicalPhotos;
+    const activeSourceBooks = sourcesOverride?.books !== undefined ? sourcesOverride.books : searchModalSourceBooks;
+    const activeSourceArticles = sourcesOverride?.articles !== undefined ? sourcesOverride.articles : searchModalSourceArticles;
+    const activeSourceWeb = sourcesOverride?.web !== undefined ? sourcesOverride.web : searchModalSourceWeb;
     
     try {
       if (useAi) {
@@ -2256,8 +2282,10 @@ DIRETRIZES OBRIGATÓRIAS:
               });
             }
           });
-        } catch (err) {
-          console.warn('PLOS fetch failed', err);
+        } catch (err: any) {
+          if (err?.name !== 'AbortError') {
+            console.warn('PLOS fetch failed', err);
+          }
         }
         return plosResults;
       };
@@ -2378,11 +2406,11 @@ DIRETRIZES OBRIGATÓRIAS:
         return wikimediaResults;
       };
 
-      // Real Web Images Fetcher (/api/search-web-images)
+       // Real Web Images Fetcher (/api/search-web-images)
       const fetchWebImages = async () => {
         try {
           const qTerm = queryTermsToSearch[0] || ptTerm;
-          const filterParam = filterClinicalPhotos ? 'true' : 'false';
+          const filterParam = activeFilterClinical ? 'true' : 'false';
           const url = `/api/search-web-images?query=${encodeURIComponent(qTerm)}&filter_clinical=${filterParam}&limit=25`;
           const res = await fetchWithTimeout(url, {}, 4500);
           if (!res.ok) return [];
@@ -2399,10 +2427,10 @@ DIRETRIZES OBRIGATÓRIAS:
       };
 
       const [openIRes, plosRes, wmRes, webRes] = await Promise.all([
-        searchModalSourceArticles ? fetchOpenI() : Promise.resolve([]),
-        searchModalSourceArticles ? fetchPLOS() : Promise.resolve([]),
-        searchModalSourceBooks ? fetchWikimedia() : Promise.resolve([]),
-        searchModalSourceWeb ? fetchWebImages() : Promise.resolve([])
+        activeSourceArticles ? fetchOpenI() : Promise.resolve([]),
+        activeSourceArticles ? fetchPLOS() : Promise.resolve([]),
+        activeSourceBooks ? fetchWikimedia() : Promise.resolve([]),
+        activeSourceWeb ? fetchWebImages() : Promise.resolve([])
       ]);
 
       const allWebResults = [...webRes, ...openIRes, ...plosRes, ...wmRes];
@@ -2442,7 +2470,15 @@ DIRETRIZES OBRIGATÓRIAS:
       }
 
       // Combine: Verified Manual Atlas items FIRST (highest score 300), followed by web items
-      const combined = [...verifiedManualMatches, ...allWebResults];
+      let combined = [...verifiedManualMatches, ...allWebResults];
+
+      if (activeFilterClinical) {
+        combined = combined.filter(item => {
+          if (!item) return false;
+          const textToCheck = `${item.title || ''} ${item.caption || ''} ${item.url || ''}`.toLowerCase();
+          return !isGraphicOrChart(textToCheck);
+        });
+      }
 
       // Combine and remove duplicates by URL and ensure unique IDs
       const seenUrls = new Set();
@@ -7061,7 +7097,7 @@ th { background: #F8F7F4; font-weight: bold; }
                               const next = !searchModalSourceWeb;
                               if (!next && !searchModalSourceBooks && !searchModalSourceArticles) return;
                               setSearchModalSourceWeb(next);
-                              setTimeout(() => handleSearchScientificImages(searchModalQuery), 50);
+                              handleSearchScientificImages(searchModalQuery, false, undefined, { books: searchModalSourceBooks, articles: searchModalSourceArticles, web: next });
                             }}
                             className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
                               searchModalSourceWeb 
@@ -7077,7 +7113,7 @@ th { background: #F8F7F4; font-weight: bold; }
                               const next = !searchModalSourceBooks;
                               if (!next && !searchModalSourceArticles && !searchModalSourceWeb) return;
                               setSearchModalSourceBooks(next);
-                              setTimeout(() => handleSearchScientificImages(searchModalQuery), 50);
+                              handleSearchScientificImages(searchModalQuery, false, undefined, { books: next, articles: searchModalSourceArticles, web: searchModalSourceWeb });
                             }}
                             className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                               searchModalSourceBooks 
@@ -7093,12 +7129,12 @@ th { background: #F8F7F4; font-weight: bold; }
                               const next = !searchModalSourceArticles;
                               if (!next && !searchModalSourceBooks && !searchModalSourceWeb) return;
                               setSearchModalSourceArticles(next);
-                              setTimeout(() => handleSearchScientificImages(searchModalQuery), 50);
+                              handleSearchScientificImages(searchModalQuery, false, undefined, { books: searchModalSourceBooks, articles: next, web: searchModalSourceWeb });
                             }}
                             className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                               searchModalSourceArticles 
                                 ? 'bg-emerald-100/80 border-emerald-300 text-emerald-900 shadow-sm' 
-                                : 'bg-white border-[#E2E0D9] text-stone-400 hover:text-stone-600'
+                                : 'bg-white border-[#E2E0D9] text-[#2c7a7b] hover:text-[#2c7a7b]'
                             }`}
                           >
                             <FileText className="w-3 h-3" />
@@ -7111,7 +7147,7 @@ th { background: #F8F7F4; font-weight: bold; }
                           onClick={() => {
                             const next = !filterClinicalPhotos;
                             setFilterClinicalPhotos(next);
-                            setTimeout(() => handleSearchScientificImages(searchModalQuery), 50);
+                            handleSearchScientificImages(searchModalQuery, false, next);
                           }}
                           className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
                             filterClinicalPhotos
@@ -7271,7 +7307,7 @@ th { background: #F8F7F4; font-weight: bold; }
                               return (
                                 <>
                                   {/* High-Res Image Display */}
-                                  <div className="bg-stone-100/90 rounded-2xl overflow-hidden border border-[#E2E0D9] flex flex-col items-center justify-center p-3 relative group min-h-[220px] max-h-[340px] shadow-sm shrink-0">
+                                  <div key={selectedItem.id} className="bg-stone-100/90 rounded-2xl overflow-hidden border border-[#E2E0D9] flex flex-col items-center justify-center p-3 relative group min-h-[220px] max-h-[340px] shadow-sm shrink-0">
                                     <div className="preview-loading-spinner flex flex-col items-center justify-center gap-2 text-stone-500 z-0">
                                       <Loader2 className="w-6 h-6 text-amber-600 animate-spin" />
                                       <span className="text-[10px] font-mono uppercase tracking-wider text-stone-500 font-bold">Carregando imagem...</span>

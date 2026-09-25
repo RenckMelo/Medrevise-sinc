@@ -7199,6 +7199,11 @@ th { background: #F8F7F4; font-weight: bold; }
                                           loading="lazy"
                                           onError={(e) => {
                                             const target = e.target as HTMLImageElement;
+                                            const rawUrl = item.thumbUrl || item.url;
+                                            if (target.src.includes('/api/proxy-image') && rawUrl) {
+                                              target.src = rawUrl;
+                                              return;
+                                            }
                                             target.style.display = 'none';
                                           }}
                                         />
@@ -7266,16 +7271,16 @@ th { background: #F8F7F4; font-weight: bold; }
                               return (
                                 <>
                                   {/* High-Res Image Display */}
-                                  <div className="bg-stone-900 rounded-2xl overflow-hidden border border-stone-800 flex flex-col items-center justify-center p-3 relative group min-h-[220px] max-h-[340px] shadow-lg shrink-0">
-                                    <div className="preview-loading-spinner flex flex-col items-center justify-center gap-2 text-stone-400 z-0">
-                                      <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
-                                      <span className="text-[10px] font-mono uppercase tracking-wider text-stone-400">Carregando imagem...</span>
+                                  <div className="bg-stone-100/90 rounded-2xl overflow-hidden border border-[#E2E0D9] flex flex-col items-center justify-center p-3 relative group min-h-[220px] max-h-[340px] shadow-sm shrink-0">
+                                    <div className="preview-loading-spinner flex flex-col items-center justify-center gap-2 text-stone-500 z-0">
+                                      <Loader2 className="w-6 h-6 text-amber-600 animate-spin" />
+                                      <span className="text-[10px] font-mono uppercase tracking-wider text-stone-500 font-bold">Carregando imagem...</span>
                                     </div>
                                     <img
                                       src={getProxyImageUrl(selectedItem.url)}
                                       alt={selectedItem.title}
                                       referrerPolicy="no-referrer"
-                                      className="max-w-full max-h-[310px] object-contain rounded-lg shadow-2xl z-10"
+                                      className="max-w-full max-h-[310px] object-contain rounded-lg shadow-sm z-10"
                                       onLoad={(e) => {
                                         const target = e.target as HTMLImageElement;
                                         const spinner = target.parentElement?.querySelector('.preview-loading-spinner');
@@ -7283,6 +7288,10 @@ th { background: #F8F7F4; font-weight: bold; }
                                       }}
                                       onError={(e) => {
                                         const target = e.target as HTMLImageElement;
+                                        if (target.src.includes('/api/proxy-image') && selectedItem.url) {
+                                          target.src = selectedItem.url;
+                                          return;
+                                        }
                                         target.style.display = 'none';
                                         const spinner = target.parentElement?.querySelector('.preview-loading-spinner');
                                         if (spinner) (spinner as HTMLElement).style.display = 'none';
@@ -7290,15 +7299,27 @@ th { background: #F8F7F4; font-weight: bold; }
                                         if (fallback) (fallback as HTMLElement).style.display = 'flex';
                                       }}
                                     />
-                                    <div className="manual-fallback-box hidden flex-col items-center justify-center text-center p-6 space-y-2.5 z-0">
-                                      <BookOpen className="w-8 h-8 text-amber-400 opacity-80" />
-                                      <p className="text-xs font-bold text-stone-200 leading-snug">Ilustração do Manual Médico</p>
-                                      <p className="text-[10px] text-stone-400 max-w-xs">{selectedItem.title}</p>
-                                      <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded font-mono font-bold">
-                                        {selectedItem.sourceName}
-                                      </span>
+                                    <div className="manual-fallback-box hidden flex-col items-center justify-center text-center p-6 space-y-3 z-10 bg-amber-50/80 border border-amber-200/80 rounded-xl w-full my-auto shadow-sm">
+                                      <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 mx-auto">
+                                        <BookOpen className="w-5 h-5" />
+                                      </div>
+                                      <div>
+                                        <p className="text-xs font-extrabold text-stone-800 leading-snug">{selectedItem.title}</p>
+                                        <p className="text-[10px] text-stone-500 mt-1 font-medium">
+                                          {selectedItem.sourceName} • {selectedItem.specialty || 'Ilustração Médica'}
+                                        </p>
+                                      </div>
+                                      <a
+                                        href={selectedItem.sourceUrl || selectedItem.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-amber-100/50 border border-amber-300 rounded-lg text-[10px] font-extrabold text-amber-900 shadow-sm transition-all cursor-pointer"
+                                      >
+                                        <ExternalLink className="w-3 h-3 text-amber-600" />
+                                        <span>Abrir fonte original da imagem</span>
+                                      </a>
                                     </div>
-                                    <div className="absolute bottom-2.5 right-2.5 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[9px] text-amber-300 font-mono uppercase tracking-widest border border-amber-500/30 z-20">
+                                    <div className="absolute bottom-2.5 right-2.5 bg-white/90 backdrop-blur-md px-2.5 py-1 rounded-lg text-[9px] text-amber-900 font-mono font-bold uppercase tracking-widest border border-amber-300 shadow-sm z-20">
                                       {selectedItem.sourceType === 'book' ? "Manual Bibliográfico" : selectedItem.sourceType === 'web' ? "Busca Web" : "Acervo Científico"}
                                     </div>
                                   </div>

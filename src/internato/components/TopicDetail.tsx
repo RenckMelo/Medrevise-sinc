@@ -7199,11 +7199,7 @@ th { background: #F8F7F4; font-weight: bold; }
                                           loading="lazy"
                                           onError={(e) => {
                                             const target = e.target as HTMLImageElement;
-                                            if (target.src.includes('/api/proxy-image') && (item.thumbUrl || item.url)) {
-                                              target.src = item.thumbUrl || item.url;
-                                            } else {
-                                              target.style.display = 'none';
-                                            }
+                                            target.style.display = 'none';
                                           }}
                                         />
                                         {isSelected && (
@@ -7278,13 +7274,9 @@ th { background: #F8F7F4; font-weight: bold; }
                                       className="max-w-full max-h-[310px] object-contain rounded-lg shadow-2xl z-10"
                                       onError={(e) => {
                                         const target = e.target as HTMLImageElement;
-                                        if (target.src.includes('/api/proxy-image') && selectedItem.url) {
-                                          target.src = selectedItem.url;
-                                        } else {
-                                          target.style.display = 'none';
-                                          const fallback = target.parentElement?.querySelector('.manual-fallback-box');
-                                          if (fallback) (fallback as HTMLElement).style.display = 'flex';
-                                        }
+                                        target.style.display = 'none';
+                                        const fallback = target.parentElement?.querySelector('.manual-fallback-box');
+                                        if (fallback) (fallback as HTMLElement).style.display = 'flex';
                                       }}
                                     />
                                     <div className="manual-fallback-box hidden flex-col items-center justify-center text-center p-6 space-y-2.5 z-0">

@@ -1085,6 +1085,7 @@ app.get("/api/search-web-images", async (req, res) => {
       }
     }
 
+    const BLOCKED_DOMAINS = ['fbsbx.com', 'facebook.com', 'fbcdn.net', 'instagram.com', 'tiktok.com', 'twimg.com', 'pinterest.com'];
     const NON_CLINICAL_KEYWORDS = [
       'chart', 'graph', 'diagram', 'table', 'algorithm', 'schema', 'flowchart',
       'vector', 'icon', 'drawing', 'cartoon', 'infographic', 'structure',
@@ -1092,10 +1093,13 @@ app.get("/api/search-web-images", async (req, res) => {
       'slidetodoc', 'slideplayer', 'slideshare', 'freepik', 'stock-vector'
     ];
 
-    let filtered = rawResults;
+    let filtered = rawResults.filter((item: any) => {
+      const imgUrl = (item.image || '').toLowerCase();
+      return !BLOCKED_DOMAINS.some(domain => imgUrl.includes(domain));
+    });
 
     if (filterClinical) {
-      filtered = rawResults.filter((item: any) => {
+      filtered = filtered.filter((item: any) => {
         const imgUrl = (item.image || '').toLowerCase();
         const title = (item.title || '').toLowerCase();
         const source = (item.source || '').toLowerCase();
@@ -1153,6 +1157,7 @@ app.get("/api/search-web-images", async (req, res) => {
 
 // Proxy endpoint to prevent browser Referer header issues with Wikimedia Commons, Open-i, and PLOS
 app.get("/api/proxy-image", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
   try {
     let imageUrl = req.query.url as string;
     if (!imageUrl) {
@@ -1187,7 +1192,7 @@ app.get("/api/proxy-image", async (req, res) => {
     console.log(`[Proxy] Server-side fetching image: ${imageUrl}`);
     
     const headers: Record<string, string> = {
-      "User-Agent": "MedInternatoApp/1.0 (https://medinternato.app; contact@medinternato.app) MedicalAtlasBot/1.0",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
       "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
     };
 
@@ -1197,6 +1202,8 @@ app.get("/api/proxy-image", async (req, res) => {
       headers["Referer"] = "https://openi.nlm.nih.gov/";
     } else if (parsedUrl.hostname.includes("plos.org")) {
       headers["Referer"] = "https://journals.plos.org/";
+    } else {
+      headers["Referer"] = `${parsedUrl.protocol}//${parsedUrl.hostname}/`;
     }
 
     let response = await fetch(imageUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(8000) });

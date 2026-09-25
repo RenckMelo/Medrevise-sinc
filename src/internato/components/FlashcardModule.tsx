@@ -44,7 +44,7 @@ import {
   Copy
 } from 'lucide-react';
 
-import { db, collection, query, getDocs, getDoc, doc, updateDoc, setDoc, where, addDoc, limit, deleteDoc } from '../firebase';
+import { db, collection, query, getDocs, getDoc, doc, updateDoc, setDoc, where, addDoc, limit, deleteDoc, documentId } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   generateFlashcards, 
@@ -633,29 +633,116 @@ export default function FlashcardModule({
     setDiagnosticResult(null);
 
     try {
-      let q;
-      const topicsToFilter = filterTopicIds || selectedTopicIds;
-      const subjectsToFilter = filterSubjectIds || selectedSubjectIds;
-
-      if (topicsToFilter.length > 0) {
-        q = query(collection(db, 'flashcards'), where('topicId', 'in', topicsToFilter), limit(80));
-      } else if (subjectsToFilter.length > 0) {
-        q = query(collection(db, 'flashcards'), where('subjectId', 'in', subjectsToFilter), limit(80));
-      } else {
-        q = query(collection(db, 'flashcards'), limit(80));
-      }
-
-      const snapshot = await getDocs(q);
-      let fetched = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
+      let fetched: Flashcard[] = [];
+      const topicsToFilter = filterTopicIds !== undefined ? filterTopicIds : (mode === 'srs' ? [] : selectedTopicIds);
+      const subjectsToFilter = filterSubjectIds !== undefined ? filterSubjectIds : (mode === 'srs' ? [] : selectedSubjectIds);
 
       if (mode === 'srs') {
         const nowStr = new Date().toISOString();
-        // Filter cards that are due today or not yet reviewed
-        fetched = fetched.filter(card => {
-          const rev = srsReviewsMap[card.id];
-          if (!rev || !rev.nextReview) return true; // new card
+
+        // 1. Identify all card IDs that are DUE TODAY (must have been reviewed previously AND nextReview <= nowStr)
+        const dueCardEntries = Object.entries(srsReviewsMap).filter(([_, rev]) => {
+          if (!rev || !rev.lastReviewed || !rev.nextReview) return false;
           return rev.nextReview <= nowStr;
         });
+
+        const dueCardIds = dueCardEntries.map(([cardId]) => cardId);
+
+        if (dueCardIds.length === 0) {
+          setFlashcards([]);
+          setIsSelecting(false);
+          setLoading(false);
+          return;
+        }
+
+        const cardMap = new Map<string, Flashcard>();
+
+        // 1a. Query user subcollection first in batches of 30 if logged in
+        if (userId) {
+          try {
+            for (let i = 0; i < dueCardIds.length; i += 30) {
+              const batchIds = dueCardIds.slice(i, i + 30);
+              const userBatchQ = query(
+                collection(db, 'users', userId, 'flashcards'),
+                where(documentId(), 'in', batchIds)
+              );
+              const userBatchSnap = await getDocs(userBatchQ);
+              userBatchSnap.docs.forEach(d => {
+                cardMap.set(d.id, { id: d.id, ...(d.data() as any) } as Flashcard);
+              });
+            }
+          } catch (_) {}
+        }
+
+        // 1b. Query global flashcards collection for remaining due IDs
+        const missingIds = dueCardIds.filter(id => !cardMap.has(id));
+        if (missingIds.length > 0) {
+          for (let i = 0; i < missingIds.length; i += 30) {
+            const batchIds = missingIds.slice(i, i + 30);
+            try {
+              const globalBatchQ = query(
+                collection(db, 'flashcards'),
+                where(documentId(), 'in', batchIds)
+              );
+              const globalBatchSnap = await getDocs(globalBatchQ);
+              globalBatchSnap.docs.forEach(d => {
+                cardMap.set(d.id, { id: d.id, ...(d.data() as any) } as Flashcard);
+              });
+            } catch (_) {}
+          }
+        }
+
+        // 1c. Fallback for any reconstructed session card IDs
+        if (cardMap.size < dueCardIds.length) {
+          try {
+            const globalAllSnap = await getDocs(collection(db, 'flashcards'));
+            globalAllSnap.docs.forEach(d => {
+              if (dueCardIds.includes(d.id)) {
+                cardMap.set(d.id, { id: d.id, ...(d.data() as any) } as Flashcard);
+              }
+            });
+          } catch (_) {}
+        }
+
+        fetched = Array.from(cardMap.values());
+      } else {
+        // Deck or Diagnostic Mode
+        let q;
+        if (topicsToFilter.length > 0) {
+          q = query(collection(db, 'flashcards'), where('topicId', 'in', topicsToFilter));
+        } else if (subjectsToFilter.length > 0) {
+          q = query(collection(db, 'flashcards'), where('subjectId', 'in', subjectsToFilter));
+        } else {
+          q = query(collection(db, 'flashcards'));
+        }
+
+        const snapshot = await getDocs(q);
+        fetched = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
+
+        // Also query user-specific flashcards from users/${userId}/flashcards if logged in
+        if (userId) {
+          try {
+            const userCol = collection(db, 'users', userId, 'flashcards');
+            const userSnap = await getDocs(userCol);
+            if (!userSnap.empty) {
+              const userFetched = userSnap.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
+              const existingIds = new Set(fetched.map(f => f.id));
+              userFetched.forEach(uf => {
+                if (!existingIds.has(uf.id)) {
+                  if (topicsToFilter.length > 0) {
+                    if (topicsToFilter.includes(uf.topicId)) fetched.push(uf);
+                  } else if (subjectsToFilter.length > 0) {
+                    if (subjectsToFilter.includes(uf.subjectId)) fetched.push(uf);
+                  } else {
+                    fetched.push(uf);
+                  }
+                }
+              });
+            }
+          } catch (e) {
+            // Ignore subcollection read error
+          }
+        }
       }
 
       // Shuffle deck
@@ -675,7 +762,7 @@ export default function FlashcardModule({
     } finally {
       setLoading(false);
     }
-  }, [selectedTopicIds, selectedSubjectIds, srsReviewsMap]);
+  }, [selectedTopicIds, selectedSubjectIds, srsReviewsMap, userId]);
 
   // Stable topic selection key to prevent unnecessary auto-fetching when parent re-renders
   const topicIdsKey = useMemo(() => {
@@ -745,6 +832,83 @@ export default function FlashcardModule({
     }
   };
 
+  // Redo Session Cards ("Fazer de novo os cards da sessão")
+  const handleRedoSessionCards = (session: FlashcardSessionHistory) => {
+    if (!session || !session.scores || session.scores.length === 0) {
+      alert('Esta sessão não possui os detalhes dos cartões salvos para refazer.');
+      return;
+    }
+
+    const reconstructedCards: Flashcard[] = session.scores.map((s, idx) => {
+      const existing = flashcards.find(f => f.id === s.cardId);
+      if (existing) return existing;
+
+      const subName = s.subtopicTag || 'Clínica Médica';
+      return {
+        id: s.cardId || `redo_card_${session.id}_${idx}`,
+        front: s.cardFront || s.concept || 'Pergunta do Flashcard',
+        back: s.cardBack || 'Resposta do Flashcard',
+        concept: s.concept || 'Conceito Médico',
+        subtopicTag: subName,
+        topicId: s.topicId || 'geral',
+        subjectId: 'geral',
+        subjectName: subName
+      } as Flashcard;
+    });
+
+    // Reset topic & subject filters so SRS mode restores correctly later
+    setSelectedTopicIds([]);
+    setSelectedSubjectIds([]);
+
+    setFlashcards(reconstructedCards);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setSessionCompleted(false);
+    setSessionRatings({});
+    setCurrentSessionScores([]);
+    setOnlyUndoneCards(false);
+
+    setActiveTab('deck');
+  };
+
+  const getCleanSessionTitle = (session: FlashcardSessionHistory) => {
+    const subjectsSet = new Set<string>();
+
+    if (session.scores && Array.isArray(session.scores)) {
+      session.scores.forEach(s => {
+        if (s.subtopicTag && s.subtopicTag.length <= 35 && !s.subtopicTag.includes('?')) {
+          subjectsSet.add(s.subtopicTag.trim());
+        }
+      });
+    }
+
+    if (session.topicTitles && Array.isArray(session.topicTitles)) {
+      session.topicTitles.forEach(t => {
+        if (typeof t === 'string') {
+          const clean = t.replace(/^\[.*?\]\s*/, '').trim();
+          if (
+            clean.length > 0 &&
+            clean.length <= 35 &&
+            !clean.includes('?') &&
+            !clean.toLowerCase().startsWith('o que') &&
+            !clean.toLowerCase().startsWith('qual') &&
+            !clean.toLowerCase().startsWith('quais')
+          ) {
+            subjectsSet.add(clean);
+          }
+        }
+      });
+    }
+
+    const uniqueTitles = Array.from(subjectsSet);
+    if (uniqueTitles.length > 0) {
+      return uniqueTitles.slice(0, 3).join(' • ');
+    }
+
+    const total = session.totalCards || session.scores?.length || 0;
+    return total > 0 ? `Revisão de ${total} Flashcards` : 'Sessão de Flashcards';
+  };
+
   // Fetch Session History ("Histórico de Sessões")
   const fetchSessionHistory = useCallback(async () => {
     if (!userId) return;
@@ -776,8 +940,13 @@ export default function FlashcardModule({
       const topicTitlesSet = new Set<string>();
       sessionScoresList.forEach(s => {
         const topObj = topics.find(t => t.id === s.topicId);
-        if (topObj) topicTitlesSet.add(topObj.title);
-        else if (s.concept) topicTitlesSet.add(s.concept);
+        if (topObj && topObj.title && topObj.title.length <= 40) {
+          topicTitlesSet.add(topObj.title);
+        } else if (s.subtopicTag && s.subtopicTag.length <= 40) {
+          topicTitlesSet.add(s.subtopicTag);
+        } else if (s.concept && s.concept.length <= 35 && !s.concept.includes('?')) {
+          topicTitlesSet.add(s.concept);
+        }
       });
 
       const mastered = sessionScoresList.filter(s => s.rating === 'bom' || s.rating === 'facil').length;
@@ -1551,21 +1720,9 @@ export default function FlashcardModule({
   const activeDeckCards = useMemo(() => {
     if (!onlyUndoneCards) return flashcards;
     
-    // First: filter cards not rated in current session
-    const undoneInSession = flashcards.filter(c => !sessionRatings[c.id]);
-    
-    // If there are unstudied/unreviewed cards in SRS, prioritize those
-    const completelyIneditos = undoneInSession.filter(c => {
-      const rev = srsReviewsMap[c.id];
-      return !rev || !rev.lastReviewed || rev.repetitions === 0;
-    });
-
-    if (completelyIneditos.length > 0) {
-      return completelyIneditos;
-    }
-
-    return undoneInSession;
-  }, [flashcards, onlyUndoneCards, sessionRatings, srsReviewsMap]);
+    // Filter cards not yet rated in the current session
+    return flashcards.filter(c => !sessionRatings[c.id]);
+  }, [flashcards, onlyUndoneCards, sessionRatings]);
 
   const currentCard = activeDeckCards[currentIndex] || activeDeckCards[0] || flashcards[currentIndex];
 
@@ -1745,8 +1902,10 @@ export default function FlashcardModule({
           <button
             onClick={() => {
               setActiveTab('srs');
+              setSelectedTopicIds([]);
+              setSelectedSubjectIds([]);
               setIsSelecting(false);
-              fetchFlashcards('srs');
+              fetchFlashcards('srs', [], []);
             }}
             className={cn(
               'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
@@ -2061,6 +2220,7 @@ export default function FlashcardModule({
                 const hard = session.hardCount || 0;
                 const erred = session.erredCount || 0;
                 const percent = Math.round(((mastered + hard * 0.5) / total) * 100);
+                const cleanTitle = getCleanSessionTitle(session);
 
                 return (
                   <Card key={session.id} className="border-[#E2E0D9] shadow-2xs rounded-2xl p-6 bg-white space-y-5">
@@ -2075,7 +2235,7 @@ export default function FlashcardModule({
                           </span>
                         </div>
                         <h4 className="text-sm font-display font-black text-[#1A1A1A]">
-                          {session.topicTitles?.join(' • ') || 'Revisão Médica'}
+                          {cleanTitle}
                         </h4>
                       </div>
 
@@ -2112,6 +2272,14 @@ export default function FlashcardModule({
                     </div>
 
                     <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <Button
+                        onClick={() => handleRedoSessionCards(session)}
+                        className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-stone-950 font-black text-xs uppercase tracking-wider h-10 rounded-xl gap-2 shadow-2xs transition-all"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Fazer de novo os cards ({total})
+                      </Button>
+
                       {session.generatedSummaryContent ? (
                         <Button
                           onClick={() => {
@@ -2123,15 +2291,16 @@ export default function FlashcardModule({
                           }}
                           className="w-full sm:w-auto bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs uppercase tracking-wider h-10 rounded-xl gap-2 shadow-2xs"
                         >
-                          <FileText className="w-3.5 h-3.5" /> Ver Resumo Adaptado de Erros Gerado
+                          <FileText className="w-3.5 h-3.5" /> Ver Resumo Adaptado de Erros
                         </Button>
                       ) : (
                         <Button
                           onClick={() => handleAnalyzeSessionForSummary(session)}
-                          className="w-full sm:w-auto bg-stone-900 hover:bg-black text-white font-bold text-xs uppercase tracking-wider h-10 rounded-xl gap-2 shadow-2xs"
+                          variant="outline"
+                          className="w-full sm:w-auto border-stone-300 hover:bg-stone-100 text-stone-800 font-bold text-xs uppercase tracking-wider h-10 rounded-xl gap-2"
                         >
-                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                          Gerar Relatório de Erros & Resumo Adaptado
+                          <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                          Gerar Resumo de Erros
                         </Button>
                       )}
                     </div>

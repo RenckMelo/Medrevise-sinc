@@ -631,7 +631,7 @@ export default function QuestionModule({
       } catch (e) {}
     }
     if (!focus || !focus.trim()) {
-      focus = "Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)";
+      focus = "ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS";
     }
     const knownBancas = [
       'ENARE', 'SES-DF', 'SES-GO', 'SUS-GO', 'UFG', 'UnB', 'HBDF',
@@ -643,7 +643,7 @@ export default function QuestionModule({
     if (matched.length > 0) return Array.from(new Set(matched));
     
     const parts = focus.split(/[,;\/]+/).map(s => s.trim()).filter(Boolean);
-    return parts.length > 0 ? parts : ['ENARE', 'SES-DF', 'SES-GO', 'UFG', 'UnB'];
+    return parts.length > 0 ? parts : ['ENARE', 'USP', 'UNICAMP', 'PSU-MG', 'SES-DF'];
   }, [userProgress]);
 
   const ALL_NATIONAL_BANCAS = [

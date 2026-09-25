@@ -85,6 +85,10 @@ export function where(fieldPath: string, opStr: string, value: any) {
   return { type: 'where', fieldPath, opStr, value };
 }
 
+export function documentId() {
+  return '__name__';
+}
+
 export function orderBy(fieldPath: string, directionStr: string = 'asc') {
   return { type: 'orderBy', fieldPath, directionStr };
 }
@@ -545,13 +549,13 @@ async function migrateUserProfile(sourceUid: string, targetUid: string) {
         });
         
       if (error) {
-        console.error(`[Migration] Error saving user profile ${targetUid} to Supabase:`, error);
+        console.warn(`[Migration] Note saving user profile ${targetUid} to Supabase:`, error?.message || error);
       } else {
         console.log(`[Migration] User profile ${targetUid} successfully migrated.`);
       }
     }
-  } catch (err) {
-    console.error(`[Migration] Error reading user profile ${sourceUid} from Firestore:`, err);
+  } catch (err: any) {
+    console.warn(`[Migration] User profile sync skipped (${err?.message || 'Offline/Network unavailable'})`);
   }
 }
 
@@ -583,8 +587,8 @@ async function migrateSubcollection(sourceUid: string, targetUid: string, subcol
       }
       console.log(`[Migration] Successfully migrated subcollection users/${sourceUid}/${subcolName} to target ${targetUid}`);
     }
-  } catch (err) {
-    console.error(`[Migration] Error migrating subcollection ${subcolName} for user ${sourceUid}:`, err);
+  } catch (err: any) {
+    console.warn(`[Migration] Subcollection ${subcolName} sync skipped (${err?.message || 'Offline/Network unavailable'})`);
   }
 }
 
@@ -692,8 +696,8 @@ async function migrateUserProgress(sourceUid: string, targetUid: string) {
 
       console.log(`[Migration] userProgress for target ${targetUid} successfully merged into both paths.`);
     }
-  } catch (err) {
-    console.error(`[Migration] Error reading userProgress for ${sourceUid} from Firestore:`, err);
+  } catch (err: any) {
+    console.warn(`[Migration] userProgress sync skipped (${err?.message || 'Offline/Network unavailable'})`);
   }
 }
 
@@ -843,8 +847,8 @@ async function migrateQuizAttempts(sourceUid: string, targetUid: string) {
       }
       console.log(`[Migration] Successfully migrated quizAttempts for user ${sourceUid} to target ${targetUid}`);
     }
-  } catch (err) {
-    console.error(`[Migration] Error migrating quizAttempts for user ${sourceUid}:`, err);
+  } catch (err: any) {
+    console.warn(`[Migration] QuizAttempts sync skipped (${err?.message || 'Offline/Network unavailable'})`);
   }
 }
 
@@ -877,15 +881,25 @@ async function migrateGlobalCollections() {
 
 export async function checkAndMigrateUser(userId: string, force: boolean = false) {
   try {
-    const { data: userDoc, error: userError } = await supabase
-      .from('firestore_documents')
-      .select('*')
-      .eq('collection', 'users')
-      .eq('id', userId)
-      .maybeSingle();
+    let userDoc: any = null;
+    let userError: any = null;
+    try {
+      const res = await supabase
+        .from('firestore_documents')
+        .select('*')
+        .eq('collection', 'users')
+        .eq('id', userId)
+        .maybeSingle();
+      userDoc = res.data;
+      userError = res.error;
+    } catch (fetchErr: any) {
+      console.warn(`[Migration] Supabase endpoint connection skipped. Operating with local/Firestore data.`);
+      return;
+    }
       
     if (userError) {
-      console.error(`[Migration] Error checking migration flag in Supabase:`, userError);
+      console.warn(`[Migration] Supabase flag check skipped:`, userError?.message || userError);
+      return;
     }
 
     let targetUserEmail = (userDoc?.data?.email || '').toLowerCase().trim();
@@ -893,31 +907,19 @@ export async function checkAndMigrateUser(userId: string, force: boolean = false
       targetUserEmail = auth.currentUser.email.toLowerCase().trim();
     }
 
-    console.log(`[Migration] Starting checkAndMigrateUser for target user: ${userId} (email: ${targetUserEmail}, force=${force})`);
-
     const isMigrated = userDoc?.data?.migrated_from_firestore === true;
     if (isMigrated && !force) {
-      console.log(`[Migration] User ${userId} is already marked as migrated in Supabase. Skipping automatic migration.`);
       return;
     }
 
-    // Collect only the exact authenticated user's UID to prevent cross-account data leaks
     const targetUids = new Set<string>([userId]);
 
-    console.log(`[Migration] Commencing secure data sync to Supabase for target user ${userId} (${targetUserEmail}).`);
-
     for (const sourceUid of Array.from(targetUids)) {
-      // 1. Profile
       await migrateUserProfile(sourceUid, userId);
-      
-      // 2. User Progress
       await migrateUserProgress(sourceUid, userId);
-
-      // 3. Calendar Events & Study Sessions
       await migrateCalendarEvents(sourceUid, userId);
       await migrateStudySessions(sourceUid, userId);
 
-      // 4. Subcollections
       const subcollections = [
         'subjects',
         'topics',
@@ -944,7 +946,6 @@ export async function checkAndMigrateUser(userId: string, force: boolean = false
         await migrateSubcollection(sourceUid, userId, subcol);
       }
 
-      // 5. Quiz attempts
       await migrateQuizAttempts(sourceUid, userId);
     }
 
@@ -952,20 +953,22 @@ export async function checkAndMigrateUser(userId: string, force: boolean = false
     const existingData = userDoc?.data || {};
     const updatedData = { ...existingData, migrated_from_firestore: true };
     
-    await supabase
-      .from('firestore_documents')
-      .upsert({
-        collection: 'users',
-        id: userId,
-        data: updatedData,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'collection,id'
-      });
-      
-    console.log(`[Migration] All Firestore data checked and safely synced/migrated to Supabase for user ${userId}.`);
-  } catch (err) {
-    console.error(`[Migration] Error during checkAndMigrateUser for user ${userId}:`, err);
+    try {
+      await supabase
+        .from('firestore_documents')
+        .upsert({
+          collection: 'users',
+          id: userId,
+          data: updatedData,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'collection,id'
+        });
+    } catch (e) {
+      // Ignore upsert error when offline
+    }
+  } catch (err: any) {
+    console.warn(`[Migration] Auto-migration check paused:`, err?.message || err);
   }
 }
 

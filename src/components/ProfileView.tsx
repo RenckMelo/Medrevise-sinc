@@ -35,7 +35,7 @@ export default function ProfileView() {
   const isLucas = profile?.email === 'lucas1renck2melo@gmail.com' || profile?.role === 'admin';
   const [dailyGoal, setDailyGoal] = useState(profile?.settings?.dailyGoalMinutes || 60);
   const [residencyFocusType, setResidencyFocusType] = useState<string>(profile?.settings?.residencyFocusType || 'standard');
-  const [residencyFocus, setResidencyFocus] = useState<string>(profile?.settings?.residencyFocus || 'Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)');
+  const [residencyFocus, setResidencyFocus] = useState<string>(profile?.settings?.residencyFocus || 'ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS');
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -847,13 +847,13 @@ export default function ProfileView() {
                       checked={residencyFocusType === 'standard'}
                       onChange={() => {
                         setResidencyFocusType('standard');
-                        setResidencyFocus('Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)');
+                        setResidencyFocus('ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS');
                       }}
                       className="mt-1"
                     />
                     <div>
-                      <span className="block font-serif italic text-xs font-bold text-[#141414]">Foco Padrão (Centro-Oeste)</span>
-                      <span className="block text-[10px] text-neutral-500 font-sans mt-0.5">UFG, SES-GO, SES-DF, UnB, ENARE</span>
+                      <span className="block font-serif italic text-xs font-bold text-[#141414]">Foco Padrão Nacional (Principais Bancas)</span>
+                      <span className="block text-[10px] text-neutral-500 font-sans mt-0.5">ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS</span>
                     </div>
                   </label>
 
@@ -865,8 +865,8 @@ export default function ProfileView() {
                       checked={residencyFocusType === 'custom'}
                       onChange={() => {
                         setResidencyFocusType('custom');
-                        if (residencyFocus === 'Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)') {
-                          setResidencyFocus('ENARE, USP-SP, SUS-SP');
+                        if (residencyFocus.includes('Centro-Oeste')) {
+                          setResidencyFocus('ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF');
                         }
                       }}
                       className="mt-1"

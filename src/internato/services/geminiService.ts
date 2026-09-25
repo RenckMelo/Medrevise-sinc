@@ -56,14 +56,17 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 4, initia
 }
 
 async function getUserFocusSettings(userId?: string) {
-  let residencyFocus = "Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)";
+  let residencyFocus = "ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS";
   let isCustom = false;
   
   // 1. Check local storage for immediate focus selection
   const localFocus = safeLocalStorageGet('user_residency_focus');
+  const localType = safeLocalStorageGet('user_residency_focus_type');
   if (localFocus && localFocus.trim()) {
     residencyFocus = localFocus.trim();
-    isCustom = true;
+    if (localType === 'custom' || !localFocus.includes('Centro-Oeste')) {
+      isCustom = true;
+    }
   }
 
   // 2. Query user doc in Firestore
@@ -74,9 +77,12 @@ async function getUserFocusSettings(userId?: string) {
       if (userDoc.exists()) {
         const data = userDoc.data();
         const docFocus = data?.settings?.residencyFocus || data?.residencyFocus || data?.targetExam;
+        const docFocusType = data?.settings?.residencyFocusType || data?.residencyFocusType;
         if (docFocus && typeof docFocus === 'string' && docFocus.trim()) {
           residencyFocus = docFocus.trim();
-          isCustom = true;
+          if (docFocusType === 'custom' || !docFocus.includes('Centro-Oeste')) {
+            isCustom = true;
+          }
         }
       }
     } catch (err) {
@@ -389,8 +395,8 @@ async function generateMasterSummary(title: string, area: string, reference?: st
     console.log(`[Resumo Master 50cr] Iniciando geração aprofundada por capítulos dinâmicos para: ${title}`);
     
     const { residencyFocus, isCustom } = await getUserFocusSettings(userId);
-    const focusTarget = isCustom ? residencyFocus : "GOIÁS (SES-GO, UFG, PSU-GO) e DISTRITO FEDERAL (SES-DF, UnB, ENARE DF, PSU-DF)";
-    const regionalShort = isCustom ? residencyFocus : "GO/DF";
+    const focusTarget = residencyFocus;
+    const regionalShort = residencyFocus;
     
     if (extra !== 0) {
       await recordUsage(extra);
@@ -575,9 +581,9 @@ export async function generateTopicContent(
   }
 
   const { residencyFocus, isCustom } = await getUserFocusSettings(userId);
-  const focusTarget = isCustom ? residencyFocus : "GOIÁS (SES-GO, UFG, PSU-GO) e DISTRITO FEDERAL (SES-DF, UnB, ENARE DF, PSU-DF)";
-  const focusTargetClean = isCustom ? residencyFocus : "Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)";
-  const regionalShort = isCustom ? residencyFocus : "GO/DF";
+  const focusTarget = residencyFocus;
+  const focusTargetClean = residencyFocus;
+  const regionalShort = residencyFocus;
 
   const finalCredits = credits;
 
@@ -1241,22 +1247,21 @@ export async function generateQuestions(
     - O enunciado ("text"), as dados do paciente, sinais vitais, comorbidades, achados de exames laboratoriais/imagem, a pergunta e cada uma das alternativas em "options" (A, B, C, D) DEVEM SER COPIADOS PALAVRA POR PALAVRA do gabarito/caderno de prova oficial.
     - GARANTIA DE BUSCA POSTERIOR: Se o aluno copiar qualquer trecho do enunciado ou das alternativas e pesquisar na internet ou em PDFs oficiais da banca, ele DEVE encontrar exatamente a mesma questão idêntica com as mesmas opções.
 
-    ORDEM DE PRIORIDADE E CASCATA DE DECISÃO OBRIGATÓRIA (INDIQUE O RESULTADO EXATO NO CAMPO "source"):
-    1ª PRIORIDADE (Bancas Selecionadas - Últimos 5 Anos):
-    - Recupere exaustivamente questões reais das bancas prioritárias selecionadas pelo candidato: **${targetExam && targetExam !== 'all' ? targetExam : residencyFocus}** (anos 2022 a 2026).
-    - Formato obrigatorio do "source": "SIGLA DA BANCA (ANO)" -> Ex: "${targetExam || 'SES-DF'} (${targetYear || 2024})".
+    REGRA RÍGIDA DE BALANCEAMENTO EQUITATIVO E CASCATA DE BANCAS (CAMPO "source"):
+    ${targetExam && targetExam !== 'all' 
+      ? `Todas as questões geradas neste lote devem ser obrigatoriamente da banca **${targetExam}** ${targetYear ? `(ano ${targetYear})` : '(anos 2021 a 2026)'}.` 
+      : `1ª PRIORIDADE - BALANCEAMENTO EQUITATIVO DENTRO DAS BANCAS SELECIONADAS (${residencyFocus}):
+    - Se o candidato tem mais de uma banca selecionada em "${residencyFocus}", você DEVE DISTRIBUIR As ${currentChunkSize} QUESTÕES DE FORMA EQUITATIVA (IGUAL) ENTRE ELAS (ex: se houver 3 bancas na lista, divida o lote com 1 ou 2 questões de cada uma delas).
+    - É ESTRITAMENTE PROIBIDO gerar todas as questões de uma única banca (como SES-DF) quando o candidato selecionou múltiplas bancas de preferência!
 
-    2ª PRIORIDADE (Se a 1ª Falhar - Bancas Selecionadas nos Últimos 10 Anos):
-    - SE E SOMENTE SE você constatar com certeza absoluta que NÃO HÁ NENHUMA OUTRA questão disponível deste tema nos últimos 5 anos nas bancas prioritárias, busque questões reais dessas MESMAS bancas prioritárias nos últimos 10 anos (anos 2016 a 2021).
-    - Formato obrigatorio do "source": "SIGLA DA BANCA (ANO) - [Nota: Busca expandida para os últimos 10 anos nas bancas prioritárias]" -> Ex: "SES-DF (2018) - [Nota: Busca expandida para os últimos 10 anos nas bancas prioritárias]".
+    2ª PRIORIDADE - REDISTRIBUIÇÃO ENTRE AS BANCAS SELECIONADAS POR FALTA DE QUESTÕES DO TEMA:
+    - Se uma das bancas selecionadas pelo aluno não tiver questões reais sobre o tema específico "${topicTitle}", busque a quantidade restante nas OUTRAS bancas selecionadas na lista do aluno [${residencyFocus}].
 
-    3ª PRIORIDADE (Se a 1ª e a 2ª Falharem - Outras Bancas Brasileiras de Alta Concorrência):
-    - SE E SOMENTE SE você constatar com certeza absoluta que NÃO HÁ NENHUMA OUTRA questão disponível deste tema nas bancas prioritárias nem nos últimos 10 anos, busque questões reais de outras bancas brasileiras de alta concorrência e renome nacional (ex: USP, UNIFESP, UNICAMP, SUS-SP, PSU-MG, AMRIGS, AMP, UERJ).
-    - Formato obrigatorio do "source": "SIGLA DA BANCA (ANO) - [Nota: Não há outras questões deste tema nas bancas prioritárias. Questão de banca de alta concorrência]" -> Ex: "USP (2023) - [Nota: Não há outras questões deste tema nas bancas prioritárias. Questão de banca de alta concorrência]".
+    3ª PRIORIDADE - EXPANSÃO PARA OUTRAS GRANDES BANCAS OFICIAIS NACIONAIS:
+    - Se e somente se a soma de TODAS as bancas selecionadas pelo candidato não possuir questões reais suficientes do tema "${topicTitle}", busque questões reais de outras grandes bancas oficiais do Brasil (ex: ENARE, USP-SP, UNICAMP, UNIFESP, PSU-MG, SUS-SP, AMRIGS, AMP, SURCE, UFG, UnB, SES-DF). Indique a banca real no campo "source".
 
-    4ª PRIORIDADE (Se a 1ª, 2ª e 3ª Falharem - Questão Inédita no Estilo Fiel da Prova):
-    - SE E SOMENTE SE não existir nenhuma questão real de concurso público sobre este tema em nenhuma banca reconhecida, elabore uma questão 100% inédita na íntegra (caso clínico complexo completo, alternativas detalhadas) no estilo exato de cobrança da banca prioritária.
-    - Formato obrigatorio do "source": "Inédita Estilo SIGLA DA BANCA (2026) - [Nota: Questão elaborada no estilo oficial da banca por ausência de questões anteriores deste tema especifico]" -> Ex: "Inédita Estilo ENARE (2026) - [Nota: Questão elaborada no estilo oficial da banca por ausência de questões anteriores deste tema especifico]".
+    4ª PRIORIDADE - QUESTÃO INÉDITA NO ESTILO DA BANCA (ÚLTIMO RECURSO ABSOLUTO):
+    - Apenas se não existir nenhuma questão real de concurso público sobre este tema em nenhuma banca reconhecida no Brasil, elabore uma questão inédita no estilo exato da banca prioritária e identifique o "source" como "Inédita Estilo [BANCA] (2026)".`}
 
     ATENÇÃO ABSOLUTA DE IDIOMA E ESTRUTURA:
     - TODO o conteúdo gerado (enunciado "text", alternativas "options", explicação "explanation", "frequentMistakesExplanation", etc.) DEVE estar rigorosamente escrito em PORTUGUÊS DO BRASIL.

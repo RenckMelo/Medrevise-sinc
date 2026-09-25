@@ -217,7 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 dailyGoalMinutes: 60,
                 theme: 'light',
                 residencyFocusType: 'standard',
-                residencyFocus: 'Centro-Oeste (UFG, SES-GO, SES-DF, UnB, ENARE)'
+                residencyFocus: 'ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS'
               }
             };
             try {

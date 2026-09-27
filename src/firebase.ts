@@ -124,9 +124,35 @@ export const Timestamp = {
   })
 };
 
+// Simple in-memory document & collection cache to eliminate redundant bandwidth
+const docCache = new Map<string, { data: any; timestamp: number }>();
+const queryCache = new Map<string, { docs: any[]; timestamp: number }>();
+const CACHE_TTL_MS = 25000; // 25 seconds cache for static/repeated reads
+
+function invalidateCacheForDoc(collectionName: string, id: string) {
+  docCache.delete(`${collectionName}/${id}`);
+  queryCache.clear(); // Clear query cache when a document write occurs
+  if (collectionName === 'userProgress') {
+    docCache.delete(`users/${id}/progress/main`);
+  } else if (collectionName.startsWith('users/') && collectionName.endsWith('/progress')) {
+    const parts = collectionName.split('/');
+    docCache.delete(`userProgress/${parts[1]}`);
+  }
+}
+
 export async function getDoc(docRef: any): Promise<any> {
   const collectionName = docRef.collectionName;
   const id = docRef.id;
+  const cacheKey = `${collectionName}/${id}`;
+
+  const cached = docCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return {
+      id,
+      exists: () => !!cached.data,
+      data: () => cached.data
+    };
+  }
   
   let { data, error } = await supabase
     .from('firestore_documents')
@@ -191,6 +217,10 @@ export async function getDoc(docRef: any): Promise<any> {
   }
   
   const docData = data?.data || null;
+
+  if (docData) {
+    docCache.set(cacheKey, { data: docData, timestamp: Date.now() });
+  }
   
   return {
     id,
@@ -200,6 +230,8 @@ export async function getDoc(docRef: any): Promise<any> {
 }
 
 export async function getDocFromServer(docRef: any): Promise<any> {
+  // Force bypass cache
+  docCache.delete(`${docRef.collectionName}/${docRef.id}`);
   return getDoc(docRef);
 }
 
@@ -207,10 +239,55 @@ export async function getDocs(queryOrColl: any): Promise<any> {
   const collectionName = queryOrColl.collectionName;
   const constraints = queryOrColl.constraints || [];
   
-  const { data: primaryData, error: primaryError } = await supabase
+  // Construct a deterministic query cache key
+  const queryKey = `${collectionName}:${JSON.stringify(constraints)}`;
+  const cachedQuery = queryCache.get(queryKey);
+  if (cachedQuery && Date.now() - cachedQuery.timestamp < CACHE_TTL_MS) {
+    const mappedDocs = cachedQuery.docs.map(docData => ({
+      id: docData.id,
+      data: () => {
+        const { id, ...rest } = docData;
+        return rest;
+      }
+    }));
+    return {
+      docs: mappedDocs,
+      size: mappedDocs.length,
+      empty: mappedDocs.length === 0,
+      forEach: (callback: any) => mappedDocs.forEach(callback)
+    };
+  }
+
+  let supaQuery = supabase
     .from('firestore_documents')
     .select('*')
     .eq('collection', collectionName);
+
+  // Push server-side filters to Supabase query to minimize Egress
+  for (const constraint of constraints) {
+    if (constraint.type === 'where') {
+      const { fieldPath, opStr, value } = constraint;
+      if (fieldPath === '__name__' || fieldPath === 'id') {
+        if (opStr === '==' || opStr === '===') {
+          supaQuery = supaQuery.eq('id', value);
+        } else if (opStr === 'in' && Array.isArray(value) && value.length > 0) {
+          supaQuery = supaQuery.in('id', value);
+        }
+      } else if (typeof fieldPath === 'string' && value !== undefined && value !== null) {
+        const jsonPath = fieldPath.includes('.')
+          ? 'data->' + fieldPath.split('.').slice(0, -1).join('->') + '->>' + fieldPath.split('.').pop()
+          : `data->>${fieldPath}`;
+
+        if (opStr === '==' || opStr === '===') {
+          supaQuery = supaQuery.eq(jsonPath, String(value));
+        } else if (opStr === 'in' && Array.isArray(value) && value.length > 0) {
+          supaQuery = supaQuery.in(jsonPath, value.map(v => String(v)));
+        }
+      }
+    }
+  }
+  
+  const { data: primaryData, error: primaryError } = await supaQuery;
     
   if (primaryError) {
     console.warn(`[Supabase] Note on loading docs for ${collectionName}:`, primaryError?.message || primaryError);
@@ -223,7 +300,7 @@ export async function getDocs(queryOrColl: any): Promise<any> {
     ...row.data
   }));
   
-  // Apply in-memory filters
+  // Apply in-memory filters as a second-pass safety net
   for (const constraint of constraints) {
     if (constraint.type === 'where') {
       const { fieldPath, opStr, value } = constraint;
@@ -270,6 +347,15 @@ export async function getDocs(queryOrColl: any): Promise<any> {
       const { limitValue } = constraint;
       docs = docs.slice(0, limitValue);
     }
+  }
+
+  // Cache results
+  queryCache.set(queryKey, { docs, timestamp: Date.now() });
+
+  // Pre-fill docCache for each loaded item to speed up subsequent getDoc calls
+  for (const item of docs) {
+    const { id, ...itemData } = item;
+    docCache.set(`${collectionName}/${id}`, { data: itemData, timestamp: Date.now() });
   }
   
   const mappedDocs = docs.map(docData => ({
@@ -322,6 +408,8 @@ export async function setDoc(docRef: any, docData: any, options?: { merge?: bool
     
   if (error) {
     console.warn(`[Supabase] Note on setDoc for ${collectionName}/${id}:`, error?.message || error);
+  } else {
+    invalidateCacheForDoc(collectionName, id);
   }
 }
 
@@ -340,6 +428,8 @@ export async function addDoc(collRef: any, docData: any): Promise<any> {
     
   if (error) {
     console.warn(`[Supabase] Note on addDoc for ${collectionName}:`, error?.message || error);
+  } else {
+    invalidateCacheForDoc(collectionName, id);
   }
   
   return { id };
@@ -430,6 +520,8 @@ export async function updateDoc(docRef: any, updateFields: any): Promise<void> {
     
   if (error) {
     console.warn(`[Supabase] Note on updateDoc for ${collectionName}/${id}:`, error?.message || error);
+  } else {
+    invalidateCacheForDoc(collectionName, id);
   }
 }
 
@@ -446,6 +538,8 @@ export async function deleteDoc(docRef: any): Promise<void> {
   if (error) {
     console.error(`Error deleteDoc for ${collectionName}/${id} on Supabase:`, error);
     throw error;
+  } else {
+    invalidateCacheForDoc(collectionName, id);
   }
 }
 
@@ -470,12 +564,13 @@ export async function getCountFromServer(collRef: any): Promise<any> {
 
 export function onSnapshot(docRefOrQuery: any, callback: (snapshot: any) => void, onError?: (err: any) => void): () => void {
   let isUnsubscribed = false;
+  let debounceTimer: any = null;
   
   const triggerFetch = async () => {
     if (isUnsubscribed) return;
     try {
       if (docRefOrQuery.type === 'doc') {
-        const snap = await getDoc(docRefOrQuery);
+        const snap = await getDocFromServer(docRefOrQuery);
         if (!isUnsubscribed) callback(snap);
       } else {
         const snap = await getDocs(docRefOrQuery);
@@ -489,20 +584,32 @@ export function onSnapshot(docRefOrQuery: any, callback: (snapshot: any) => void
   triggerFetch();
   
   const uniqueId = Math.random().toString(36).substring(2, 11);
+  const isDoc = docRefOrQuery.type === 'doc' && docRefOrQuery.id;
+  const filter = isDoc 
+    ? `collection=eq.${docRefOrQuery.collectionName}&id=eq.${docRefOrQuery.id}` 
+    : `collection=eq.${docRefOrQuery.collectionName}`;
+
   const channel = supabase
     .channel(`pub-firestore-${docRefOrQuery.collectionName}-${uniqueId}`)
     .on('postgres_changes', {
       event: '*',
       schema: 'public',
       table: 'firestore_documents',
-      filter: `collection=eq.${docRefOrQuery.collectionName}`
-    }, () => {
-      triggerFetch();
+      filter: filter
+    }, (payload: any) => {
+      if (isDoc && payload?.new?.id) {
+        invalidateCacheForDoc(docRefOrQuery.collectionName, payload.new.id);
+      }
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        triggerFetch();
+      }, 150);
     })
     .subscribe();
     
   return () => {
     isUnsubscribed = true;
+    clearTimeout(debounceTimer);
     channel.unsubscribe();
   };
 }

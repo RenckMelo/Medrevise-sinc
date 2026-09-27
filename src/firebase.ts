@@ -127,17 +127,19 @@ export const Timestamp = {
 // Simple in-memory document & collection cache to eliminate redundant bandwidth
 const docCache = new Map<string, { data: any; timestamp: number }>();
 const queryCache = new Map<string, { docs: any[]; timestamp: number }>();
-const CACHE_TTL_MS = 25000; // 25 seconds cache for static/repeated reads
+const CACHE_TTL_MS = 25000; // 25 seconds cache for static content (topics, semesters, questions)
+
+function isUserStateCollection(collectionName: string): boolean {
+  if (!collectionName) return false;
+  return collectionName === 'userProgress' ||
+         collectionName.startsWith('users/') ||
+         collectionName === 'quizAttempts' ||
+         collectionName === 'flashcardSessions';
+}
 
 function invalidateCacheForDoc(collectionName: string, id: string) {
-  docCache.delete(`${collectionName}/${id}`);
-  queryCache.clear(); // Clear query cache when a document write occurs
-  if (collectionName === 'userProgress') {
-    docCache.delete(`users/${id}/progress/main`);
-  } else if (collectionName.startsWith('users/') && collectionName.endsWith('/progress')) {
-    const parts = collectionName.split('/');
-    docCache.delete(`userProgress/${parts[1]}`);
-  }
+  docCache.clear();
+  queryCache.clear();
 }
 
 export async function getDoc(docRef: any): Promise<any> {
@@ -145,13 +147,17 @@ export async function getDoc(docRef: any): Promise<any> {
   const id = docRef.id;
   const cacheKey = `${collectionName}/${id}`;
 
-  const cached = docCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return {
-      id,
-      exists: () => !!cached.data,
-      data: () => cached.data
-    };
+  const isUserMutable = isUserStateCollection(collectionName);
+
+  if (!isUserMutable) {
+    const cached = docCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return {
+        id,
+        exists: () => !!cached.data,
+        data: () => cached.data
+      };
+    }
   }
   
   let { data, error } = await supabase
@@ -218,7 +224,7 @@ export async function getDoc(docRef: any): Promise<any> {
   
   const docData = data?.data || null;
 
-  if (docData) {
+  if (docData && !isUserMutable) {
     docCache.set(cacheKey, { data: docData, timestamp: Date.now() });
   }
   
@@ -238,24 +244,27 @@ export async function getDocFromServer(docRef: any): Promise<any> {
 export async function getDocs(queryOrColl: any): Promise<any> {
   const collectionName = queryOrColl.collectionName;
   const constraints = queryOrColl.constraints || [];
+  const isUserMutable = isUserStateCollection(collectionName);
   
   // Construct a deterministic query cache key
   const queryKey = `${collectionName}:${JSON.stringify(constraints)}`;
-  const cachedQuery = queryCache.get(queryKey);
-  if (cachedQuery && Date.now() - cachedQuery.timestamp < CACHE_TTL_MS) {
-    const mappedDocs = cachedQuery.docs.map(docData => ({
-      id: docData.id,
-      data: () => {
-        const { id, ...rest } = docData;
-        return rest;
-      }
-    }));
-    return {
-      docs: mappedDocs,
-      size: mappedDocs.length,
-      empty: mappedDocs.length === 0,
-      forEach: (callback: any) => mappedDocs.forEach(callback)
-    };
+  if (!isUserMutable) {
+    const cachedQuery = queryCache.get(queryKey);
+    if (cachedQuery && Date.now() - cachedQuery.timestamp < CACHE_TTL_MS) {
+      const mappedDocs = cachedQuery.docs.map(docData => ({
+        id: docData.id,
+        data: () => {
+          const { id, ...rest } = docData;
+          return rest;
+        }
+      }));
+      return {
+        docs: mappedDocs,
+        size: mappedDocs.length,
+        empty: mappedDocs.length === 0,
+        forEach: (callback: any) => mappedDocs.forEach(callback)
+      };
+    }
   }
 
   let supaQuery = supabase
@@ -287,10 +296,21 @@ export async function getDocs(queryOrColl: any): Promise<any> {
     }
   }
   
-  const { data: primaryData, error: primaryError } = await supaQuery;
+  let { data: primaryData, error: primaryError } = await supaQuery;
     
   if (primaryError) {
     console.warn(`[Supabase] Note on loading docs for ${collectionName}:`, primaryError?.message || primaryError);
+  }
+
+  // Safety net: if server-side JSON query yielded 0 docs or errored, fallback to fetching collection and filtering in-memory
+  if ((!primaryData || primaryData.length === 0 || primaryError) && constraints.length > 0) {
+    const { data: fallbackData } = await supabase
+      .from('firestore_documents')
+      .select('*')
+      .eq('collection', collectionName);
+    if (fallbackData && fallbackData.length > 0) {
+      primaryData = fallbackData;
+    }
   }
 
   let data = primaryData || [];

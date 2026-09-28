@@ -209,6 +209,25 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
     const unsub = onSnapshot(progressRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data() || {};
+        
+        // Clean attempts & studySessions from injected mock/template data
+        const rawAttempts = data.attempts && typeof data.attempts === 'object' ? data.attempts : {};
+        const cleanAttempts: Record<string, any> = {};
+        Object.entries(rawAttempts).forEach(([qId, att]: [string, any]) => {
+          if (att && typeof att === 'object' && (att.timestamp || att.userOption !== undefined || att.correct !== undefined)) {
+            if (!qId.startsWith('mock_') && !qId.startsWith('demo_') && !qId.startsWith('template_')) {
+              cleanAttempts[qId] = att;
+            }
+          }
+        });
+
+        const rawSessions = Array.isArray(data.studySessions) ? data.studySessions : [];
+        const cleanSessions = rawSessions.filter((s: any) => {
+          if (!s) return false;
+          if (typeof s.id === 'string' && (s.id.startsWith('mock_') || s.id.startsWith('seed_') || s.id.startsWith('demo_'))) return false;
+          return true;
+        });
+
         setUserProgress({
           ...data,
           userId: userId,
@@ -218,8 +237,8 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           flaggedQuestionIds: Array.isArray(data.flaggedQuestionIds) ? data.flaggedQuestionIds : [],
           flashcardReviews: data.flashcardReviews && typeof data.flashcardReviews === 'object' ? data.flashcardReviews : {},
           quizHistory: Array.isArray(data.quizHistory) ? data.quizHistory : [],
-          studySessions: Array.isArray(data.studySessions) ? data.studySessions : [],
-          attempts: data.attempts && typeof data.attempts === 'object' ? data.attempts : {},
+          studySessions: cleanSessions,
+          attempts: cleanAttempts,
         } as UserProgress);
       } else {
         setUserProgress({
@@ -247,6 +266,24 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
       const snapshot = await getDoc(progressRef);
       if (snapshot.exists()) {
         const data = snapshot.data() || {};
+
+        const rawAttempts = data.attempts && typeof data.attempts === 'object' ? data.attempts : {};
+        const cleanAttempts: Record<string, any> = {};
+        Object.entries(rawAttempts).forEach(([qId, att]: [string, any]) => {
+          if (att && typeof att === 'object' && (att.timestamp || att.userOption !== undefined || att.correct !== undefined)) {
+            if (!qId.startsWith('mock_') && !qId.startsWith('demo_') && !qId.startsWith('template_')) {
+              cleanAttempts[qId] = att;
+            }
+          }
+        });
+
+        const rawSessions = Array.isArray(data.studySessions) ? data.studySessions : [];
+        const cleanSessions = rawSessions.filter((s: any) => {
+          if (!s) return false;
+          if (typeof s.id === 'string' && (s.id.startsWith('mock_') || s.id.startsWith('seed_') || s.id.startsWith('demo_'))) return false;
+          return true;
+        });
+
         setUserProgress({
           ...data,
           userId: userId,
@@ -256,8 +293,8 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           flaggedQuestionIds: Array.isArray(data.flaggedQuestionIds) ? data.flaggedQuestionIds : [],
           flashcardReviews: data.flashcardReviews && typeof data.flashcardReviews === 'object' ? data.flashcardReviews : {},
           quizHistory: Array.isArray(data.quizHistory) ? data.quizHistory : [],
-          studySessions: Array.isArray(data.studySessions) ? data.studySessions : [],
-          attempts: data.attempts && typeof data.attempts === 'object' ? data.attempts : {},
+          studySessions: cleanSessions,
+          attempts: cleanAttempts,
         } as UserProgress);
       }
     } catch (err) {

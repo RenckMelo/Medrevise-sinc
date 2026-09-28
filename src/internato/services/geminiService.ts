@@ -306,6 +306,11 @@ export async function resetSpecialUsage() {
 }
 
 export async function recordUsage(credits: number = 1) {
+  // Fire event optimistically for instant UI feedback
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ai-credits-updated'));
+  }
+
   try {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
@@ -325,14 +330,12 @@ export async function recordUsage(credits: number = 1) {
           'aiUsage.count': increment(credits),
           [`dailyUsage.${today}`]: increment(credits)
         });
-        console.log(`[Usage] Accumulated +${credits} credits for ${email} on ${today}. Previous count was: ${usage.count}`);
       } else {
         const newCount = existingDaily + credits;
         await setDoc(userRef, {
           aiUsage: { date: today, count: newCount },
           [`dailyUsage.${today}`]: newCount
         }, { merge: true });
-        console.log(`[Usage] Initialized new daily usage with ${newCount} credits for ${email} on ${today}.`);
       }
     } else {
       await setDoc(userRef, {
@@ -340,15 +343,15 @@ export async function recordUsage(credits: number = 1) {
         aiUsage: { date: today, count: credits },
         [`dailyUsage.${today}`]: credits
       }, { merge: true });
-      console.log(`[Usage] Created user profile and initialized ${credits} credits for ${email} on ${today}.`);
     }
 
     // Also update overall global counter for statistics
     const globalStatsRef = doc(db, 'global', 'stats');
-    await updateDoc(globalStatsRef, {
+    updateDoc(globalStatsRef, {
       'aiUsage.count': increment(credits)
     }).catch(() => {});
 
+    // Re-dispatch after write completes to synchronize
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('ai-credits-updated'));
     }

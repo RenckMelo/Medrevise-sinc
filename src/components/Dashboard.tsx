@@ -232,15 +232,15 @@ export default function Dashboard() {
   };
 
   const calculateTotals = (sessionData: StudySession[], examData: MockExam[]) => {
-    const sQuestions = sessionData.reduce((acc, s) => acc + s.questionsCount, 0);
+    const sQuestions = sessionData.reduce((acc, s) => acc + (Number(s.questionsCount) || 0), 0);
     const eQuestions = consolidateExams ? examData.reduce((acc, e) => acc + (e.totalQuestions || 0), 0) : 0;
     const totalQuestions = sQuestions + eQuestions;
 
-    const sCorrect = sessionData.reduce((acc, s) => acc + s.correctCount, 0);
+    const sCorrect = sessionData.reduce((acc, s) => acc + (Number(s.correctCount) || 0), 0);
     const eCorrect = consolidateExams ? examData.reduce((acc, e) => acc + (e.correctAnswers || 0), 0) : 0;
     const totalCorrect = sCorrect + eCorrect;
 
-    const sTime = sessionData.reduce((acc, s) => acc + s.studyTimeMinutes, 0);
+    const sTime = sessionData.reduce((acc, s) => acc + (Number(s.studyTimeMinutes) || 0), 0);
     const eTime = consolidateExams ? examData.reduce((acc, e) => acc + (e.timeSpentMinutes || 0), 0) : 0;
     const totalTime = sTime + eTime;
 

@@ -43,16 +43,23 @@ export function useStudyData() {
       } else {
         setTopics([]);
       }
+
+      const cachedSessions = localStorage.getItem(`cache_medrevise_sessions_${user.uid}`);
+      if (cachedSessions) {
+        setSessions(JSON.parse(cachedSessions));
+      } else {
+        setSessions([]);
+      }
     } catch {
       setSubjects([]);
       setTopics([]);
+      setSessions([]);
     }
 
     setLoading(true);
 
     const subQuery = query(collection(db, 'users', user.uid, 'subjects'));
     const topicQuery = query(collection(db, 'users', user.uid, 'topics'));
-    const sessionQuery = query(collection(db, 'users', user.uid, 'studySessions'));
     const eventQuery = query(collection(db, 'users', user.uid, 'calendarEvents'));
     const examQuery = query(collection(db, 'users', user.uid, 'mockExams'));
     const collegeQuery = query(collection(db, 'users', user.uid, 'collegeSchedule'));
@@ -85,22 +92,107 @@ export function useStudyData() {
       setLoading(false);
     });
 
-    const unsubSessions = onSnapshot(sessionQuery, (snap) => {
-      const list = snap.docs.map(d => {
-        const raw = { id: d.id, ...d.data() } as StudySession;
-        // Auto-heal inflated sessions created by previous cronograma bug (e.g. 240min in 1min)
-        if (raw.studyTimeMinutes && raw.studyTimeMinutes >= 180 && (raw.description?.includes('via Cronograma Inteligente') || (raw.questionsCount === 0 && raw.studyTimeMinutes >= 240))) {
-          // Asynchronously update Firestore document to permanent realistic 25 min
-          updateDoc(doc(db, 'users', user.uid, 'studySessions', d.id), { studyTimeMinutes: 25 }).catch(() => {});
-          return { ...raw, studyTimeMinutes: 25 };
+    const sessionQuery = query(collection(db, 'users', user.uid, 'studySessions'));
+    const quizQuery = query(collection(db, 'users', user.uid, 'quizAttempts'));
+    const flashcardQuery = query(collection(db, 'users', user.uid, 'flashcardSessions'));
+    const progressDocRef = doc(db, 'userProgress', user.uid);
+
+    let rawDbSessions: any[] = [];
+    let rawProgressSessions: any[] = [];
+    let rawProgressQuizHistory: any[] = [];
+    let rawQuizAttempts: any[] = [];
+    let rawFlashcardSessions: any[] = [];
+
+    const combineAndSetSessions = () => {
+      const uniqueSessionsMap = new Map<string, StudySession>();
+
+      // 1. Primary source: dbStudySessions (users/{userId}/studySessions subcollection)
+      rawDbSessions.forEach(s => {
+        if (!s.id) return;
+        let mins = Number(s.studyTimeMinutes || 0);
+        if (mins >= 180 && (s.description?.includes('via Cronograma Inteligente') || (s.questionsCount === 0 && mins >= 240))) {
+          mins = 25;
         }
-        return raw;
+        const durSecs = s.durationSeconds ? Number(s.durationSeconds) : (mins * 60);
+        const stTime = s.date || s.startTime || s.createdAt;
+
+        uniqueSessionsMap.set(s.id, {
+          id: s.id,
+          subjectId: s.subjectId || 'geral',
+          topicId: s.topicId,
+          date: stTime || new Date().toISOString(),
+          durationSeconds: durSecs,
+          studyTimeMinutes: mins || Math.max(1, Math.round(durSecs / 60)),
+          questionsCount: Number(s.questionsCount) || 0,
+          correctCount: Number(s.correctCount) || 0,
+          description: s.description
+        } as StudySession);
       });
-      list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+      // 2. Secondary source: userProgress.studySessions
+      rawProgressSessions.forEach(s => {
+        if (!s.id || uniqueSessionsMap.has(s.id)) return;
+        let mins = Number(s.studyTimeMinutes || 0);
+        if (mins >= 180 && (s.description?.includes('via Cronograma Inteligente') || (s.questionsCount === 0 && mins >= 240))) {
+          mins = 25;
+        }
+        const durSecs = s.durationSeconds ? Number(s.durationSeconds) : (mins * 60);
+        const stTime = s.startTime || s.date || s.createdAt;
+
+        uniqueSessionsMap.set(s.id, {
+          id: s.id,
+          subjectId: s.subjectId || 'geral',
+          topicId: s.topicId,
+          date: stTime || new Date().toISOString(),
+          durationSeconds: durSecs,
+          studyTimeMinutes: mins || Math.max(1, Math.round(durSecs / 60)),
+          questionsCount: Number(s.questionsCount) || 0,
+          correctCount: Number(s.correctCount) || 0,
+          description: s.description
+        } as StudySession);
+      });
+
+      const list = Array.from(uniqueSessionsMap.values()).sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
       setSessions(list);
+      try { localStorage.setItem(`cache_medrevise_sessions_${user.uid}`, JSON.stringify(list)); } catch {}
+    };
+
+    const unsubSessions = onSnapshot(sessionQuery, (snap) => {
+      rawDbSessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      combineAndSetSessions();
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/studySessions`);
     });
+
+    const unsubProgressDoc = onSnapshot(progressDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const pData = docSnap.data();
+        const pSessions = Array.isArray(pData?.studySessions) ? pData.studySessions : [];
+        rawProgressSessions = pSessions.filter((s: any) => {
+          if (!s) return false;
+          if (typeof s.id === 'string' && (s.id.startsWith('mock_') || s.id.startsWith('seed_') || s.id.startsWith('demo_'))) return false;
+          return true;
+        });
+        rawProgressQuizHistory = Array.isArray(pData?.quizHistory) ? pData.quizHistory : [];
+      } else {
+        rawProgressSessions = [];
+        rawProgressQuizHistory = [];
+      }
+      combineAndSetSessions();
+    }, () => {});
+
+    const unsubQuiz = onSnapshot(quizQuery, (snap) => {
+      rawQuizAttempts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      combineAndSetSessions();
+    }, () => {});
+
+    const unsubFlashcard = onSnapshot(flashcardQuery, (snap) => {
+      rawFlashcardSessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      combineAndSetSessions();
+    }, () => {});
 
     const unsubEvents = onSnapshot(eventQuery, (snap) => {
       setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent)));
@@ -126,6 +218,9 @@ export function useStudyData() {
       unsubSubs();
       unsubTopics();
       unsubSessions();
+      unsubProgressDoc();
+      unsubQuiz();
+      unsubFlashcard();
       unsubEvents();
       unsubCollege();
       unsubExams();

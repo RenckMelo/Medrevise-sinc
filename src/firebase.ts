@@ -149,15 +149,14 @@ export async function getDoc(docRef: any): Promise<any> {
 
   const isUserMutable = isUserStateCollection(collectionName);
 
-  if (!isUserMutable) {
-    const cached = docCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      return {
-        id,
-        exists: () => !!cached.data,
-        data: () => cached.data
-      };
-    }
+  const cached = docCache.get(cacheKey);
+  const ttl = isUserMutable ? 4000 : CACHE_TTL_MS;
+  if (cached && Date.now() - cached.timestamp < ttl) {
+    return {
+      id,
+      exists: () => !!cached.data,
+      data: () => cached.data
+    };
   }
   
   let { data, error } = await supabase
@@ -179,47 +178,49 @@ export async function getDoc(docRef: any): Promise<any> {
       .eq('collection', `users/${id}/progress`)
       .eq('id', 'main')
       .maybeSingle();
-    if (altProgress?.data) {
-      if (!data?.data) {
-        data = altProgress;
-      } else {
-        // Merge attempts and arrays seamlessly
-        const mainData = data.data || {};
-        const legacyData = altProgress.data || {};
-        const mergedAttempts = { ...(legacyData.attempts || {}), ...(mainData.attempts || {}) };
-        const mergedAnswered = Array.from(new Set([...(legacyData.answeredQuestionIds || []), ...(mainData.answeredQuestionIds || [])]));
-        const mergedCorrect = Array.from(new Set([...(legacyData.correctQuestionIds || []), ...(mainData.correctQuestionIds || [])]));
-        const mergedCompleted = Array.from(new Set([...(legacyData.completedTopicIds || []), ...(mainData.completedTopicIds || [])]));
-        const dedupeItems = (arr: any[]) => {
-          const seen = new Set();
-          return (arr || []).filter(item => {
-            if (!item) return false;
-            const key = item.id || item.sessionId || item.createdAt || (typeof item === 'string' ? item : JSON.stringify(item));
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-        };
-        const mergedSessions = dedupeItems([...(mainData.studySessions || []), ...(legacyData.studySessions || [])]);
-        const mergedQuizHistory = dedupeItems([...(mainData.quizHistory || []), ...(legacyData.quizHistory || [])]);
-        const totalTime = Math.max(mainData.totalStudyTimeSeconds || 0, legacyData.totalStudyTimeSeconds || 0);
 
-        data = {
-          ...data,
-          data: {
-            ...legacyData,
-            ...mainData,
-            attempts: mergedAttempts,
-            answeredQuestionIds: mergedAnswered,
-            correctQuestionIds: mergedCorrect,
-            completedTopicIds: mergedCompleted,
-            studySessions: mergedSessions,
-            quizHistory: mergedQuizHistory,
-            totalStudyTimeSeconds: totalTime
-          }
-        };
+    const mainData = data?.data || {};
+    const legacyData = altProgress?.data || {};
+
+    const mergedAttempts = { ...(legacyData.attempts || {}), ...(mainData.attempts || {}) };
+    const mergedFlashcardReviews = { ...(legacyData.flashcardReviews || {}), ...(mainData.flashcardReviews || {}) };
+    const mergedAnswered = Array.from(new Set([...(legacyData.answeredQuestionIds || []), ...(mainData.answeredQuestionIds || [])]));
+    const mergedCorrect = Array.from(new Set([...(legacyData.correctQuestionIds || []), ...(mainData.correctQuestionIds || [])]));
+    const mergedCompleted = Array.from(new Set([...(legacyData.completedTopicIds || []), ...(mainData.completedTopicIds || [])]));
+    
+    const dedupeItems = (arr: any[]) => {
+      const seen = new Set();
+      return (arr || []).filter(item => {
+        if (!item) return false;
+        const key = item.id || item.sessionId || item.createdAt || (typeof item === 'string' ? item : JSON.stringify(item));
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+
+    const mergedSessions = dedupeItems([...(mainData.studySessions || []), ...(legacyData.studySessions || [])]);
+    const mergedQuizHistory = dedupeItems([...(mainData.quizHistory || []), ...(legacyData.quizHistory || [])]);
+    const totalTime = Math.max(
+      Number(mainData.totalStudyTimeSeconds) || 0,
+      Number(legacyData.totalStudyTimeSeconds) || 0
+    );
+
+    data = {
+      ...data,
+      data: {
+        ...legacyData,
+        ...mainData,
+        attempts: mergedAttempts,
+        flashcardReviews: mergedFlashcardReviews,
+        answeredQuestionIds: mergedAnswered,
+        correctQuestionIds: mergedCorrect,
+        completedTopicIds: mergedCompleted,
+        studySessions: mergedSessions,
+        quizHistory: mergedQuizHistory,
+        totalStudyTimeSeconds: totalTime
       }
-    }
+    };
   }
   
   const docData = data?.data || null;
@@ -302,8 +303,8 @@ export async function getDocs(queryOrColl: any): Promise<any> {
     console.warn(`[Supabase] Note on loading docs for ${collectionName}:`, primaryError?.message || primaryError);
   }
 
-  // Safety net: if server-side JSON query yielded 0 docs or errored, fallback to fetching collection and filtering in-memory
-  if ((!primaryData || primaryData.length === 0 || primaryError) && constraints.length > 0) {
+  // Safety net: ONLY fallback if an actual server-side query error occurred
+  if (primaryError && constraints.length > 0) {
     const { data: fallbackData } = await supabase
       .from('firestore_documents')
       .select('*')
@@ -412,7 +413,20 @@ export async function setDoc(docRef: any, docData: any, options?: { merge?: bool
       console.warn(`[Supabase] Note on loading existing doc for setDoc with merge ${collectionName}/${id}:`, loadError?.message || loadError);
     }
     
-    mergedData = existing?.data ? { ...existing.data, ...docData } : docData;
+    if (existing?.data) {
+      mergedData = { ...existing.data, ...docData };
+      if (existing.data.flashcardReviews && docData.flashcardReviews) {
+        mergedData.flashcardReviews = { ...existing.data.flashcardReviews, ...docData.flashcardReviews };
+      }
+      if (existing.data.attempts && docData.attempts) {
+        mergedData.attempts = { ...existing.data.attempts, ...docData.attempts };
+      }
+      if (existing.data.stats && docData.stats) {
+        mergedData.stats = { ...existing.data.stats, ...docData.stats };
+      }
+    } else {
+      mergedData = docData;
+    }
   }
   
   const { error } = await supabase
@@ -429,7 +443,7 @@ export async function setDoc(docRef: any, docData: any, options?: { merge?: bool
   if (error) {
     console.warn(`[Supabase] Note on setDoc for ${collectionName}/${id}:`, error?.message || error);
   } else {
-    invalidateCacheForDoc(collectionName, id);
+    docCache.set(`${collectionName}/${id}`, { data: mergedData, timestamp: Date.now() });
   }
 }
 
@@ -541,7 +555,7 @@ export async function updateDoc(docRef: any, updateFields: any): Promise<void> {
   if (error) {
     console.warn(`[Supabase] Note on updateDoc for ${collectionName}/${id}:`, error?.message || error);
   } else {
-    invalidateCacheForDoc(collectionName, id);
+    docCache.set(`${collectionName}/${id}`, { data: mergedData, timestamp: Date.now() });
   }
 }
 

@@ -31,7 +31,15 @@ export default function Dashboard({
   userId,
   onOpenTour
 }: DashboardProps) {
-  const [dbStudySessions, setDbStudySessions] = useState<any[]>([]);
+  const [dbStudySessions, setDbStudySessions] = useState<any[]>(() => {
+    if (!userId) return [];
+    try {
+      const cached = localStorage.getItem(`cache_internato_sessions_${userId}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [dbQuizAttempts, setDbQuizAttempts] = useState<any[]>([]);
   const [dbFlashcardSessions, setDbFlashcardSessions] = useState<any[]>([]);
   const [isLoadingExtra, setIsLoadingExtra] = useState(false);
@@ -47,18 +55,16 @@ export default function Dashboard({
           list.push({ id: d.id, ...d.data() });
         });
         setDbStudySessions(list);
+        try { localStorage.setItem(`cache_internato_sessions_${userId}`, JSON.stringify(list)); } catch {}
       }, (err) => {
         console.warn('Note on listening to user studySessions:', err);
       });
 
-      const quizColl = collection(db, 'quizAttempts');
+      const quizColl = query(collection(db, 'users', userId, 'quizAttempts'));
       const unsubQuiz = onSnapshot(quizColl, (snapshot) => {
         const list: any[] = [];
         snapshot.forEach((d: any) => {
-          const data = d.data();
-          if (data.userId === userId) {
-            list.push({ id: d.id, ...data });
-          }
+          list.push({ id: d.id, ...d.data() });
         });
         setDbQuizAttempts(list);
       }, (err) => {
@@ -164,23 +170,25 @@ export default function Dashboard({
     const finalWeekCount = Math.max(weekAttempts.length, weekQuizQuestions, weekSessionQuestions);
 
     // 3. Collect and sanitize all study sessions across sources
-    const rawSessionsList: any[] = [];
+    const uniqueSessionsMap = new Map<string, any>();
 
     // Source A: dbStudySessions (Firestore subcollection users/{userId}/studySessions)
     dbStudySessions.forEach(s => {
+      if (!s.id) return;
       let mins = Number(s.studyTimeMinutes || 0);
-      // Auto-heal inflated sessions from previous cronograma bug (matching MedRevise auto-heal)
       if (mins >= 180 && (s.description?.includes('via Cronograma Inteligente') || (s.questionsCount === 0 && mins >= 240))) {
         mins = 25;
       }
       const durSecs = s.durationSeconds ? Number(s.durationSeconds) : (mins * 60);
+      const stTime = s.date || s.startTime || s.createdAt;
 
-      rawSessionsList.push({
+      uniqueSessionsMap.set(s.id, {
         id: s.id,
         subjectId: s.subjectId,
         topicId: s.topicId,
-        startTime: s.date || s.startTime || s.createdAt || new Date().toISOString(),
+        startTime: stTime || new Date().toISOString(),
         durationSeconds: durSecs,
+        studyTimeMinutes: mins || Math.round(durSecs / 60),
         questionsCount: Number(s.questionsCount) || 0,
         correctCount: Number(s.correctCount) || 0,
         description: s.description,
@@ -190,18 +198,21 @@ export default function Dashboard({
 
     // Source B: userProgress.studySessions (Embedded local sessions)
     (userProgress?.studySessions || []).forEach(s => {
+      if (!s.id || uniqueSessionsMap.has(s.id)) return;
       let mins = Number(s.studyTimeMinutes || 0);
       if (mins >= 180 && (s.description?.includes('via Cronograma Inteligente') || (s.questionsCount === 0 && mins >= 240))) {
         mins = 25;
       }
       const durSecs = s.durationSeconds ? Number(s.durationSeconds) : (mins * 60);
+      const stTime = s.startTime || s.date || s.createdAt;
 
-      rawSessionsList.push({
+      uniqueSessionsMap.set(s.id, {
         id: s.id,
         subjectId: s.subjectId,
         topicId: s.topicId,
-        startTime: s.startTime || s.date || s.createdAt || new Date().toISOString(),
+        startTime: stTime || new Date().toISOString(),
         durationSeconds: durSecs,
+        studyTimeMinutes: mins || Math.round(durSecs / 60),
         questionsCount: Number(s.questionsCount) || 0,
         correctCount: Number(s.correctCount) || 0,
         description: s.description,
@@ -209,59 +220,16 @@ export default function Dashboard({
       });
     });
 
-    // Source C: mergedQuizAttempts (quizAttempts collection)
-    mergedQuizAttempts.forEach(q => {
-      rawSessionsList.push({
-        id: q.id,
-        subjectId: q.subjectIds?.[0] || 'geral',
-        startTime: q.timestamp || new Date().toISOString(),
-        durationSeconds: Number(q.timeSpentSeconds) || 120,
-        questionsCount: Number(q.totalQuestions || q.questions?.length) || 0,
-        correctCount: Number(q.score) || 0,
-        description: q.type === 'simulado' 
-          ? `Simulado MedInternato (${q.score}/${q.totalQuestions || q.questions?.length})` 
-          : `Quiz MedInternato (${q.score}/${q.totalQuestions || q.questions?.length})`,
-        type: 'quiz'
-      });
-    });
-
-    // Intelligent Deduplication: prevent double-counting across db, local, and quiz sources
-    const uniqueSessionsMap = new Map<string, any>();
-    rawSessionsList.forEach(s => {
-      if (!s.id) return;
-      if (uniqueSessionsMap.has(s.id)) return;
-
-      // Check for fuzzy match (same questions count + same start time within 5 minutes window)
-      const sTime = new Date(s.startTime).getTime();
-      let isDuplicate = false;
-
-      for (const existing of uniqueSessionsMap.values()) {
-        const exTime = new Date(existing.startTime).getTime();
-        const timeDiffSec = Math.abs(sTime - exTime) / 1000;
-
-        if (timeDiffSec < 300) {
-          if (s.questionsCount > 0 && existing.questionsCount === s.questionsCount) {
-            isDuplicate = true;
-            break;
-          }
-          if (s.topicId && existing.topicId === s.topicId && Math.abs(s.durationSeconds - existing.durationSeconds) < 60) {
-            isDuplicate = true;
-            break;
-          }
-        }
-      }
-
-      if (!isDuplicate) {
-        uniqueSessionsMap.set(s.id, s);
-      }
-    });
-
     const mergedSortedSessions = Array.from(uniqueSessionsMap.values()).sort(
       (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
 
-    // Calculate total study time from deduplicated sessions
-    const finalTotalTimeSeconds = mergedSortedSessions.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
+    // Calculate total study time & questions directly from deduplicated sessions
+    const finalTotalQuestions = mergedSortedSessions.reduce((acc, s) => acc + (Number(s.questionsCount) || 0), 0);
+    const finalTotalTimeSeconds = mergedSortedSessions.reduce((acc, s) => {
+      const sec = s.durationSeconds || (s.studyTimeMinutes ? s.studyTimeMinutes * 60 : 0) || 0;
+      return acc + sec;
+    }, 0);
 
     // 4. Time per subject
     const timeBySubject: Record<string, number> = {};
@@ -284,17 +252,24 @@ export default function Dashboard({
       }
     });
 
-    // Question attempts list
-    const allAttemptsList = [...attempts];
+    // Question attempts list - strictly only real answered questions
+    const allAttemptsList = [...attempts.filter(a => a && (a.userOption !== undefined || a.isCorrect !== undefined || a.timestamp))];
     mergedQuizAttempts.forEach(q => {
       if (Array.isArray(q.questions)) {
         q.questions.forEach((qa: any) => {
-          if (qa && !allAttemptsList.some(ex => ex.questionId === qa.questionId && ex.timestamp === qa.timestamp)) {
+          if (qa && (qa.userOption !== undefined || qa.isCorrect !== undefined) && !allAttemptsList.some(ex => ex.questionId === qa.questionId && ex.timestamp === qa.timestamp)) {
             allAttemptsList.push(qa);
           }
         });
       }
     });
+
+    // Clean total count of unique answered questions
+    const uniqueAnsweredIds = Array.from(new Set([
+      ...(userProgress?.answeredQuestionIds || []),
+      ...allAttemptsList.map(a => a.questionId).filter(Boolean)
+    ]));
+    const totalAnsweredCount = Math.max(uniqueAnsweredIds.length, allAttemptsList.length);
 
     // 6. Flashcards stats (calculated ONLY from actual flashcard practice in the module)
     const actualFlashcardSessions = dbFlashcardSessions.filter(
@@ -332,7 +307,7 @@ export default function Dashboard({
     return {
       todayCount: finalTodayCount,
       weekCount: finalWeekCount,
-      totalCount: Math.max(attempts.length, allAttemptsList.length),
+      totalCount: finalTotalQuestions,
       flashcardsTotalCount,
       flashcardsTodayCount,
       totalStudyTimeSeconds: finalTotalTimeSeconds,

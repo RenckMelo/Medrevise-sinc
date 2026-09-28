@@ -244,15 +244,16 @@ export async function checkUsageLimit(creditsNeeded: number = 1) {
   }
 }
 
-export async function getGlobalUsage() {
+export async function getGlobalUsage(targetUserId?: string) {
   const currentUser = auth.currentUser;
-  if (!currentUser) return { count: 0, limit: 10 };
+  const uid = targetUserId || currentUser?.uid;
+  if (!uid) return { count: 0, limit: 10 };
 
-  const email = (currentUser.email || '').toLowerCase().trim();
+  const email = (currentUser?.email || '').toLowerCase().trim();
   const today = getTodayDateString();
   const isSpecialUser = email === 'ysabelleosaraiva@gmail.com' || email === 'yasabelleosaraiva@gmail.com' || email === 'lucas1renck2melo@gmail.com';
 
-  const userRef = doc(db, 'users', currentUser.uid);
+  const userRef = doc(db, 'users', uid);
   const userSnap = await getDoc(userRef);
   if (userSnap.exists()) {
     const userData = userSnap.data();
@@ -305,7 +306,7 @@ export async function resetSpecialUsage() {
   }
 }
 
-export async function recordUsage(credits: number = 1) {
+export async function recordUsage(credits: number = 1, targetUserId?: string) {
   // Fire event optimistically for instant UI feedback
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ai-credits-updated'));
@@ -313,13 +314,14 @@ export async function recordUsage(credits: number = 1) {
 
   try {
     const currentUser = auth.currentUser;
-    if (!currentUser) return;
+    const uid = targetUserId || currentUser?.uid;
+    if (!uid) return;
 
-    const email = (currentUser.email || '').toLowerCase().trim();
+    const email = (currentUser?.email || '').toLowerCase().trim();
     const today = getTodayDateString();
 
     // Record in user's personal profile
-    const userRef = doc(db, 'users', currentUser.uid);
+    const userRef = doc(db, 'users', uid);
     const snap = await getDoc(userRef);
     if (snap.exists()) {
       const data = snap.data();
@@ -1958,7 +1960,7 @@ export interface SuggestedExtraChapter {
  * Realiza uma pré-análise inteligente do tópico para estimar as necessidades de créditos,
  * justificativa de profundidade, capítulos sugeridos e destaques essenciais do tema.
  */
-export async function analyzeSummaryNeeds(title: string, area: string, depth: GenerationDepth = 'custom_analyzed') {
+export async function analyzeSummaryNeeds(title: string, area: string, depth: GenerationDepth = 'custom_analyzed', userId?: string) {
   const safeTitle = sanitizeTopicTitle(title, 'Tópico de Estudo');
   const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
   const depthText = {
@@ -2101,6 +2103,7 @@ Retorne APENAS um JSON válido no seguinte formato:
 
     // Preço do resumo inteligente cobrado estritamente pela quantidade de capítulos (10 créditos por capítulo)
     const finalCost = depth === 'custom_analyzed' ? Math.max(10, chapters.length * 10) : (costText !== null ? costText : 50);
+    await recordUsage(2, userId);
     return {
       cost: finalCost,
       justification: data.justification || 'Análise realizada com sucesso.',

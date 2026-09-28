@@ -192,7 +192,10 @@ export async function getDoc(docRef: any): Promise<any> {
       const seen = new Set();
       return (arr || []).filter(item => {
         if (!item) return false;
-        const key = item.id || item.sessionId || item.createdAt || (typeof item === 'string' ? item : JSON.stringify(item));
+        const key = typeof item === 'string' 
+          ? item 
+          : (item.id || item.sessionId || item.createdAt || item.date || item.timestamp);
+        if (!key) return true;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -248,7 +251,10 @@ export async function getDocs(queryOrColl: any): Promise<any> {
   const isUserMutable = isUserStateCollection(collectionName);
   
   // Construct a deterministic query cache key
-  const queryKey = `${collectionName}:${JSON.stringify(constraints)}`;
+  const safeConstraintsKey = constraints.map((c: any) => {
+    return `${c.type}_${c.fieldPath}_${c.opStr}_${typeof c.value === 'object' ? (c.value?.id || String(c.value)) : c.value}`;
+  }).join('|');
+  const queryKey = `${collectionName}:${safeConstraintsKey}`;
   if (!isUserMutable) {
     const cachedQuery = queryCache.get(queryKey);
     if (cachedQuery && Date.now() - cachedQuery.timestamp < CACHE_TTL_MS) {

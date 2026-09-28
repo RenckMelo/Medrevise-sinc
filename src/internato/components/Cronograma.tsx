@@ -2142,17 +2142,9 @@ export default function Cronograma({
 
   // Helper to generate the structured medical schedule dynamically
   const handleGenerateSchedule = async () => {
-    const isCompletePlan = profile?.planType === 'combo_ouro' || 
-                            profile?.isLifetimePremium || 
-                            profile?.role === 'admin' || 
-                            profile?.email === 'lucas1renck2melo@gmail.com';
-    const maxSchedules = isCompletePlan ? 2 : 1;
+    const maxSchedules = 2;
     if (schedules.length >= maxSchedules) {
-      if (maxSchedules === 1) {
-        showToast("Limite de 1 cronograma ativo atingido. Assine o Plano Completo (Combo Ouro) para conseguir manter até 2 cronogramas ativos, ou apague o atual para criar um novo.", "error");
-      } else {
-        showToast("Você já atingiu o limite de 2 cronogramas ativos no plano completo. Apague um dos cronogramas para gerar um novo.", "error");
-      }
+      showToast("Você já atingiu o limite de 2 cronogramas ativos. Apague um dos cronogramas para gerar um novo.", "error");
       return;
     }
 
@@ -2262,8 +2254,25 @@ export default function Cronograma({
       sessionsCount: number;
     };
   }) => {
+    if (schedules.length >= 2) {
+      showToast("Você já atingiu o limite de 2 cronogramas ativos. Apague um dos cronogramas existentes para gerar um novo.", "error");
+      return;
+    }
+
+    const cost = config.weeksDuration <= 24 ? 5 : config.weeksDuration <= 48 ? 8 : 10;
+    if (availableCredits < cost) {
+      showToast(`Créditos insuficientes! A geração deste planejamento exige ${cost} créditos, mas você possui apenas ${availableCredits}.`, "error");
+      return;
+    }
+
     try {
       setGenerating(true);
+
+      // Deduct credit usage
+      await recordUsage(cost, user?.uid);
+      if (setAvailableCredits) {
+        setAvailableCredits(prev => Math.max(0, prev - cost));
+      }
       let mappedWeeks: StudyPlanWeek[] = [];
       let examName = 'Planejamento da Faculdade';
 
@@ -3395,17 +3404,9 @@ export default function Cronograma({
   };
 
   const handleImportPdfFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const isCompletePlan = profile?.planType === 'combo_ouro' || 
-                            profile?.isLifetimePremium || 
-                            profile?.role === 'admin' || 
-                            profile?.email === 'lucas1renck2melo@gmail.com';
-    const maxSchedules = isCompletePlan ? 2 : 1;
+    const maxSchedules = 2;
     if (schedules.length >= maxSchedules) {
-      if (maxSchedules === 1) {
-        showToast("Limite de 1 cronograma ativo atingido. Assine o Plano Completo (Combo Ouro) para conseguir manter até 2 cronogramas ativos, ou apague o atual para criar um novo.", "error");
-      } else {
-        showToast("Você já atingiu o limite de 2 cronogramas ativos no plano completo. Apague um dos cronogramas para importar um novo.", "error");
-      }
+      showToast("Você já atingiu o limite de 2 cronogramas ativos. Apague um dos cronogramas para importar um novo.", "error");
       return;
     }
 
@@ -5821,24 +5822,11 @@ export default function Cronograma({
 
               {schedules.length < 2 ? (
                 <button
-                  onClick={() => {
-                    const isCompletePlan = profile?.planType === 'combo_ouro' || 
-                                            profile?.isLifetimePremium || 
-                                            profile?.role === 'admin' || 
-                                            profile?.email === 'lucas1renck2melo@gmail.com';
-                    if (isCompletePlan) {
-                      setShowPlannerWizard(true);
-                    } else {
-                      showToast("Esta funcionalidade de manter até dois cronogramas ativos simultaneamente é exclusiva do Plano Completo (Combo Ouro).", "error");
-                    }
-                  }}
+                  onClick={() => setShowPlannerWizard(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-stone-900 to-[#141414] hover:from-black hover:to-stone-900 text-amber-300 text-[11px] font-bold rounded-lg border border-amber-500/30 shadow-xs transition-all cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                   <span>➕ Novo Cronograma</span>
-                  {!(profile?.planType === 'combo_ouro' || profile?.isLifetimePremium || profile?.role === 'admin' || profile?.email === 'lucas1renck2melo@gmail.com') && (
-                    <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.2 rounded-sm uppercase tracking-wider scale-90 font-mono">PRO</span>
-                  )}
                 </button>
               ) : (
                 <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200/50 px-2.5 py-1 rounded-lg">

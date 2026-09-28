@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { signOut } from '../firebase';
 import { 
@@ -655,20 +655,25 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           />
         )}
 
-        {currentView === 'flashcards' && (
-          <FlashcardModule
-            subjects={subjects}
-            topics={topics}
-            userProgress={userProgress}
-            userId={userId}
-            initialTopicIds={selectedTopic ? [selectedTopic.id] : (cronogramaFilterTopics.length > 0 ? cronogramaFilterTopics : undefined)}
-            selectedTopic={selectedTopic}
-            onProgressUpdate={loadUserProgress}
-            availableCredits={availableCredits}
-            setAvailableCredits={setAvailableCredits}
-            onOpenSummaryWizard={handleOpenSummaryWizardFromFlashcards}
-          />
-        )}
+        {currentView === 'flashcards' && (() => {
+          const flashcardInitialTopicIds = selectedTopic
+            ? [selectedTopic.id]
+            : (cronogramaFilterTopics.length > 0 ? cronogramaFilterTopics : undefined);
+          return (
+            <FlashcardModule
+              subjects={subjects}
+              topics={topics}
+              userProgress={userProgress}
+              userId={userId}
+              initialTopicIds={flashcardInitialTopicIds}
+              selectedTopic={selectedTopic}
+              onProgressUpdate={loadUserProgress}
+              availableCredits={availableCredits}
+              setAvailableCredits={setAvailableCredits}
+              onOpenSummaryWizard={handleOpenSummaryWizardFromFlashcards}
+            />
+          );
+        })()}
 
         {currentView === 'admin' && (
           <AdminPanel

@@ -725,18 +725,32 @@ export default function FlashcardModule({
   }, []);
 
   // Stable topic selection key to prevent unnecessary auto-fetching when parent re-renders
-  const topicIdsKey = useMemo(() => {
+  const topicIdsStr = useMemo(() => {
     if (initialTopicIds && initialTopicIds.length > 0) {
-      return `init_${[...initialTopicIds].sort().join(',')}`;
+      return [...initialTopicIds].sort().join(',');
     }
     if (selectedTopic) {
-      return `sel_${selectedTopic.id}`;
+      return selectedTopic.id;
+    }
+    return '';
+  }, [initialTopicIds?.join(','), selectedTopic?.id]);
+
+  const topicIdsKey = useMemo(() => {
+    if (topicIdsStr) {
+      return `topic_${topicIdsStr}`;
     }
     return 'srs_default';
-  }, [initialTopicIds, selectedTopic]);
+  }, [topicIdsStr]);
+
+  const lastFetchedTopicKeyRef = useRef<string | null>(null);
 
   // Auto-fetch if initialTopicIds or selectedTopic provided (only when topic selection key changes)
   useEffect(() => {
+    if (lastFetchedTopicKeyRef.current === topicIdsKey) {
+      return;
+    }
+    lastFetchedTopicKeyRef.current = topicIdsKey;
+
     if (initialTopicIds && initialTopicIds.length > 0) {
       setSelectedTopicIds(initialTopicIds);
       setActiveTab('deck');
@@ -748,7 +762,7 @@ export default function FlashcardModule({
     } else {
       fetchFlashcards('srs');
     }
-  }, [topicIdsKey, initialTopicIds, selectedTopic, fetchFlashcards]);
+  }, [topicIdsKey, fetchFlashcards]);
 
   // Fetch Deep Dives ("Cards Aprofundados")
   const fetchDeepDives = useCallback(async () => {

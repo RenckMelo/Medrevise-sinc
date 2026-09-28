@@ -98,7 +98,39 @@ export default function QuestionModule({
   const [isGeneratingMore, setIsGeneratingMore] = useState(false);
   const [filterUnanswered, setFilterUnanswered] = useState(false);
   const [filterFlagged, setFilterFlagged] = useState(false);
+  const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(true);
+
+  const checkAndNotifyBancaFallback = (loadedQuestions: Question[]) => {
+    if (!loadedQuestions || loadedQuestions.length === 0) return;
+
+    const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+    const targetExamName = preset ? preset.name : undefined;
+    const preferredBancas = candidatePreferredBancas || [];
+
+    const requestedFilters: string[] = [];
+    if (targetExamName) requestedFilters.push(targetExamName);
+    if (preferredBancas.length > 0) requestedFilters.push(...preferredBancas);
+
+    if (requestedFilters.length === 0) {
+      setFallbackNotice(null);
+      return;
+    }
+
+    const hasMatchedBanca = loadedQuestions.some(q => {
+      const src = (q.source || '').toUpperCase();
+      return requestedFilters.some(req => src.includes(req.toUpperCase()));
+    });
+
+    if (!hasMatchedBanca) {
+      const requestedStr = Array.from(new Set(requestedFilters)).join(', ');
+      setFallbackNotice(
+        `Aviso: Não encontramos questões do tópico especificamente na sua preferência de banca (${requestedStr}). Para garantir seus estudos sem interrupções, expandimos o simulado com questões oficiais de outras grandes bancas nacionais!`
+      );
+    } else {
+      setFallbackNotice(null);
+    }
+  };
   const [numQuestionsPerTopic, setNumQuestionsPerTopic] = useState(5);
   const [currentQuizResults, setCurrentQuizResults] = useState<QuestionAttempt[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -2276,6 +2308,7 @@ export default function QuestionModule({
 
       if (finalInitialPool.length > 0) {
         setQuestions(finalInitialPool);
+        checkAndNotifyBancaFallback(finalInitialPool);
         setIsActive(true);
         setSeconds(0);
         setSecondsRemaining(Math.ceil(finalInitialPool.length * 1.5) * 60);
@@ -2346,6 +2379,7 @@ export default function QuestionModule({
     }
 
     setQuestions(initialSelection);
+    checkAndNotifyBancaFallback(initialSelection);
     setIsActive(true);
     setSeconds(0);
     setSecondsRemaining(Math.ceil(initialSelection.length * 1.5) * 60);
@@ -3971,7 +4005,7 @@ export default function QuestionModule({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {candidatePreferredBancas
                     .filter(banca => banca.toLowerCase().includes(bancaSearchTerm.toLowerCase()))
-                    .map(banca => {
+                    .map((banca, bIdx) => {
                       const years = [2026, 2025, 2024, 2023, 2022, 2021];
                       const bancaTotalSelected = years.reduce((acc, year) => {
                         const key = `${banca.toUpperCase()}_${year}`;
@@ -4126,7 +4160,7 @@ export default function QuestionModule({
                   {ALL_NATIONAL_BANCAS
                     .filter(b => !candidatePreferredBancas.includes(b))
                     .filter(banca => banca.toLowerCase().includes(bancaSearchTerm.toLowerCase()))
-                    .map(banca => {
+                    .map((banca, bIdx) => {
                       const years = [2026, 2025, 2024, 2023, 2022, 2021];
                       const bancaTotalSelected = years.reduce((acc, year) => {
                         const key = `${banca.toUpperCase()}_${year}`;
@@ -5109,7 +5143,25 @@ export default function QuestionModule({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10">
+    <div className="max-w-4xl mx-auto space-y-6">
+      {fallbackNotice && (
+        <div className="bg-amber-50/95 border border-amber-300 text-amber-900 p-4 rounded-2xl text-xs font-semibold flex items-start justify-between gap-3 shadow-sm animate-in fade-in duration-200">
+          <div className="flex items-start gap-2.5">
+            <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block text-amber-950 mb-0.5">Aviso de Preferência de Banca</span>
+              <span className="text-[11px] text-amber-900/90 leading-relaxed font-medium">{fallbackNotice}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFallbackNotice(null)}
+            className="text-amber-700 hover:text-amber-950 p-1 rounded-lg transition-colors cursor-pointer shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row gap-6 items-center justify-between bg-white p-8 rounded-3xl shadow-sm border border-[#E2E0D9]">
         <div className="flex items-center gap-6">
           <div className="flex flex-col">

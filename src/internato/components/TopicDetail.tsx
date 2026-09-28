@@ -3817,7 +3817,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
       const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
       try {
         setGenerationStatus('Analisando tópicos e estruturando capítulos...');
-        const autoAnalysis = await analyzeSummaryNeeds(effectiveTopicTitle, subjectName, targetDepth);
+        const autoAnalysis = await analyzeSummaryNeeds(effectiveTopicTitle, subjectName, targetDepth, userId);
         if (autoAnalysis) {
           analysisToUse = autoAnalysis;
         } else {
@@ -8627,10 +8627,11 @@ th { background: #F8F7F4; font-weight: bold; }
                   setDepth(selectedDepth as GenerationDepth);
                   const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
                   const safeTitle = topic?.title || (topic as any)?.name || (topic as any)?.titulo || (topic as any)?.topicTitle || 'Tópico de Estudo';
-                  const res = await analyzeSummaryNeeds(safeTitle, subjectName, selectedDepth as GenerationDepth);
+                  const res = await analyzeSummaryNeeds(safeTitle, subjectName, selectedDepth as GenerationDepth, userId);
                   if (res) {
                     setAnalysisResult(res);
                     if (res.chapters) setEditedChapters(res.chapters);
+                    if (setAvailableCredits) setAvailableCredits(prev => Math.max(0, prev - 2));
                   }
                   return res;
                 }}

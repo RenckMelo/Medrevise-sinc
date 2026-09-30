@@ -93,6 +93,16 @@ interface DiagnosticResult {
   } | null;
 }
 
+// Fisher-Yates shuffle helper for safe non-recursive array shuffling
+export function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 // SRS SM-2 Algorithm helper with distinct interval curves
 export function calculateSRS(
   rating: ReviewRating,
@@ -658,48 +668,75 @@ export default function FlashcardModule({
       let fetched: Flashcard[] = [];
       const topicsToFilter = filterTopicIds !== undefined ? filterTopicIds : (mode === 'srs' ? [] : selectedTopicIdsRef.current);
       const subjectsToFilter = filterSubjectIds !== undefined ? filterSubjectIds : (mode === 'srs' ? [] : selectedSubjectIdsRef.current);
-
-      // 1. Fetch global flashcards
-      let q;
-      if (topicsToFilter.length > 0) {
-        q = query(collection(db, 'flashcards'), where('topicId', 'in', topicsToFilter));
-      } else if (subjectsToFilter.length > 0) {
-        q = query(collection(db, 'flashcards'), where('subjectId', 'in', subjectsToFilter));
-      } else {
-        q = query(collection(db, 'flashcards'));
-      }
-
-      const snapshot = await getDocs(q);
-      fetched = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
-
-      // 2. Query user-specific flashcards if logged in
       const currentUserId = userIdRef.current;
+
+      // 1. Fetch user-specific flashcards from user's private subcollection if logged in
       if (currentUserId) {
         try {
           const userCol = collection(db, 'users', currentUserId, 'flashcards');
-          const userSnap = await getDocs(userCol);
+          let userQuery;
+          if (topicsToFilter.length > 0) {
+            userQuery = query(userCol, where('topicId', 'in', topicsToFilter.slice(0, 10)));
+          } else if (subjectsToFilter.length > 0) {
+            userQuery = query(userCol, where('subjectId', 'in', subjectsToFilter.slice(0, 10)));
+          } else {
+            userQuery = query(userCol);
+          }
+          const userSnap = await getDocs(userQuery);
           if (!userSnap.empty) {
             const userFetched = userSnap.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
-            const existingIds = new Set(fetched.map(f => f.id));
-            userFetched.forEach(uf => {
-              if (!existingIds.has(uf.id)) {
-                if (topicsToFilter.length > 0) {
-                  if (topicsToFilter.includes(uf.topicId)) fetched.push(uf);
-                } else if (subjectsToFilter.length > 0) {
-                  if (subjectsToFilter.includes(uf.subjectId)) fetched.push(uf);
-                } else {
-                  fetched.push(uf);
-                }
-              }
-            });
+            fetched.push(...userFetched);
           }
-        } catch (_) {}
+        } catch (e) {
+          console.error("Erro ao carregar subcoleção privada do usuário:", e);
+        }
       }
 
-      // 3. Filter for SRS due cards ("Devidos Hoje") if in SRS mode
+      // 2. Also load global flashcards that the user has previously reviewed in SRS history (to preserve historical SRS progress)
+      const currentSrsReviewsMap = srsReviewsMapRef.current;
+      const reviewedCardIds = Object.keys(currentSrsReviewsMap);
+      if (reviewedCardIds.length > 0) {
+        const existingIds = new Set(fetched.map(f => f.id));
+        const missingIds = reviewedCardIds.filter(id => !existingIds.has(id));
+
+        if (missingIds.length > 0) {
+          for (let i = 0; i < missingIds.length; i += 10) {
+            const chunk = missingIds.slice(i, i + 10);
+            try {
+              const globalQ = query(collection(db, 'flashcards'), where('__name__', 'in', chunk));
+              const globalSnap = await getDocs(globalQ);
+              globalSnap.docs.forEach(docSnap => {
+                const card = { id: docSnap.id, ...(docSnap.data() as any) } as Flashcard;
+                if (topicsToFilter.length > 0) {
+                  if (topicsToFilter.includes(card.topicId)) fetched.push(card);
+                } else if (subjectsToFilter.length > 0) {
+                  if (subjectsToFilter.includes(card.subjectId)) fetched.push(card);
+                } else {
+                  fetched.push(card);
+                }
+              });
+            } catch (_) {}
+          }
+        }
+      }
+
+      // 3. Fallback for unauthenticated users: fetch global cards
+      if (fetched.length === 0 && !currentUserId) {
+        let q;
+        if (topicsToFilter.length > 0) {
+          q = query(collection(db, 'flashcards'), where('topicId', 'in', topicsToFilter.slice(0, 10)));
+        } else if (subjectsToFilter.length > 0) {
+          q = query(collection(db, 'flashcards'), where('subjectId', 'in', subjectsToFilter.slice(0, 10)));
+        } else {
+          q = query(collection(db, 'flashcards'));
+        }
+        const snapshot = await getDocs(q);
+        fetched = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as any) } as Flashcard));
+      }
+
+      // 4. Filter for SRS due cards ("Devidos Hoje") if in SRS mode
       if (mode === 'srs') {
         const nowStr = new Date().toISOString();
-        const currentSrsReviewsMap = srsReviewsMapRef.current;
         fetched = fetched.filter(card => {
           const rev = currentSrsReviewsMap[card.id];
           return rev && rev.lastReviewed && rev.nextReview && rev.nextReview <= nowStr;
@@ -707,7 +744,7 @@ export default function FlashcardModule({
       }
 
       // Shuffle deck
-      const shuffled = fetched.sort(() => Math.random() - 0.5);
+      const shuffled = shuffleArray(fetched);
       setFlashcards(shuffled);
       setCurrentIndex(0);
       setIsFlipped(false);
@@ -1221,7 +1258,7 @@ export default function FlashcardModule({
 
                   if (front && back) {
                     try {
-                      const docRef = await addDoc(collection(db, 'flashcards'), {
+                      const payload = {
                         front,
                         back,
                         concept,
@@ -1230,17 +1267,20 @@ export default function FlashcardModule({
                         subjectName: cardSubjName,
                         subtopicTag: cardData.subtopicTag || '',
                         createdAt: new Date().toISOString()
-                      });
+                      };
+
+                      let docRef;
+                      const currentUserId = userIdRef.current || userId;
+                      if (currentUserId) {
+                        docRef = await addDoc(collection(db, 'users', currentUserId, 'flashcards'), payload);
+                        try { await addDoc(collection(db, 'flashcards'), payload); } catch (_) {}
+                      } else {
+                        docRef = await addDoc(collection(db, 'flashcards'), payload);
+                      }
 
                       const newCardItem: Flashcard = {
                         id: docRef.id,
-                        front,
-                        back,
-                        concept,
-                        topicId: topic.id,
-                        subjectId: topic.subjectId || 'geral',
-                        subjectName: cardSubjName,
-                        subtopicTag: cardData.subtopicTag || ''
+                        ...payload
                       };
                       stepBatch.push(newCardItem);
                       addedCards.push(newCardItem);
@@ -1316,7 +1356,7 @@ export default function FlashcardModule({
 
                   if (front && back) {
                     try {
-                      const docRef = await addDoc(collection(db, 'flashcards'), {
+                      const payload = {
                         front,
                         back,
                         concept,
@@ -1325,17 +1365,20 @@ export default function FlashcardModule({
                         subjectName: cardSubjName,
                         subtopicTag: cardData.subtopicTag || '',
                         createdAt: new Date().toISOString()
-                      });
+                      };
+
+                      let docRef;
+                      const currentUserId = userIdRef.current || userId;
+                      if (currentUserId) {
+                        docRef = await addDoc(collection(db, 'users', currentUserId, 'flashcards'), payload);
+                        try { await addDoc(collection(db, 'flashcards'), payload); } catch (_) {}
+                      } else {
+                        docRef = await addDoc(collection(db, 'flashcards'), payload);
+                      }
 
                       const newCardItem: Flashcard = {
                         id: docRef.id,
-                        front,
-                        back,
-                        concept,
-                        topicId: topic.id,
-                        subjectId: topic.subjectId || 'geral',
-                        subjectName: cardSubjName,
-                        subtopicTag: cardData.subtopicTag || ''
+                        ...payload
                       };
                       stepBatch.push(newCardItem);
                       addedCards.push(newCardItem);
@@ -1395,7 +1438,15 @@ export default function FlashcardModule({
         createdAt: new Date().toISOString()
       };
 
-      const docRef = await addDoc(collection(db, 'flashcards'), newCardDoc);
+      let docRef;
+      const currentUserId = userIdRef.current || userId;
+      if (currentUserId) {
+        docRef = await addDoc(collection(db, 'users', currentUserId, 'flashcards'), newCardDoc);
+        try { await addDoc(collection(db, 'flashcards'), newCardDoc); } catch (_) {}
+      } else {
+        docRef = await addDoc(collection(db, 'flashcards'), newCardDoc);
+      }
+
       const createdCard: Flashcard = {
         id: docRef.id,
         ...newCardDoc
@@ -1405,13 +1456,104 @@ export default function FlashcardModule({
       setManualFront('');
       setManualBack('');
       setManualConcept('');
-      alert('Flashcard criado e salvo com sucesso!');
+      alert('Flashcard criado e salvo com sucesso no seu deck privado!');
       setActiveTab('deck');
       setIsSelecting(false);
     } catch (err: any) {
       alert(`Erro ao salvar card: ${err.message}`);
     } finally {
       setIsSavingManual(false);
+    }
+  };
+
+  // Pull Community Flashcards into User's Private Deck without duplicating
+  const [isPullingCommunity, setIsPullingCommunity] = useState(false);
+
+  const handlePullCommunityCards = async (countToPull = 10) => {
+    const topicsToFilter = selectedTopicIds;
+    const subjectsToFilter = selectedSubjectIds;
+
+    if (topicsToFilter.length === 0 && subjectsToFilter.length === 0) {
+      alert('Selecione pelo menos um tema ou matéria para puxar flashcards da biblioteca comunitária.');
+      return;
+    }
+
+    const totalEstimate = topicsToFilter.length > 0 ? topicsToFilter.length * countToPull : countToPull;
+    const requiredCredits = Math.max(1, Math.ceil(calculateFlashcardCreditCost(totalEstimate) / 2));
+
+    if (availableCredits !== undefined && availableCredits < requiredCredits) {
+      alert(`Créditos insuficientes (${availableCredits} disponíveis). A importação de ${totalEstimate} cards da biblioteca exige ${requiredCredits} crédito(s) (50% de desconto em relação à geração por IA).`);
+      return;
+    }
+
+    const currentUserId = userIdRef.current || userId;
+    setIsPullingCommunity(true);
+
+    try {
+      let q;
+      if (topicsToFilter.length > 0) {
+        q = query(collection(db, 'flashcards'), where('topicId', 'in', topicsToFilter.slice(0, 10)));
+      } else if (subjectsToFilter.length > 0) {
+        q = query(collection(db, 'flashcards'), where('subjectId', 'in', subjectsToFilter.slice(0, 10)));
+      } else {
+        q = query(collection(db, 'flashcards'), limit(50));
+      }
+
+      const snapshot = await getDocs(q);
+      const communityCards = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) } as Flashcard));
+
+      const existingIds = new Set(flashcards.map(c => c.id));
+      const existingTexts = new Set(flashcards.map(c => (c.front || '').trim().toLowerCase()));
+
+      const newCommunityCards = communityCards.filter(c => 
+        !existingIds.has(c.id) && !existingTexts.has((c.front || '').trim().toLowerCase())
+      );
+
+      if (newCommunityCards.length === 0) {
+        alert(
+          '🔍 Nenhum flashcard inédito foi encontrado na biblioteca comunitária para o(s) tema(s) selecionado(s).\n\n' +
+          '⚡ Nenhum crédito foi descontado da sua conta!\n\n' +
+          '💡 Dica: Seja o primeiro a explorar este assunto! Clique no botão "Gerar Rápido com IA" para que a nossa inteligência artificial crie um deck completo e personalizado sobre este tema.'
+        );
+        return;
+      }
+
+      const selectedPull = shuffleArray(newCommunityCards).slice(0, countToPull * (topicsToFilter.length || 1));
+
+      const importedCards: Flashcard[] = [];
+      for (const card of selectedPull) {
+        const cardData = {
+          front: card.front,
+          back: card.back,
+          concept: card.concept || '',
+          topicId: card.topicId,
+          subjectId: card.subjectId,
+          subjectName: card.subjectName || '',
+          subtopicTag: card.subtopicTag || '',
+          createdAt: new Date().toISOString(),
+          importedFromCommunity: true
+        };
+
+        if (currentUserId) {
+          const userRef = await addDoc(collection(db, 'users', currentUserId, 'flashcards'), cardData);
+          importedCards.push({ id: userRef.id, ...cardData });
+        } else {
+          importedCards.push({ id: card.id, ...cardData });
+        }
+      }
+
+      if (setAvailableCredits && importedCards.length > 0) {
+        setAvailableCredits(prev => Math.max(0, prev - requiredCredits));
+      }
+
+      setFlashcards(prev => [...importedCards, ...prev]);
+      setIsSelecting(false);
+      alert(`✨ ${importedCards.length} flashcard(s) da comunidade foram importados com sucesso para seu deck privado (${requiredCredits} crédito(s) debitado(s))!`);
+    } catch (err: any) {
+      console.error('Erro ao puxar cards da comunidade:', err);
+      alert(`Erro ao buscar cards da biblioteca: ${err?.message || 'Tente novamente.'}`);
+    } finally {
+      setIsPullingCommunity(false);
     }
   };
 
@@ -2725,20 +2867,50 @@ export default function FlashcardModule({
                   Total a gerar: <strong className="text-[#1A1A1A]">{selectedTopicIds.length * numCardsPerTopic} flashcards</strong> ({selectedTopicIds.length} tema{selectedTopicIds.length > 1 ? 's' : ''})
                 </div>
 
-                <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                  {/* COMMUNITY LIBRARY PULL WITH HALF-PRICE CREDITS & HOVER LEGEND */}
+                  {(() => {
+                    const estCount = selectedTopicIds.length > 0 ? selectedTopicIds.length * 10 : 10;
+                    const halfCreditCost = Math.max(1, Math.ceil(calculateFlashcardCreditCost(estCount) / 2));
+                    return (
+                      <div className="relative group w-full sm:w-auto">
+                        <Button
+                          type="button"
+                          onClick={() => handlePullCommunityCards(10)}
+                          disabled={isPullingCommunity || (selectedTopicIds.length === 0 && selectedSubjectIds.length === 0)}
+                          variant="outline"
+                          title="Puxar da Biblioteca: Importa flashcards validados de outros alunos para os temas selecionados sem duplicar o seu deck. Custa exatamente metade dos créditos da geração por IA!"
+                          className="w-full sm:w-auto border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100/90 text-indigo-950 font-extrabold text-xs uppercase tracking-wider h-12 px-5 rounded-xl gap-2 shadow-2xs cursor-pointer transition-all"
+                        >
+                          {isPullingCommunity ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600 shrink-0" /> : <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />}
+                          <span>Puxar da Biblioteca ({halfCreditCost} {halfCreditCost === 1 ? 'Crédito' : 'Créditos'})</span>
+                        </Button>
+
+                        {/* HOVER TOOLTIP / LEGEND */}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 bg-stone-900/95 text-white text-[11px] font-medium leading-relaxed rounded-2xl shadow-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none z-30 border border-stone-700 text-center backdrop-blur-xs">
+                          <div className="font-extrabold text-indigo-300 mb-1 flex items-center justify-center gap-1 text-[11px] uppercase tracking-wider">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                            Biblioteca Comunitária (50% Desconto)
+                          </div>
+                          Importa flashcards prontos criados pela comunidade para os temas selecionados. O sistema filtra automaticamente os que você já tem para evitar duplicatas e custa **metade dos créditos** de uma geração por IA!
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <Button
                     onClick={handleGenerate}
                     disabled={isGenerating}
                     variant="outline"
-                    className="w-full sm:w-auto border-primary/40 text-primary hover:bg-primary/5 font-bold text-xs uppercase tracking-widest h-12 px-6 rounded-xl gap-2 shadow-2xs"
+                    className="w-full sm:w-auto border-primary/40 text-primary hover:bg-primary/5 font-bold text-xs uppercase tracking-widest h-12 px-6 rounded-xl gap-2 shadow-2xs cursor-pointer"
                   >
                     {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-amber-500 fill-amber-400" />}
-                    Gerar Rápido ({calculateFlashcardCreditCost(selectedTopicIds.length * numCardsPerTopic)} Créditos)
+                    Gerar Rápido com IA ({calculateFlashcardCreditCost(selectedTopicIds.length * numCardsPerTopic)} Créditos)
                   </Button>
 
                   <Button
                     onClick={() => fetchFlashcards(activeTab === 'diagnostic' ? 'diagnostic' : 'deck')}
-                    className="w-full sm:w-auto bg-[#1A1A1A] hover:bg-black text-white text-xs uppercase tracking-widest font-black px-8 h-12 rounded-xl gap-2 shadow-md shrink-0"
+                    className="w-full sm:w-auto bg-[#1A1A1A] hover:bg-black text-white text-xs uppercase tracking-widest font-black px-8 h-12 rounded-xl gap-2 shadow-md shrink-0 cursor-pointer"
                   >
                     {activeTab === 'diagnostic' ? 'Iniciar Diagnóstico' : 'Iniciar Revisão'}
                     <ChevronRightIcon className="w-4 h-4" />
@@ -3509,7 +3681,7 @@ export default function FlashcardModule({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setFlashcards([...flashcards].sort(() => Math.random() - 0.5))}
+                onClick={() => setFlashcards(shuffleArray(flashcards))}
                 className="text-xs font-bold text-[#8E8A82] uppercase tracking-wider gap-1"
               >
                 <RotateCcw className="w-3.5 h-3.5" /> Embaralhar

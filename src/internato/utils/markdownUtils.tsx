@@ -5407,6 +5407,25 @@ export const ClinicalFlowchartText = ({ text }: { text: string }) => {
   );
 };
 
+const plainTableComponents: any = {
+  p: ({ children }: any) => <p className="my-1.5 leading-relaxed text-stone-800">{children}</p>,
+  table: ({ children }: any) => (
+    <div className="my-3 overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-xs">
+      <table className="w-full text-left text-xs border-collapse">{children}</table>
+    </div>
+  ),
+  thead: ({ children }: any) => <thead className="bg-stone-100/90 text-stone-900 font-extrabold uppercase tracking-wider">{children}</thead>,
+  tbody: ({ children }: any) => <tbody className="divide-y divide-stone-200">{children}</tbody>,
+  tr: ({ children }: any) => <tr className="hover:bg-stone-50/80 transition-colors">{children}</tr>,
+  th: ({ children }: any) => <th className="p-2.5 font-black border-b border-stone-200 text-stone-900">{children}</th>,
+  td: ({ children }: any) => <td className="p-2.5 text-stone-800 font-medium border-b border-stone-100">{children}</td>,
+  code: ({ inline, children }: any) => (
+    <code className="bg-stone-100 text-stone-900 font-mono text-[11px] px-1 py-0.5 rounded font-semibold">
+      {children}
+    </code>
+  )
+};
+
 export const markdownComponents: any = {
   pre: ({ children }: any) => {
     return <div className="my-5 w-full min-w-0 whitespace-normal break-words normal-case text-left">{children}</div>;
@@ -5702,7 +5721,7 @@ export const markdownComponents: any = {
     if (codeContent.includes('|') && codeContent.split('\n').some(l => l.trim().startsWith('|'))) {
       const parsedTable = cleanAndFixMarkdownTables(codeContent);
       return (
-        <ReactMarkdown components={markdownComponents as any}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={plainTableComponents}>
           {parsedTable}
         </ReactMarkdown>
       );

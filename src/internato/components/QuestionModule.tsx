@@ -182,6 +182,7 @@ export default function QuestionModule({
   const [savedFocusTrigger, setSavedFocusTrigger] = useState(0);
   const [isSimuladoModalOpen, setIsSimuladoModalOpen] = useState(false);
   const [simuladoFeedbackMode, setSimuladoFeedbackMode] = useState<'instant' | 'end'>('instant');
+  const [simuladoQuestionOriginMode, setSimuladoQuestionOriginMode] = useState<'ineditas' | 'feitas' | 'misturado'>('ineditas');
   const [acceptMissingFetch, setAcceptMissingFetch] = useState(true);
 
   useEffect(() => {
@@ -195,6 +196,30 @@ export default function QuestionModule({
       window.removeEventListener('storage', handleSettingsUpdate);
     };
   }, []);
+
+  // Ensure pausedSession is reliably loaded whenever userId resolves
+  useEffect(() => {
+    const loadSavedSession = () => {
+      try {
+        const keys = [
+          `medinternato_paused_question_session_${userId}`,
+          `medinternato_paused_question_session_guest`,
+          `medinternato_paused_question_session_global`
+        ];
+        for (const k of keys) {
+          const saved = localStorage.getItem(k);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+              setPausedSession(parsed);
+              return;
+            }
+          }
+        }
+      } catch (e) {}
+    };
+    loadSavedSession();
+  }, [userId]);
   const [countdownMinutes, setCountdownMinutes] = useState(15);
   const [secondsRemaining, setSecondsRemaining] = useState(15 * 60);
   const [examAnswers, setExamAnswers] = useState<Record<string, number>>({});
@@ -254,6 +279,9 @@ export default function QuestionModule({
   const clearPausedSession = () => {
     try {
       localStorage.removeItem(PAUSED_SESSION_KEY);
+      localStorage.removeItem(`medinternato_paused_question_session_${userId || 'guest'}`);
+      localStorage.removeItem('medinternato_paused_question_session_global');
+      localStorage.removeItem('medinternato_paused_question_session_guest');
     } catch (e) {}
     setPausedSession(null);
   };
@@ -264,16 +292,16 @@ export default function QuestionModule({
 
     setIsActive(false);
 
-    let title = 'Bloco de Questões';
+    let title = 'Simulado Semanal';
     if (selectedTopicIds.length > 0) {
       const matchedTopics = topics.filter(t => selectedTopicIds.includes(t.id));
       if (matchedTopics.length > 0) {
-        title = matchedTopics.map(t => t.title).join(', ');
+        title = `Simulado Semanal: ${matchedTopics.map(t => t.title).join(', ')}`;
       }
     } else if (selectedSubjectIds.length > 0) {
       const matchedSubjects = subjects.filter(s => selectedSubjectIds.includes(s.id));
       if (matchedSubjects.length > 0) {
-        title = matchedSubjects.map(s => s.name).join(', ');
+        title = `Simulado Semanal: ${matchedSubjects.map(s => s.name).join(', ')}`;
       }
     }
 
@@ -297,6 +325,7 @@ export default function QuestionModule({
 
     try {
       localStorage.setItem(PAUSED_SESSION_KEY, JSON.stringify(sessionToSave));
+      localStorage.setItem('medinternato_paused_question_session_global', JSON.stringify(sessionToSave));
       setPausedSession(sessionToSave);
     } catch (e) {
       console.error('Error saving paused session:', e);
@@ -1307,10 +1336,15 @@ export default function QuestionModule({
           }
         }
 
-        if (filterUnanswered && userProgress) {
+        if (userProgress) {
           const answeredIds = userProgress.answeredQuestionIds || [];
-          const unansweredOnly = fetched.filter(q => !answeredIds.includes(q.id));
-          if (unansweredOnly.length > 0) fetched = unansweredOnly;
+          if (simuladoQuestionOriginMode === 'ineditas' || filterUnanswered) {
+            const unansweredOnly = fetched.filter(q => !answeredIds.includes(q.id));
+            if (unansweredOnly.length > 0) fetched = unansweredOnly;
+          } else if (simuladoQuestionOriginMode === 'feitas') {
+            const answeredOnly = fetched.filter(q => answeredIds.includes(q.id));
+            if (answeredOnly.length > 0) fetched = answeredOnly;
+          }
         }
         if (filterOnlyErrors && userProgress?.attempts) {
           const errorsOnly = fetched.filter(q => {
@@ -4394,11 +4428,11 @@ export default function QuestionModule({
                       <Sparkles className="w-5 h-5 fill-amber-500" />
                     </div>
                     <div>
-                      <h3 className="text-base font-black uppercase tracking-wider text-[#1A1A1A]">
-                        Prévia & Configuração do Simulado
+                      <h3 className="text-lg font-black uppercase tracking-wider text-[#1A1A1A]">
+                        ⚡ Simulado Semanal
                       </h3>
                       <p className="text-xs text-[#8E8A82] font-medium mt-0.5">
-                        Ajuste o modo de feedback, verifique o acervo por tópico e os custos transparentes.
+                        Identificação de tópicos da semana, controle por matéria e modo de resposta.
                       </p>
                     </div>
                   </div>
@@ -4410,85 +4444,239 @@ export default function QuestionModule({
                   </button>
                 </div>
 
-                {/* 1. Mapeamento dos Tópicos & Questões no Acervo */}
+                {/* 1. Mapeamento & Identificação dos Tópicos da Semana */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">
-                      1. Mapeamento por Tópico no Acervo Real
+                      1. Tópicos da Semana Identificados
                     </span>
-                    <Badge className="bg-amber-100 text-amber-950 border-amber-300 text-[9px] font-bold px-2 py-0.5">
-                      Verbatim 100% Integrais
+                    <Badge className="bg-amber-100 text-amber-950 border-amber-300 text-[9px] font-extrabold px-2.5 py-0.5">
+                      {selectedTopicIds.length > 0
+                        ? `${selectedTopicIds.length} Tópico(s) da Semana`
+                        : selectedSubjectIds.length > 0
+                        ? `${selectedSubjectIds.length} Área(s) Selecionada(s)`
+                        : 'Simulado Geral'}
                     </Badge>
                   </div>
 
                   <div className="p-4 rounded-2xl bg-white border border-[#E2E0D9] space-y-2 max-h-48 overflow-y-auto">
                     {(() => {
+                      const answeredSet = new Set(userProgress?.answeredQuestionIds || []);
                       if (selectedTopicIds.length > 0) {
                         return selectedTopicIds.map((tid) => {
                           const { topicTitle } = findTopicAndSubject(tid, topics, subjects);
-                          let count = 0;
+                          let totalCached = 0;
+                          let unansCount = 0;
+                          let ansCount = 0;
                           try {
                             const cached = safeLocalStorageGet(`questions_topic_${tid}`);
-                            if (cached) count = JSON.parse(cached).length;
+                            if (cached) {
+                              const parsed: Question[] = JSON.parse(cached);
+                              if (Array.isArray(parsed)) {
+                                totalCached = parsed.length;
+                                unansCount = parsed.filter(q => !answeredSet.has(q.id)).length;
+                                ansCount = totalCached - unansCount;
+                              }
+                            }
                           } catch (e) {}
+
                           return (
-                            <div key={`modal-top-${tid}`} className="flex items-center justify-between text-xs py-1 border-b border-stone-100 last:border-none">
+                            <div key={`modal-top-${tid}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs py-1.5 border-b border-stone-100 last:border-none">
                               <span className="font-semibold text-stone-800 flex items-center gap-1.5">
-                                <BookCheck className="w-3.5 h-3.5 text-amber-600" />
+                                <BookCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                                 {topicTitle}
                               </span>
-                              <Badge variant="outline" className="text-[10px] font-extrabold bg-stone-50 border-stone-200 text-[#1A1A1A]">
-                                {count > 0 ? `${count} questões no acervo` : 'Busca dinâmica'}
-                              </Badge>
+                              <div className="flex items-center gap-1.5">
+                                <Badge variant="outline" className="text-[9px] font-bold bg-emerald-50 text-emerald-800 border-emerald-200">
+                                  {unansCount} inéditas
+                                </Badge>
+                                <Badge variant="outline" className="text-[9px] font-bold bg-stone-50 text-stone-700 border-stone-200">
+                                  {ansCount} já feitas
+                                </Badge>
+                              </div>
                             </div>
                           );
                         });
                       } else if (selectedSubjectIds.length > 0) {
                         return selectedSubjectIds.map((sid) => {
                           const subj = subjects.find(s => s.id === sid);
-                          let count = 0;
-                          try {
-                            const cached = safeLocalStorageGet(`questions_subject_${sid}`);
-                            if (cached) count = JSON.parse(cached).length;
-                          } catch (e) {}
                           return (
                             <div key={`modal-subj-${sid}`} className="flex items-center justify-between text-xs py-1 border-b border-stone-100 last:border-none">
                               <span className="font-semibold text-stone-800 flex items-center gap-1.5">
                                 <Layers className="w-3.5 h-3.5 text-amber-600" />
                                 {subj?.name || sid}
                               </span>
-                              <Badge variant="outline" className="text-[10px] font-extrabold bg-stone-50 border-stone-200 text-[#1A1A1A]">
-                                {count > 0 ? `${count} questões prontas` : 'Busca no acervo'}
+                              <Badge variant="outline" className="text-[10px] font-extrabold bg-amber-50 text-amber-950 border-amber-300">
+                                {subjectQuestionCounts[sid] || 5} q. solicitadas
                               </Badge>
                             </div>
                           );
                         });
-                      } else if (simuladoMode === 'banca-year' && totalBancaYearSelectedCount > 0) {
-                        return (
-                          <div className="flex items-center justify-between text-xs py-1">
-                            <span className="font-semibold text-stone-800 flex items-center gap-1.5">
-                              <Building2 className="w-3.5 h-3.5 text-amber-600" />
-                              Matriz Granular por Banca & Ano
-                            </span>
-                            <Badge variant="outline" className="text-[10px] font-extrabold bg-amber-50 border-amber-300 text-amber-950">
-                              {totalBancaYearSelectedCount} questões selecionadas
-                            </Badge>
-                          </div>
-                        );
                       }
                       return (
-                        <div className="text-xs text-stone-500 font-medium italic">
-                          Simulado Geral: Questões de provas oficiais das suas bancas foco ({candidatePreferredBancas.slice(0, 3).join(', ')}).
+                        <div className="text-xs text-stone-600 font-medium italic">
+                          Simulado Semanal Amplo: Questões das suas bancas preferidas ({candidatePreferredBancas.slice(0, 4).join(', ')}).
                         </div>
                       );
                     })()}
                   </div>
                 </div>
 
-                {/* 2. Modo de Feedback Instantâneo vs Gabarito ao Final */}
+                {/* 2. Seleção de Quantidade de Questões POR TÓPICO */}
+                <div className="p-4 rounded-2xl bg-white border border-[#E2E0D9] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-[#1A1A1A] block">
+                        2. Quantidade de Questões por Tópico
+                      </span>
+                      <span className="text-[10px] text-[#666] block">
+                        Ajuste o volume de questões desejado para cada matéria da semana.
+                      </span>
+                    </div>
+
+                    {/* Stepper Control */}
+                    <div className="flex items-center gap-2 bg-stone-100 p-1 rounded-xl border border-stone-200">
+                      <button
+                        type="button"
+                        onClick={() => setNumQuestionsPerTopic(Math.max(1, numQuestionsPerTopic - 1))}
+                        className="w-7 h-7 bg-white rounded-lg font-black text-sm text-[#1A1A1A] border border-stone-200 hover:bg-stone-50 flex items-center justify-center shadow-2xs"
+                      >
+                        -
+                      </button>
+                      <span className="w-8 text-center text-xs font-black text-[#1A1A1A]">
+                        {numQuestionsPerTopic} q/t.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNumQuestionsPerTopic(Math.min(20, numQuestionsPerTopic + 1))}
+                        className="w-7 h-7 bg-white rounded-lg font-black text-sm text-[#1A1A1A] border border-stone-200 hover:bg-stone-50 flex items-center justify-center shadow-2xs"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Quick Preset Pill Buttons */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                    {[1, 2, 3, 5, 8, 10].map((qty) => (
+                      <button
+                        key={`preset-qty-${qty}`}
+                        type="button"
+                        onClick={() => setNumQuestionsPerTopic(qty)}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border",
+                          numQuestionsPerTopic === qty
+                            ? "bg-[#1A1A1A] text-white border-[#1A1A1A]"
+                            : "bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100"
+                        )}
+                      >
+                        {qty} q/tópico
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Calculation Total Banner */}
+                  {selectedTopicIds.length > 0 && (
+                    <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-xs font-bold text-[#1A1A1A] flex items-center justify-between">
+                      <span>Total do Simulado Semanal:</span>
+                      <span className="text-amber-800 font-black">
+                        {selectedTopicIds.length} tópicos × {numQuestionsPerTopic} q. = {selectedTopicIds.length * numQuestionsPerTopic} Questões
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Origem / Seleção do Tipo de Questões (3 Modos) */}
                 <div className="space-y-3">
                   <span className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">
-                    2. Momento do Feedback & Comentários
+                    3. Origem das Questões no Simulado
+                  </span>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSimuladoQuestionOriginMode('ineditas');
+                        setFilterUnanswered(true);
+                      }}
+                      className={cn(
+                        "p-3 text-left rounded-2xl border transition-all flex flex-col justify-between gap-2 relative",
+                        simuladoQuestionOriginMode === 'ineditas'
+                          ? "border-emerald-600 bg-emerald-50/50 ring-2 ring-emerald-600/20"
+                          : "border-[#E2E0D9] bg-white hover:border-stone-400"
+                      )}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-xs font-black uppercase text-emerald-950 flex items-center gap-1">
+                          🟢 Apenas Inéditas
+                        </span>
+                        {simuladoQuestionOriginMode === 'ineditas' && (
+                          <Badge className="bg-emerald-600 text-white text-[8px] font-bold uppercase px-1.5 py-0.2">Ativo</Badge>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-stone-600 leading-normal font-medium">
+                        Apenas questões que você NUNCA respondeu no seu perfil.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSimuladoQuestionOriginMode('feitas');
+                        setFilterUnanswered(false);
+                      }}
+                      className={cn(
+                        "p-3 text-left rounded-2xl border transition-all flex flex-col justify-between gap-2 relative",
+                        simuladoQuestionOriginMode === 'feitas'
+                          ? "border-rose-600 bg-rose-50/50 ring-2 ring-rose-600/20"
+                          : "border-[#E2E0D9] bg-white hover:border-stone-400"
+                      )}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-xs font-black uppercase text-rose-950 flex items-center gap-1">
+                          🔴 Apenas Já Feitas
+                        </span>
+                        {simuladoQuestionOriginMode === 'feitas' && (
+                          <Badge className="bg-rose-600 text-white text-[8px] font-bold uppercase px-1.5 py-0.2">Ativo</Badge>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-stone-600 leading-normal font-medium">
+                        Apenas questões dos tópicos que você JÁ RESPONDEU para fixação.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSimuladoQuestionOriginMode('misturado');
+                        setFilterUnanswered(false);
+                      }}
+                      className={cn(
+                        "p-3 text-left rounded-2xl border transition-all flex flex-col justify-between gap-2 relative",
+                        simuladoQuestionOriginMode === 'misturado'
+                          ? "border-amber-600 bg-amber-50/50 ring-2 ring-amber-600/20"
+                          : "border-[#E2E0D9] bg-white hover:border-stone-400"
+                      )}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-xs font-black uppercase text-amber-950 flex items-center gap-1">
+                          🟡 Misturado
+                        </span>
+                        {simuladoQuestionOriginMode === 'misturado' && (
+                          <Badge className="bg-amber-600 text-white text-[8px] font-bold uppercase px-1.5 py-0.2">Ativo</Badge>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-stone-600 leading-normal font-medium">
+                        Combina questões inéditas do acervo com questões já feitas.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Momento do Feedback Instantâneo vs Gabarito ao Final */}
+                <div className="space-y-3">
+                  <span className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">
+                    4. Momento do Feedback & Comentários
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button
@@ -4510,7 +4698,7 @@ export default function QuestionModule({
                       <div className="space-y-0.5">
                         <h4 className="text-xs font-black uppercase text-[#1A1A1A]">Feedback Instantâneo</h4>
                         <p className="text-[10px] text-[#666] leading-relaxed">
-                          Mostra o gabarito oficial e a explicação do preceptor logo após responder cada questão.
+                          Mostra a resposta e o comentário do preceptor imediatamente ao escolher a alternativa.
                         </p>
                       </div>
                     </button>
@@ -4534,19 +4722,20 @@ export default function QuestionModule({
                       <div className="space-y-0.5">
                         <h4 className="text-xs font-black uppercase text-[#1A1A1A]">Gabarito ao Final</h4>
                         <p className="text-[10px] text-[#666] leading-relaxed">
-                          Modo Prova com cronômetro. O boletim completo é liberado ao encerramento.
+                          Modo Prova com cronômetro. O boletim completo é liberado ao encerramento do simulado.
                         </p>
                       </div>
                     </button>
                   </div>
                 </div>
 
-                {/* 3. Opções de Filtro & Transparência do Acervo Inédito */}
+                {/* 5. Transparência de Custos & Liberação em Blocos */}
                 {(() => {
                   const answeredSet = new Set(userProgress?.answeredQuestionIds || []);
                   let targetTotal = 0;
                   let availableInAcervo = 0;
                   let availableUnansweredInAcervo = 0;
+                  let availableAnsweredInAcervo = 0;
 
                   if (simuladoMode === 'banca-year' && totalBancaYearSelectedCount > 0) {
                     targetTotal = totalBancaYearSelectedCount;
@@ -4559,7 +4748,9 @@ export default function QuestionModule({
                           const list: Question[] = JSON.parse(cached);
                           if (Array.isArray(list)) {
                             availableInAcervo += list.length;
-                            availableUnansweredInAcervo += list.filter(q => !answeredSet.has(q.id)).length;
+                            const unans = list.filter(q => !answeredSet.has(q.id)).length;
+                            availableUnansweredInAcervo += unans;
+                            availableAnsweredInAcervo += list.length - unans;
                           }
                         }
                       } catch (e) {}
@@ -4574,7 +4765,9 @@ export default function QuestionModule({
                           const list: Question[] = JSON.parse(cached);
                           if (Array.isArray(list)) {
                             availableInAcervo += list.length;
-                            availableUnansweredInAcervo += list.filter(q => !answeredSet.has(q.id)).length;
+                            const unans = list.filter(q => !answeredSet.has(q.id)).length;
+                            availableUnansweredInAcervo += unans;
+                            availableAnsweredInAcervo += list.length - unans;
                           }
                         }
                       } catch (e) {}
@@ -4583,97 +4776,68 @@ export default function QuestionModule({
                     targetTotal = 15;
                   }
 
-                  const availableToUse = filterUnanswered ? availableUnansweredInAcervo : availableInAcervo;
+                  let availableToUse = availableInAcervo;
+                  if (simuladoQuestionOriginMode === 'ineditas') {
+                    availableToUse = availableUnansweredInAcervo;
+                  } else if (simuladoQuestionOriginMode === 'feitas') {
+                    availableToUse = availableAnsweredInAcervo;
+                  }
+
                   const missingToFetch = Math.max(0, targetTotal - availableToUse);
                   const estimatedCostCredits = missingToFetch > 0 ? Math.ceil((missingToFetch / 5) * 3) : 0;
 
                   return (
-                    <>
-                      <div className="p-4 rounded-2xl bg-white border border-[#E2E0D9] space-y-3">
-                        <div className="flex items-center justify-between">
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <div
-                              onClick={() => setFilterUnanswered(!filterUnanswered)}
-                              className={cn(
-                                "w-10 h-6 rounded-full transition-colors relative",
-                                filterUnanswered ? "bg-emerald-600" : "bg-[#E2E0D9]"
-                              )}
-                            >
-                              <div
-                                className={cn(
-                                  "absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform",
-                                  filterUnanswered ? "translate-x-4" : ""
-                                )}
-                              />
-                            </div>
-                            <div>
-                              <span className="text-xs font-bold text-[#1A1A1A] block">
-                                Priorizar apenas questões inéditas (Não respondidas)
-                              </span>
-                              <span className="text-[10px] text-[#666] block mt-0.5">
-                                Reaproveita questões salvas no acervo que você ainda não fez.
-                              </span>
-                            </div>
-                          </label>
-                          <Badge variant="outline" className="text-[9px] font-black uppercase bg-emerald-50 text-emerald-800 border-emerald-200 shrink-0">
-                            {availableUnansweredInAcervo > 0 ? `${availableUnansweredInAcervo} no acervo` : 'Inéditas via IA'}
-                          </Badge>
-                        </div>
+                    <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black uppercase text-amber-950 flex items-center gap-1.5">
+                          <Coins className="w-4 h-4 text-amber-600" />
+                          Resumo & Transparência de Custos AI
+                        </span>
+                        <Badge className="bg-amber-600 text-white text-[9px] font-black uppercase">
+                          {estimatedCostCredits > 0 ? `~${estimatedCostCredits} Créditos AI` : '0 Créditos Extra'}
+                        </Badge>
                       </div>
 
-                      {/* 4. Transparência de Custo & Liberação em Blocos */}
-                      <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black uppercase text-amber-950 flex items-center gap-1.5">
-                            <Coins className="w-4 h-4 text-amber-600" />
-                            Transparência de Custos & Liberação em Blocos
-                          </span>
-                          <Badge className="bg-amber-600 text-white text-[9px] font-black uppercase">
-                            {estimatedCostCredits > 0 ? `~${estimatedCostCredits} Créditos AI` : '0 Créditos Extra'}
-                          </Badge>
+                      <div className="p-3 rounded-xl bg-white/80 border border-amber-200/80 text-xs space-y-1.5 text-stone-800 font-medium">
+                        <div className="flex justify-between items-center">
+                          <span>Target do Simulado Semanal:</span>
+                          <span className="font-bold">{targetTotal} questões</span>
                         </div>
-
-                        <div className="p-3 rounded-xl bg-white/80 border border-amber-200/80 text-xs space-y-1.5 text-stone-800 font-medium">
-                          <div className="flex justify-between items-center">
-                            <span>Target total do simulado:</span>
-                            <span className="font-bold">{targetTotal} questões</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span>Inéditas já prontas no acervo (Custo Zero):</span>
-                            <span className="font-bold text-emerald-700">+{availableToUse} questões (0 Créditos)</span>
-                          </div>
-                          {missingToFetch > 0 ? (
-                            <div className="flex justify-between items-center pt-1 border-t border-stone-200/60 font-bold text-amber-950">
-                              <span>Novas questões a buscar via IA:</span>
-                              <span className="text-amber-800">+{missingToFetch} questões (~{estimatedCostCredits} Créditos)</span>
-                            </div>
-                          ) : (
-                            <div className="flex justify-between items-center pt-1 border-t border-stone-200/60 font-bold text-emerald-800">
-                              <span>Status do acervo:</span>
-                              <span>100% Coberto sem custo adicional!</span>
-                            </div>
-                          )}
+                        <div className="flex justify-between items-center">
+                          <span>Questões no acervo ({simuladoQuestionOriginMode}):</span>
+                          <span className="font-bold text-emerald-700">+{availableToUse} questões (0 Créditos)</span>
                         </div>
-
-                        <p className="text-[11px] text-amber-900/90 leading-relaxed font-medium">
-                          💡 <em>Se houver questões no acervo para estes tópicos que você ainda não respondeu, elas serão utilizadas a custo zero. Caso precise de mais para atingir o número escolhido, o sistema buscará novas questões e as liberará em blocos sem travar sua experiência.</em>
-                        </p>
-
-                        {missingToFetch > 0 && (
-                          <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={acceptMissingFetch}
-                              onChange={(e) => setAcceptMissingFetch(e.target.checked)}
-                              className="rounded text-amber-600 focus:ring-amber-500"
-                            />
-                            <span className="text-xs font-bold text-amber-950">
-                              Aceitar buscar as {missingToFetch} questões faltantes (~{estimatedCostCredits} Créditos)
-                            </span>
-                          </label>
+                        {missingToFetch > 0 ? (
+                          <div className="flex justify-between items-center pt-1 border-t border-stone-200/60 font-bold text-amber-950">
+                            <span>Novas questões a buscar via IA:</span>
+                            <span className="text-amber-800">+{missingToFetch} questões (~{estimatedCostCredits} Créditos)</span>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between items-center pt-1 border-t border-stone-200/60 font-bold text-emerald-800">
+                            <span>Status do acervo:</span>
+                            <span>100% Coberto sem custo adicional!</span>
+                          </div>
                         )}
                       </div>
-                    </>
+
+                      <p className="text-[11px] text-amber-900/90 leading-relaxed font-medium">
+                        💡 <em>O simulado iniciará imediatamente com as questões encontradas no acervo local e buscará o restante em blocos em segundo plano sem interromper seu teste.</em>
+                      </p>
+
+                      {missingToFetch > 0 && (
+                        <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={acceptMissingFetch}
+                            onChange={(e) => setAcceptMissingFetch(e.target.checked)}
+                            className="rounded text-amber-600 focus:ring-amber-500"
+                          />
+                          <span className="text-xs font-bold text-amber-950">
+                            Aceitar buscar as {missingToFetch} questões faltantes (~{estimatedCostCredits} Créditos)
+                          </span>
+                        </label>
+                      )}
+                    </div>
                   );
                 })()}
 

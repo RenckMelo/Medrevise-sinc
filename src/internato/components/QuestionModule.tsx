@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { CheckCircle2, XCircle, ChevronRight, ChevronLeft, ArrowLeft, HelpCircle, Trophy, RefreshCcw, Sparkles, Loader2, Clock, Filter, Layers, Brain, BookCheck, RotateCcw, List, Bookmark, Trash2, SlidersHorizontal, AlertCircle, Building2, Calendar, Eye, Search, Plus, Check, Pause, Play, PauseCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, ChevronRight, ChevronLeft, ArrowLeft, HelpCircle, Trophy, RefreshCcw, Sparkles, Loader2, Clock, Filter, Layers, Brain, BookCheck, RotateCcw, List, Bookmark, Trash2, SlidersHorizontal, AlertCircle, Building2, Calendar, Eye, Search, Plus, Check, Pause, Play, PauseCircle, Zap, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { db, collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove, addDoc, setDoc, getDoc, increment, orderBy, limit, deleteDoc } from '../firebase';
@@ -178,6 +178,23 @@ export default function QuestionModule({
   const [filterOnlyErrors, setFilterOnlyErrors] = useState(false);
   const [quizMode, setQuizMode] = useState<'study' | 'exam'>('study');
   const [timerType, setTimerType] = useState<'up' | 'down'>('up');
+  const [matrixViewMode, setMatrixViewMode] = useState<'table' | 'cards'>('table');
+  const [savedFocusTrigger, setSavedFocusTrigger] = useState(0);
+  const [isSimuladoModalOpen, setIsSimuladoModalOpen] = useState(false);
+  const [simuladoFeedbackMode, setSimuladoFeedbackMode] = useState<'instant' | 'end'>('instant');
+  const [acceptMissingFetch, setAcceptMissingFetch] = useState(true);
+
+  useEffect(() => {
+    const handleSettingsUpdate = () => {
+      setSavedFocusTrigger(c => c + 1);
+    };
+    window.addEventListener('medrevise_settings_updated', handleSettingsUpdate);
+    window.addEventListener('storage', handleSettingsUpdate);
+    return () => {
+      window.removeEventListener('medrevise_settings_updated', handleSettingsUpdate);
+      window.removeEventListener('storage', handleSettingsUpdate);
+    };
+  }, []);
   const [countdownMinutes, setCountdownMinutes] = useState(15);
   const [secondsRemaining, setSecondsRemaining] = useState(15 * 60);
   const [examAnswers, setExamAnswers] = useState<Record<string, number>>({});
@@ -656,32 +673,33 @@ export default function QuestionModule({
   };
 
   const candidatePreferredBancas = React.useMemo(() => {
-    let focus = (userProgress as any)?.settings?.residencyFocus;
+    let focus = safeLocalStorageGet('user_residency_focus');
     if (!focus) {
-      try {
-        focus = safeLocalStorageGet('user_residency_focus') || '';
-      } catch (e) {}
+      focus = (userProgress as any)?.settings?.residencyFocus || (userProgress as any)?.residencyFocus;
     }
     if (!focus || !focus.trim()) {
       focus = "ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS";
     }
     const knownBancas = [
       'ENARE', 'SES-DF', 'SES-GO', 'SUS-GO', 'UFG', 'UnB', 'HBDF',
-      'USP', 'UNIFESP', 'UNICAMP', 'SUS-SP', 'PSU-MG', 'AMRIGS', 'AMP',
-      'SURCE', 'ISCMBP', 'FCMSCSP', 'UERJ', 'IAMSPE'
+      'USP', 'USP-SP', 'UNIFESP', 'UNICAMP', 'SUS-SP', 'PSU-MG', 'AMRIGS', 'AMP',
+      'SURCE', 'ISCMBP', 'FCMSCSP', 'UERJ', 'IAMSPE', 'ALBERT EINSTEIN', 'SÍRIO-LIBANÊS', 'SIRIO-LIBANES'
     ];
     const upper = focus.toUpperCase();
     const matched = knownBancas.filter(b => upper.includes(b.toUpperCase()));
     if (matched.length > 0) return Array.from(new Set(matched));
     
     const parts = focus.split(/[,;\/]+/).map(s => s.trim()).filter(Boolean);
-    return parts.length > 0 ? parts : ['ENARE', 'USP', 'UNICAMP', 'PSU-MG', 'SES-DF'];
-  }, [userProgress]);
+    return parts.length > 0 ? parts : ['ENARE', 'USP-SP', 'UNICAMP', 'PSU-MG'];
+  }, [userProgress, savedFocusTrigger]);
 
-  const ALL_NATIONAL_BANCAS = [
-    'ENARE', 'SES-DF', 'SES-GO', 'USP', 'UNIFESP', 'UNICAMP', 'SUS-SP',
-    'PSU-MG', 'AMRIGS', 'AMP', 'SURCE', 'UFG', 'UnB', 'HBDF', 'UERJ', 'IAMSPE'
-  ];
+  const ALL_NATIONAL_BANCAS = React.useMemo(() => {
+    const baseList = [
+      'ENARE', 'USP-SP', 'UNICAMP', 'UNIFESP', 'SUS-SP', 'PSU-MG', 'SES-DF', 'SES-GO',
+      'AMRIGS', 'AMP', 'SURCE', 'UFG', 'UnB', 'HBDF', 'UERJ', 'IAMSPE'
+    ];
+    return Array.from(new Set([...candidatePreferredBancas, ...baseList]));
+  }, [candidatePreferredBancas]);
 
   const parseBancaAndYear = (source?: string): { banca: string; year: number | null } => {
     if (!source) return { banca: 'Geral', year: null };
@@ -3247,28 +3265,28 @@ export default function QuestionModule({
           {/* SELETOR DE METODOLOGIA DO SIMULADO */}
           <div className="space-y-4">
             <span className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">Metodologia do Simulado</span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
               
               {/* 1. Custom / Personalizado */}
               <button
                 type="button"
                 onClick={() => setSimuladoMode('custom')}
                 className={cn(
-                  "p-5 text-left rounded-2xl border transition-all flex flex-col justify-between gap-4 h-32 bg-white",
+                  "p-4 sm:p-5 text-left rounded-2xl border transition-all flex flex-col justify-between gap-3 min-h-[130px] h-full bg-white",
                   simuladoMode === 'custom'
-                    ? "border-primary ring-2 ring-primary/10 shadow-sm"
-                    : "border-[#E2E0D9] hover:border-[#8E8A82]/50"
+                    ? "border-[#1A1A1A] ring-2 ring-[#1A1A1A]/10 shadow-sm bg-stone-50/50"
+                    : "border-[#E2E0D9] hover:border-stone-400"
                 )}
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="p-1.5 rounded-xl bg-orange-50 border border-orange-100">
-                    <SlidersHorizontal className="w-4 h-4 text-orange-600" />
+                  <div className="p-1.5 rounded-xl bg-amber-50 border border-amber-200 shrink-0">
+                    <SlidersHorizontal className="w-4 h-4 text-amber-700" />
                   </div>
-                  {simuladoMode === 'custom' && <Badge className="bg-primary hover:bg-primary text-white text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full shrink-0">Ativo</Badge>}
+                  {simuladoMode === 'custom' && <Badge className="bg-[#1A1A1A] text-white text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full shrink-0">Ativo</Badge>}
                 </div>
-                <div className="space-y-0.5">
-                  <h4 className="text-[11px] uppercase tracking-wider font-black text-[#1A1A1A]">Filtro Personalizado</h4>
-                  <p className="text-[9px] text-[#8E8A82] leading-normal font-medium">Selecione matérias, temas específicos e pesos de questões livremente.</p>
+                <div className="space-y-1">
+                  <h4 className="text-xs uppercase tracking-wider font-black text-[#1A1A1A]">Filtro Personalizado</h4>
+                  <p className="text-[11px] text-[#666] leading-relaxed font-normal">Selecione matérias, temas específicos e pesos de questões livremente.</p>
                 </div>
               </button>
 
@@ -3277,28 +3295,28 @@ export default function QuestionModule({
                 type="button"
                 onClick={() => setSimuladoMode('banca-year')}
                 className={cn(
-                  "p-5 text-left rounded-2xl border transition-all flex flex-col justify-between gap-4 h-32 bg-white relative overflow-hidden",
+                  "p-4 sm:p-5 text-left rounded-2xl border transition-all flex flex-col justify-between gap-3 min-h-[130px] h-full bg-white relative overflow-hidden",
                   simuladoMode === 'banca-year'
-                    ? "border-purple-600 ring-2 ring-purple-600/10 shadow-sm"
-                    : "border-[#E2E0D9] hover:border-purple-500/40"
+                    ? "border-[#1A1A1A] ring-2 ring-[#1A1A1A]/10 shadow-sm bg-stone-50/50"
+                    : "border-[#E2E0D9] hover:border-stone-400"
                 )}
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="p-1.5 rounded-xl bg-purple-50 border border-purple-100">
-                    <Building2 className="w-4 h-4 text-purple-600" />
+                  <div className="p-1.5 rounded-xl bg-amber-50 border border-amber-200 shrink-0">
+                    <Building2 className="w-4 h-4 text-amber-700" />
                   </div>
                   {simuladoMode === 'banca-year' ? (
-                    <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full shrink-0">Ativo</Badge>
+                    <Badge className="bg-[#1A1A1A] text-white text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full shrink-0">Ativo</Badge>
                   ) : (
-                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-full shrink-0 gap-0.5">
+                    <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full shrink-0 gap-0.5">
                       <Sparkles className="w-2.5 h-2.5 fill-amber-600 text-amber-600" />
                       Bancas Foco
                     </Badge>
                   )}
                 </div>
-                <div className="space-y-0.5">
-                  <h4 className="text-[11px] uppercase tracking-wider font-black text-[#1A1A1A]">Matriz por Banca & Ano</h4>
-                  <p className="text-[9px] text-[#8E8A82] leading-normal font-medium">Veja disponibilidade e defina quantidades por ano com destaque para suas bancas preferidas.</p>
+                <div className="space-y-1">
+                  <h4 className="text-xs uppercase tracking-wider font-black text-[#1A1A1A]">Matriz por Banca & Ano</h4>
+                  <p className="text-[11px] text-[#666] leading-relaxed font-normal">Veja disponibilidade e defina quantidades por ano para suas bancas preferidas.</p>
                 </div>
               </button>
 
@@ -3307,21 +3325,21 @@ export default function QuestionModule({
                 type="button"
                 onClick={() => setSimuladoMode('ai-errors')}
                 className={cn(
-                  "p-5 text-left rounded-2xl border transition-all flex flex-col justify-between gap-4 h-32 bg-white",
+                  "p-4 sm:p-5 text-left rounded-2xl border transition-all flex flex-col justify-between gap-3 min-h-[130px] h-full bg-white",
                   simuladoMode === 'ai-errors'
-                    ? "border-red-500 ring-2 ring-red-500/10 shadow-sm"
-                    : "border-[#E2E0D9] hover:border-[#8E8A82]/50"
+                    ? "border-[#1A1A1A] ring-2 ring-[#1A1A1A]/10 shadow-sm bg-stone-50/50"
+                    : "border-[#E2E0D9] hover:border-stone-400"
                 )}
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="p-1.5 rounded-xl bg-red-50 border border-red-100">
+                  <div className="p-1.5 rounded-xl bg-red-50 border border-red-100 shrink-0">
                     <Brain className="w-4 h-4 text-red-600" />
                   </div>
-                  {simuladoMode === 'ai-errors' && <Badge className="bg-red-500 hover:bg-red-500 text-white text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full shrink-0">Ativo</Badge>}
+                  {simuladoMode === 'ai-errors' && <Badge className="bg-[#1A1A1A] text-white text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full shrink-0">Ativo</Badge>}
                 </div>
-                <div className="space-y-0.5">
-                  <h4 className="text-[11px] uppercase tracking-wider font-black text-[#1A1A1A]">Erros do Último Mês (IA)</h4>
-                  <p className="text-[9px] text-[#8E8A82] leading-normal font-medium">Reúne de forma autônoma as matérias onde você mais cometeu erros recentemente.</p>
+                <div className="space-y-1">
+                  <h4 className="text-xs uppercase tracking-wider font-black text-[#1A1A1A]">Erros do Mês (IA)</h4>
+                  <p className="text-[11px] text-[#666] leading-relaxed font-normal">Reúne de forma autônoma as matérias onde você mais cometeu erros recentemente.</p>
                 </div>
               </button>
 
@@ -3330,21 +3348,21 @@ export default function QuestionModule({
                 type="button"
                 onClick={() => setSimuladoMode('official-ratio')}
                 className={cn(
-                  "p-5 text-left rounded-2xl border transition-all flex flex-col justify-between gap-4 h-32 bg-white",
+                  "p-4 sm:p-5 text-left rounded-2xl border transition-all flex flex-col justify-between gap-3 min-h-[130px] h-full bg-white",
                   simuladoMode === 'official-ratio'
-                    ? "border-amber-500 ring-2 ring-amber-500/10 shadow-sm"
-                    : "border-[#E2E0D9] hover:border-[#8E8A82]/50"
+                    ? "border-[#1A1A1A] ring-2 ring-[#1A1A1A]/10 shadow-sm bg-stone-50/50"
+                    : "border-[#E2E0D9] hover:border-stone-400"
                 )}
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="p-1.5 rounded-xl bg-amber-50 border border-amber-100">
-                    <Trophy className="w-4 h-4 text-amber-600" />
+                  <div className="p-1.5 rounded-xl bg-amber-50 border border-amber-200 shrink-0">
+                    <Trophy className="w-4 h-4 text-amber-700" />
                   </div>
-                  {simuladoMode === 'official-ratio' && <Badge className="bg-amber-500 hover:bg-amber-500 text-white text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full shrink-0">Ativo</Badge>}
+                  {simuladoMode === 'official-ratio' && <Badge className="bg-[#1A1A1A] text-white text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full shrink-0">Ativo</Badge>}
                 </div>
-                <div className="space-y-0.5">
-                  <h4 className="text-[11px] uppercase tracking-wider font-black text-[#1A1A1A]">Distribuição de Banca</h4>
-                  <p className="text-[9px] text-[#8E8A82] leading-normal font-medium">Cria provas com a exata equivalência e peso de editais reais como SES-DF e ENARE.</p>
+                <div className="space-y-1">
+                  <h4 className="text-xs uppercase tracking-wider font-black text-[#1A1A1A]">Distribuição de Banca</h4>
+                  <p className="text-[11px] text-[#666] leading-relaxed font-normal">Cria provas com a exata equivalência e peso de editais reais como ENARE e USP.</p>
                 </div>
               </button>
 
@@ -3811,356 +3829,397 @@ export default function QuestionModule({
 
           {/* MODO: MATRIZ POR BANCA & ANO */}
           {simuladoMode === 'banca-year' && (
-            <div className="bg-[#FAF8F5] p-6 sm:p-8 rounded-2xl border border-purple-200/80 space-y-8 animate-fade-in">
-              {/* Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-purple-100 pb-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2.5 rounded-xl bg-purple-100 border border-purple-200 text-purple-700 shrink-0">
+            <div className="bg-[#FAF8F5] p-5 sm:p-7 rounded-2xl border border-[#E2E0D9] space-y-6 animate-fade-in shadow-xs">
+              {/* Header com Alternador de Visão */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E2E0D9] pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-[#1A1A1A] text-white shadow-xs shrink-0">
                     <Building2 className="w-5 h-5" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm uppercase tracking-widest font-black text-purple-950">Matriz Granular por Banca & Ano</h3>
-                      <Badge className="bg-purple-600 text-white text-[8px] uppercase tracking-wider font-extrabold px-2 py-0.5">Fidelidade Verbatim 100%</Badge>
+                      <h3 className="text-sm uppercase tracking-widest font-black text-[#1A1A1A]">Matriz Granular por Banca & Ano</h3>
+                      <Badge className="bg-[#1A1A1A] text-white text-[8px] uppercase tracking-wider font-extrabold px-2 py-0.5">Verbatim 100%</Badge>
                     </div>
-                    <p className="text-[10px] text-purple-800/80 font-medium mt-0.5">
-                      Audite a quantidade exata de questões disponíveis por banca e ano e recupere questões reais idênticas às aplicadas nas provas oficiais.
+                    <p className="text-[11px] text-[#8E8A82] font-medium mt-0.5">
+                      Audite o acervo e selecione a quantidade exata de questões oficiais reais aplicadas em cada prova.
                     </p>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                {/* Seletor do Modo de Exibição (Tabela vs Cards) */}
+                <div className="bg-stone-100 p-1 rounded-xl flex items-center border border-[#E2E0D9] shrink-0 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setMatrixViewMode('table')}
+                    className={cn(
+                      "px-3.5 py-1.5 text-xs font-black rounded-lg transition-all flex items-center gap-1.5",
+                      matrixViewMode === 'table'
+                        ? "bg-[#1A1A1A] text-white shadow-2xs"
+                        : "text-stone-700 hover:bg-stone-200/60"
+                    )}
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    📊 Tabela Matriz
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMatrixViewMode('cards')}
+                    className={cn(
+                      "px-3.5 py-1.5 text-xs font-black rounded-lg transition-all flex items-center gap-1.5",
+                      matrixViewMode === 'cards'
+                        ? "bg-[#1A1A1A] text-white shadow-2xs"
+                        : "text-stone-700 hover:bg-stone-200/60"
+                    )}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    🎴 Cards
+                  </button>
+                </div>
+              </div>
+
+              {/* CARD DEDICADO DE AÇÕES RÁPIDAS (LIVRE DE SCROLL E VISÍVEL EM QUALQUER TELA) */}
+              <div className="p-4 rounded-xl bg-white border border-[#E2E0D9] shadow-2xs space-y-3">
+                <div className="flex items-center justify-between border-b border-[#E2E0D9]/60 pb-2">
+                  <span className="text-[10px] uppercase font-black tracking-widest text-[#1A1A1A] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-600" />
+                    Ações Rápidas & Preenchimento Automático
+                  </span>
+                  {Object.keys(bancaYearSelection).length > 0 && (
+                    <span className="text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                      {totalBancaYearSelectedCount} questão(ões) selecionada(s)
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
                     onClick={() => applyPreferredBancasPreset(2)}
-                    className="h-9 text-xs font-bold border-amber-300 bg-amber-50/80 text-amber-900 hover:bg-amber-100/80 gap-1.5"
+                    className="h-10 text-xs font-bold border-amber-300 bg-amber-50/90 text-amber-950 hover:bg-amber-100 gap-1.5 justify-center shadow-2xs"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-600" />
-                    +2 de Cada Ano (Bancas Foco)
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-600 shrink-0" />
+                    +2 / Ano (Foco)
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     onClick={() => selectAllAvailableGlobal(candidatePreferredBancas)}
-                    className="h-9 text-xs font-bold bg-purple-700 hover:bg-purple-800 text-white gap-1.5 shadow-sm"
+                    className="h-10 text-xs font-bold bg-[#1A1A1A] hover:bg-stone-800 text-white gap-1.5 justify-center shadow-2xs"
                   >
-                    ➕ Adicionar Todas Disponíveis (Que Já Tenho / Acervo)
+                    ➕ Todas Disponíveis
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     onClick={() => selectUnansweredGlobal(candidatePreferredBancas)}
-                    className="h-9 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white gap-1.5 shadow-sm"
+                    className="h-10 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white gap-1.5 justify-center shadow-2xs"
                   >
-                    🎯 Selecionar Apenas Não Feitas (Que Não Fiz Ainda)
+                    🎯 Apenas Não Feitas
                   </Button>
-                  {Object.keys(bancaYearSelection).length > 0 && (
+                  {Object.keys(bancaYearSelection).length > 0 ? (
                     <Button
                       type="button"
                       size="sm"
-                      variant="ghost"
+                      variant="outline"
                       onClick={() => setBancaYearSelection({})}
-                      className="h-9 text-xs font-medium text-stone-500 hover:text-red-600 gap-1"
+                      className="h-10 text-xs font-bold text-red-700 border-red-200 bg-red-50 hover:bg-red-100 gap-1.5 justify-center"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5 shrink-0" />
                       Limpar Seleção
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={runBancaYearAudit}
+                      className="h-10 text-xs font-bold border-[#E2E0D9] bg-stone-50 hover:bg-stone-100 text-[#1A1A1A] gap-1.5 justify-center"
+                    >
+                      <Search className="w-3.5 h-3.5 shrink-0" />
+                      Auditar Acervo
                     </Button>
                   )}
                 </div>
               </div>
 
-              {/* CARD DE AUDITORIA DE DISPONIBILIDADE COM CUSTO DE CRÉDITOS */}
-              <div className="p-5 rounded-xl bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-purple-700/50">
-                <div className="space-y-1.5 max-w-xl">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1 rounded bg-purple-500/30 text-purple-200">
-                      <Search className="w-4 h-4 text-purple-300" />
-                    </span>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-purple-100">
-                      Auditoria de Disponibilidade do Acervo Oficial por Banca & Ano
+              {/* BANNER PROMINENTE DO TÓPICO / ÁREA SELECIONADA DA MATRIZ */}
+              <div className="p-4 rounded-xl bg-[#1A1A1A] text-white border border-stone-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-500 text-[#1A1A1A] font-black shrink-0 shadow-2xs">
+                    <Bookmark className="w-5 h-5 fill-[#1A1A1A] text-[#1A1A1A]" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-black tracking-widest text-stone-300">
+                        📌 Tópico / Alvo da Matriz
+                      </span>
+                      <Badge className="bg-amber-500 text-[#1A1A1A] text-[9px] font-black uppercase tracking-wider px-2 py-0.2">
+                        {selectedTopicIds.length > 0
+                          ? `${selectedTopicIds.length} Tópico(s) Ativo(s)`
+                          : selectedSubjectIds.length > 0
+                          ? `${selectedSubjectIds.length} Área(s) Ativa(s)`
+                          : 'Geral (Todos)'}
+                      </Badge>
+                    </div>
+                    <h4 className="text-sm font-black text-white leading-tight">
+                      {selectedTopicIds.length > 0 ? (
+                        topics
+                          .filter(t => selectedTopicIds.includes(t.id))
+                          .map(t => t.title || (t as any).name || t.id)
+                          .join(', ')
+                      ) : selectedSubjectIds.length > 0 ? (
+                        subjects
+                          .filter(s => selectedSubjectIds.includes(s.id))
+                          .map(s => s.name)
+                          .join(', ')
+                      ) : (
+                        'Todos os Tópicos (Selecione um tópico específico no painel de matérias/tópicos acima para auditar por tema)'
+                      )}
                     </h4>
-                    <Badge className="bg-amber-400 text-purple-950 font-black text-[9px] px-2 py-0.5 gap-1">
-                      <Sparkles className="w-3 h-3 text-purple-950 fill-purple-950" />
-                      Custo: 5 Créditos
+                  </div>
+                </div>
+
+                {selectedTopicIds.length === 0 && selectedSubjectIds.length === 0 && (
+                  <div className="text-[10px] font-extrabold text-amber-300 bg-stone-900 border border-amber-500/40 px-3 py-1.5 rounded-lg shrink-0">
+                    💡 Dica: Marque tópicos ou matérias para filtrar por tema!
+                  </div>
+                )}
+              </div>
+
+              {/* CARD DE AUDITORIA DE DISPONIBILIDADE DO ACERVO */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-[#1A1A1A] via-[#262626] to-[#1A1A1A] text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-stone-800">
+                <div className="space-y-1 max-w-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 rounded bg-stone-800 text-stone-200">
+                      <Search className="w-4 h-4 text-amber-400" />
+                    </span>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-stone-100">
+                      Auditoria de Disponibilidade do Acervo Oficial
+                    </h4>
+                    <Badge className="bg-amber-500 text-[#1A1A1A] font-black text-[9px] px-2 py-0.5 gap-1">
+                      <Sparkles className="w-3 h-3 text-[#1A1A1A] fill-[#1A1A1A]" />
+                      5 Créditos
                     </Badge>
                   </div>
-                  <p className="text-[11px] text-purple-200/90 leading-relaxed">
-                    Executa uma varredura profunda no acervo local e nos arquivos oficiais da IA para mapear o número exato de questões reais aplicadas entre 2021 e 2026 para os tópicos selecionados.
+                  <p className="text-[11px] text-stone-300 leading-relaxed font-normal">
+                    Realiza uma varredura rigorosa e mapeia a quantidade real de questões oficiais aplicadas de 2021 a 2026 nos temas selecionados.
                   </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-                  <Button
-                    type="button"
-                    onClick={handleRunAvailabilityAudit}
-                    disabled={runningAudit}
-                    className="h-10 px-5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-purple-950 font-black text-xs rounded-xl shadow-lg transition-all gap-2 disabled:opacity-50"
-                  >
-                    {runningAudit ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Auditando Acervo (5 cr)...
-                      </>
-                    ) : (
-                      <>
-                        <Search className="w-4 h-4" />
-                        {auditExecuted ? 'Refazer Auditoria de Disponibilidade (5 cr)' : 'Auditar Quantidade Disponível (5 cr)'}
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              {/* BANNER DE FIEL REPRODUÇÃO VERBATIM DESSAS QUESTÕES */}
-              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 flex items-start gap-3">
-                <div className="p-1.5 rounded-lg bg-emerald-600 text-white shrink-0 mt-0.5">
-                  <BookCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <h5 className="text-xs font-black text-emerald-950 uppercase tracking-wide">
-                    📜 Garantia de Fidelidade Verbatim Exata às Provas Oficiais
-                  </h5>
-                  <p className="text-[11px] text-emerald-900/90 font-medium leading-relaxed mt-0.5">
-                    Todas as questões obtidas neste modo são recuperadas na íntegra palavra por palavra exatamente como foram aplicadas na prova original da banca no ano selecionado (caso clínico, exames laboratoriais, valores de referência e alternativas A, B, C, D sem nenhum resumo ou alteração), permitindo conferência posterior com qualquer caderno de provas em PDF ou gabarito oficial.
-                  </p>
-                </div>
-              </div>
-
-              {/* Banner de Destaque das Bancas de Preferência do Candidato */}
-              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-300/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-amber-500 text-white shrink-0 shadow-sm">
-                    <Trophy className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black uppercase text-amber-950 tracking-wider">Suas Bancas de Preferência (Foco do Perfil)</span>
-                      <Badge className="bg-amber-500 text-white text-[8px] font-extrabold">Prioridade Alta</Badge>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                      {candidatePreferredBancas.map((banca, idx) => (
-                        <Badge key={`pref-banca-badge-${banca}-${idx}`} className="bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-[10px] px-2 py-0.5 gap-1 shadow-2xs">
-                          <Sparkles className="w-3 h-3 text-amber-600 fill-amber-600" />
-                          {banca}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
                 <Button
                   type="button"
-                  size="sm"
-                  onClick={() => applyPreferredBancasPreset(5)}
-                  className="h-9 px-4 text-xs font-black bg-amber-500 hover:bg-amber-600 text-white shadow shrink-0 gap-1.5"
+                  onClick={handleRunAvailabilityAudit}
+                  disabled={runningAudit}
+                  className="h-10 px-5 bg-amber-500 hover:bg-amber-600 text-[#1A1A1A] font-black text-xs rounded-xl shadow-md transition-all gap-2 shrink-0 disabled:opacity-50"
                 >
-                  🎯 Selecionar 5 de Cada Ano (Bancas Foco)
+                  {runningAudit ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Auditando Acervo (5 cr)...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4" />
+                      {auditExecuted ? 'Refazer Auditoria (5 cr)' : 'Auditar Quantidade Disponível (5 cr)'}
+                    </>
+                  )}
                 </Button>
               </div>
 
-              {/* Filtro e busca de bancas */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="relative flex-1 max-w-sm">
+              {/* Barra de Busca e Filtro de Bancas */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-[#E2E0D9]">
+                <div className="relative flex-1 max-w-md">
                   <Search className="w-4 h-4 absolute left-3 top-2.5 text-stone-400" />
                   <input
                     type="text"
-                    placeholder="Filtrar banca (ex: ENARE, SES-DF, USP)..."
+                    placeholder="Filtrar banca (ex: ENARE, USP, SES-DF, PSU-MG)..."
                     value={bancaSearchTerm}
                     onChange={(e) => setBancaSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-stone-50 border border-[#E2E0D9] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A1A1A] font-medium"
                   />
                 </div>
-                <div className="text-[10px] font-bold text-stone-500 flex items-center gap-2">
-                  {runningAudit ? (
-                    <span className="flex items-center gap-1 text-purple-600 font-extrabold">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Auditando acervo com IA...
-                    </span>
-                  ) : auditExecuted ? (
-                    <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-1 rounded-md font-extrabold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Auditoria de acervo concluída (5 cr cobrados)
-                    </span>
-                  ) : (
-                    <span className="bg-amber-100/80 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-md font-bold">
-                      💡 Dica: Clique em "Auditar Quantidade Disponível (5 cr)" para visualizar o total exato por ano/banca
-                    </span>
-                  )}
-                </div>
-              </div>
 
-              {/* GRUPO 1: BANCAS DE PREFERÊNCIA DO CANDIDATO */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-amber-200 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <h4 className="text-xs uppercase tracking-wider font-black text-amber-950">
-                      ⭐ Bancas de Sua Preferência (Evidenciadas do Perfil)
-                    </h4>
-                  </div>
-                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
-                    {candidatePreferredBancas.length} bancas prioritárias
+                <div className="flex items-center gap-2 text-[10px] font-extrabold text-[#1A1A1A]">
+                  <span className="bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-600 fill-amber-600" />
+                    Bancas Foco Destacadas
+                  </span>
+                  <span className="bg-stone-100 text-stone-800 border border-[#E2E0D9] px-2.5 py-1 rounded-lg">
+                    {ALL_NATIONAL_BANCAS.length} Bancas Mapeadas
                   </span>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {candidatePreferredBancas
-                    .filter(banca => banca.toLowerCase().includes(bancaSearchTerm.toLowerCase()))
-                    .map((banca, bIdx) => {
-                      const years = [2026, 2025, 2024, 2023, 2022, 2021];
-                      const bancaTotalSelected = years.reduce((acc, year) => {
-                        const key = `${banca.toUpperCase()}_${year}`;
-                        return acc + (bancaYearSelection[key] || 0);
-                      }, 0);
-
-                      return (
-                        <div
-                          key={`pref-banca-card-${banca}-${bIdx}`}
-                          className="p-4 rounded-xl border border-amber-300 ring-2 ring-amber-400/20 bg-gradient-to-br from-amber-50/50 to-white flex flex-col justify-between gap-3 shadow-sm"
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-amber-100 pb-2.5 gap-2">
-                            <div className="flex items-center gap-2">
-                              <div className="p-1 rounded-md bg-amber-500 text-white shrink-0">
-                                <Sparkles className="w-3.5 h-3.5 fill-white" />
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <h5 className="text-xs font-black text-stone-900">{banca}</h5>
-                                <Badge className="bg-amber-500 text-white text-[8px] font-extrabold uppercase px-1.5 py-0.2">
-                                  Banca Foco
-                                </Badge>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={() => selectAllAvailableGlobal([banca])}
-                                className="text-[9px] font-extrabold text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200 px-2 py-0.5 rounded border border-purple-300 transition-colors"
-                              >
-                                + Todas Disp.
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => selectUnansweredGlobal([banca])}
-                                className="text-[9px] font-extrabold text-emerald-800 hover:text-emerald-950 bg-emerald-100/80 hover:bg-emerald-200 px-2 py-0.5 rounded border border-emerald-300 transition-colors"
-                              >
-                                🎯 Não Feitas
-                              </button>
-                              {bancaTotalSelected > 0 && (
-                                <Badge className="bg-purple-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full">
-                                  {bancaTotalSelected} selecionada{bancaTotalSelected > 1 ? 's' : ''}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Grid de anos */}
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {years.map((year, yIdx) => {
-                              const key = `${banca.toUpperCase()}_${year}`;
-                              const currentVal = bancaYearSelection[key] || 0;
-                              const localAvail = bancaYearCounts[key] || 0;
-                              const aiAvail = aiArchiveYearCounts[key] || 0;
-                              const totalAvail = getBancaYearTotalAvailable(key);
-                              const unansAvail = getBancaYearUnanswered(key);
-                              const hasAudit = auditExecuted;
-
-                              return (
-                                <div
-                                  key={`pref-year-${banca}-${year}-${yIdx}`}
-                                  className={cn(
-                                    "p-2 rounded-lg border text-xs flex flex-col justify-between gap-1.5 transition-all",
-                                    currentVal > 0
-                                      ? "bg-purple-50/90 border-purple-400 ring-1 ring-purple-300"
-                                      : "bg-white/80 border-stone-200"
-                                  )}
-                                >
-                                  <div className="flex flex-col gap-0.5">
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-extrabold text-[11px] text-stone-800">{year}</span>
-                                      {hasAudit ? (
-                                        <span className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-purple-100 text-purple-900 border border-purple-200">
-                                          {totalAvail} disp.
-                                        </span>
-                                      ) : (
-                                        <span className={cn(
-                                          "text-[8px] font-bold px-1 py-0.2 rounded",
-                                          localAvail > 0 ? "bg-emerald-100 text-emerald-800" : "bg-purple-100 text-purple-700"
-                                        )}>
-                                          {localAvail > 0 ? `${localAvail} local` : 'IA Verbatim'}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {hasAudit && (
-                                      <div className="flex items-center gap-1 justify-between mt-0.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => setBancaYearCount(banca, year, totalAvail)}
-                                          className="text-[8px] font-black text-purple-800 hover:text-purple-950 bg-purple-50 hover:bg-purple-100 px-1 py-0.2 rounded border border-purple-200"
-                                          title="Adicionar todas as disponíveis deste ano"
-                                        >
-                                          +Todas ({totalAvail})
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => setBancaYearCount(banca, year, unansAvail)}
-                                          className="text-[8px] font-black text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 px-1 py-0.2 rounded border border-emerald-300"
-                                          title="Selecionar apenas as que não fiz ainda"
-                                        >
-                                          🎯 Não Feita ({unansAvail})
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  <div className="flex items-center justify-between bg-stone-50 border border-stone-200 rounded-md p-0.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => setBancaYearCount(banca, year, currentVal - 1)}
-                                      disabled={currentVal <= 0}
-                                      className="w-5 h-5 flex items-center justify-center rounded text-stone-700 hover:bg-stone-200 disabled:opacity-30 disabled:hover:bg-transparent font-black"
-                                    >
-                                      -
-                                    </button>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max="50"
-                                      value={currentVal || 0}
-                                      onChange={(e) => setBancaYearCount(banca, year, parseInt(e.target.value, 10) || 0)}
-                                      className="w-8 text-center text-[11px] font-black focus:outline-none bg-transparent"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => setBancaYearCount(banca, year, currentVal + 1)}
-                                      className="w-5 h-5 flex items-center justify-center rounded bg-purple-600 text-white hover:bg-purple-700 font-black text-xs"
-                                    >
-                                      +
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
               </div>
 
-              {/* GRUPO 2: OUTRAS BANCAS NACIONAIS */}
-              <div className="space-y-4 pt-4 border-t border-purple-100">
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-stone-600" />
-                  <h4 className="text-xs uppercase tracking-wider font-black text-stone-800">
-                    🏛️ Outras Grandes Bancas Nacionais de Concurso
-                  </h4>
-                </div>
+              {/* MODO 1: VISÃO TABELA MATRIZ (LIMPÍSSIMA E ORGANIZADA) */}
+              {matrixViewMode === 'table' ? (
+                <div className="bg-white rounded-xl border border-[#E2E0D9] shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-[#1A1A1A] text-white sticky top-0 z-10 uppercase text-[10px] tracking-wider font-extrabold">
+                        <tr>
+                          <th className="p-3.5 border-b border-stone-800 min-w-[170px] sticky left-0 bg-[#1A1A1A] z-20">Banca / Concurso</th>
+                          <th className="p-3.5 border-b border-stone-800 text-center min-w-[130px]">Seleção Rápida</th>
+                          {[2026, 2025, 2024, 2023, 2022, 2021].map(year => (
+                            <th key={`th-year-${year}`} className="p-3.5 border-b border-stone-800 text-center min-w-[90px]">
+                              {year}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100 font-medium">
+                        {ALL_NATIONAL_BANCAS
+                          .filter(banca => banca.toLowerCase().includes(bancaSearchTerm.toLowerCase()))
+                          .sort((a, b) => {
+                            const isPrefA = candidatePreferredBancas.includes(a);
+                            const isPrefB = candidatePreferredBancas.includes(b);
+                            if (isPrefA && !isPrefB) return -1;
+                            if (!isPrefA && isPrefB) return 1;
+                            return a.localeCompare(b);
+                          })
+                          .map((banca, bIdx) => {
+                            const isPreferred = candidatePreferredBancas.includes(banca);
+                            const years = [2026, 2025, 2024, 2023, 2022, 2021];
+                            const bancaTotalSelected = years.reduce((acc, year) => {
+                              const key = `${banca.toUpperCase()}_${year}`;
+                              return acc + (bancaYearSelection[key] || 0);
+                            }, 0);
 
+                            return (
+                              <tr
+                                key={`matrix-row-${banca}-${bIdx}`}
+                                className={cn(
+                                  "hover:bg-amber-50/20 transition-colors",
+                                  isPreferred ? "bg-amber-50/40" : ""
+                                )}
+                              >
+                                {/* Nome da Banca */}
+                                <td className={cn(
+                                  "p-3.5 font-bold border-r border-stone-100 sticky left-0 z-10 shadow-2xs",
+                                  isPreferred ? "bg-amber-50/95" : "bg-white"
+                                )}>
+                                  <div className="flex items-center gap-2">
+                                    {isPreferred ? (
+                                      <span className="p-1 rounded bg-amber-500 text-white shrink-0 shadow-2xs" title="Banca de Preferência do Perfil">
+                                        <Sparkles className="w-3 h-3 fill-white" />
+                                      </span>
+                                    ) : (
+                                      <span className="p-1 rounded bg-stone-100 text-stone-600 shrink-0">
+                                        <Building2 className="w-3 h-3" />
+                                      </span>
+                                    )}
+                                    <div className="flex flex-col">
+                                      <span className="font-extrabold text-stone-900 text-xs">{banca}</span>
+                                      {isPreferred && (
+                                        <span className="text-[9px] text-amber-800 font-black uppercase tracking-wider">
+                                          Banca Foco
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Column 2: Seleção Rápida (Imediatamente visível sem rolagem) */}
+                                <td className="p-2.5 text-center border-r border-stone-100 bg-stone-50/30">
+                                  <div className="flex flex-col items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => selectAllAvailableGlobal([banca])}
+                                      className="text-[10px] font-extrabold text-[#1A1A1A] hover:bg-amber-500 hover:text-white bg-white px-2.5 py-1 rounded-md border border-[#E2E0D9] transition-all shadow-2xs w-full flex items-center justify-center gap-1"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      + Todas
+                                    </button>
+                                    {bancaTotalSelected > 0 && (
+                                      <Badge className="bg-[#1A1A1A] text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-2xs">
+                                        {bancaTotalSelected} q. sel.
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* Células de Anos (2026 .. 2021) */}
+                                {years.map((year) => {
+                                  const key = `${banca.toUpperCase()}_${year}`;
+                                  const currentVal = bancaYearSelection[key] || 0;
+                                  const localAvail = bancaYearCounts[key] || 0;
+                                  const totalAvail = getBancaYearTotalAvailable(key);
+                                  const isSelected = currentVal > 0;
+
+                                  return (
+                                    <td
+                                      key={`matrix-cell-${banca}-${year}`}
+                                      className={cn(
+                                        "p-2 text-center border-r border-stone-100 transition-colors",
+                                        isSelected ? "bg-amber-100/80" : ""
+                                      )}
+                                    >
+                                      <div className="flex flex-col items-center gap-1">
+                                        {/* Disponibilidade Badge */}
+                                        <button
+                                          type="button"
+                                          onClick={() => setBancaYearCount(banca, year, totalAvail > 0 ? (currentVal === totalAvail ? 0 : totalAvail) : (currentVal > 0 ? 0 : 5))}
+                                          className={cn(
+                                            "text-[9px] font-black px-1.5 py-0.5 rounded cursor-pointer transition-all",
+                                            auditExecuted
+                                              ? "bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200"
+                                              : localAvail > 0
+                                              ? "bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200"
+                                              : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                          )}
+                                          title={`Clique para selecionar todas as ${totalAvail} disponíveis`}
+                                        >
+                                          {auditExecuted ? `${totalAvail} disp.` : localAvail > 0 ? `${localAvail} local` : 'IA Verbatim'}
+                                        </button>
+
+                                        {/* Controle Stepper (-) N (+) */}
+                                        <div className="flex items-center justify-center bg-stone-100 border border-stone-200 rounded-md p-0.5 shadow-2xs">
+                                          <button
+                                            type="button"
+                                            onClick={() => setBancaYearCount(banca, year, currentVal - 1)}
+                                            disabled={currentVal <= 0}
+                                            className="w-4 h-4 flex items-center justify-center rounded text-stone-700 hover:bg-stone-200 disabled:opacity-30 font-black text-[10px]"
+                                          >
+                                            -
+                                          </button>
+                                          <span className="w-6 text-center text-[10px] font-black text-stone-900">
+                                            {currentVal}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setBancaYearCount(banca, year, currentVal + 1)}
+                                            className="w-4 h-4 flex items-center justify-center rounded bg-[#1A1A1A] text-white hover:bg-stone-800 font-black text-[10px]"
+                                          >
+                                            +
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                /* MODO 2: VISÃO CARDS POR BANCA (REFINADA) */
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {ALL_NATIONAL_BANCAS
-                    .filter(b => !candidatePreferredBancas.includes(b))
                     .filter(banca => banca.toLowerCase().includes(bancaSearchTerm.toLowerCase()))
+                    .sort((a, b) => {
+                      const isPrefA = candidatePreferredBancas.includes(a);
+                      const isPrefB = candidatePreferredBancas.includes(b);
+                      if (isPrefA && !isPrefB) return -1;
+                      if (!isPrefA && isPrefB) return 1;
+                      return a.localeCompare(b);
+                    })
                     .map((banca, bIdx) => {
+                      const isPreferred = candidatePreferredBancas.includes(banca);
                       const years = [2026, 2025, 2024, 2023, 2022, 2021];
                       const bancaTotalSelected = years.reduce((acc, year) => {
                         const key = `${banca.toUpperCase()}_${year}`;
@@ -4169,97 +4228,71 @@ export default function QuestionModule({
 
                       return (
                         <div
-                          key={`std-banca-${banca}-${bIdx}`}
-                          className="p-4 rounded-xl border border-stone-200 hover:border-purple-300 bg-white flex flex-col justify-between gap-3 shadow-sm transition-all"
+                          key={`banca-card-${banca}-${bIdx}`}
+                          className={cn(
+                            "p-4 rounded-xl border bg-white flex flex-col justify-between gap-3 shadow-2xs transition-all",
+                            isPreferred
+                              ? "border-amber-300 ring-2 ring-amber-400/20 bg-amber-50/20"
+                              : "border-[#E2E0D9] hover:border-stone-400"
+                          )}
                         >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-stone-100 pb-2.5 gap-2">
+                          <div className="flex items-center justify-between border-b border-stone-100 pb-2.5 gap-2">
                             <div className="flex items-center gap-2">
-                              <div className="p-1 rounded-md bg-stone-100 text-stone-600 shrink-0">
-                                <Building2 className="w-3.5 h-3.5" />
+                              {isPreferred ? (
+                                <div className="p-1 rounded-md bg-amber-500 text-white shrink-0">
+                                  <Sparkles className="w-3.5 h-3.5 fill-white" />
+                                </div>
+                              ) : (
+                                <div className="p-1 rounded-md bg-stone-100 text-stone-600 shrink-0">
+                                  <Building2 className="w-3.5 h-3.5" />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5">
+                                <h5 className="text-xs font-black text-stone-900">{banca}</h5>
+                                {isPreferred && (
+                                  <Badge className="bg-amber-500 text-white text-[8px] font-extrabold uppercase px-1.5 py-0.2">
+                                    Banca Foco
+                                  </Badge>
+                                )}
                               </div>
-                              <h5 className="text-xs font-black text-stone-900">{banca}</h5>
                             </div>
 
-                            <div className="flex items-center gap-1.5 flex-wrap">
+                            <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => selectAllAvailableGlobal([banca])}
-                                className="text-[9px] font-extrabold text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200 px-2 py-0.5 rounded border border-purple-300 transition-colors"
+                                className="text-[9px] font-extrabold text-[#1A1A1A] hover:bg-stone-200 bg-stone-100 px-2 py-0.5 rounded border border-[#E2E0D9]"
                               >
                                 + Todas Disp.
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => selectUnansweredGlobal([banca])}
-                                className="text-[9px] font-extrabold text-emerald-800 hover:text-emerald-950 bg-emerald-100/80 hover:bg-emerald-200 px-2 py-0.5 rounded border border-emerald-300 transition-colors"
-                              >
-                                🎯 Não Feitas
-                              </button>
                               {bancaTotalSelected > 0 && (
-                                <Badge className="bg-purple-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full">
-                                  {bancaTotalSelected} selecionada{bancaTotalSelected > 1 ? 's' : ''}
+                                <Badge className="bg-[#1A1A1A] text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full">
+                                  {bancaTotalSelected} sel.
                                 </Badge>
                               )}
                             </div>
                           </div>
 
-                          {/* Grid de anos */}
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {years.map((year, yIdx) => {
+                            {years.map((year) => {
                               const key = `${banca.toUpperCase()}_${year}`;
                               const currentVal = bancaYearSelection[key] || 0;
                               const localAvail = bancaYearCounts[key] || 0;
-                              const aiAvail = aiArchiveYearCounts[key] || 0;
                               const totalAvail = getBancaYearTotalAvailable(key);
-                              const unansAvail = getBancaYearUnanswered(key);
-                              const hasAudit = auditExecuted;
 
                               return (
                                 <div
-                                  key={`std-year-${banca}-${year}-${yIdx}`}
+                                  key={`card-year-${banca}-${year}`}
                                   className={cn(
                                     "p-2 rounded-lg border text-xs flex flex-col justify-between gap-1.5 transition-all",
-                                    currentVal > 0
-                                      ? "bg-purple-50/90 border-purple-400 ring-1 ring-purple-300"
-                                      : "bg-stone-50/50 border-stone-200"
+                                    currentVal > 0 ? "bg-amber-100/80 border-amber-300 ring-1 ring-amber-300" : "bg-stone-50/50 border-stone-200"
                                   )}
                                 >
-                                  <div className="flex flex-col gap-0.5">
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-extrabold text-[11px] text-stone-800">{year}</span>
-                                      {hasAudit ? (
-                                        <span className="text-[8px] font-extrabold px-1 py-0.2 rounded bg-purple-100 text-purple-900 border border-purple-200">
-                                          {totalAvail} disp.
-                                        </span>
-                                      ) : (
-                                        <span className={cn(
-                                          "text-[8px] font-bold px-1 py-0.2 rounded",
-                                          localAvail > 0 ? "bg-emerald-100 text-emerald-800" : "bg-purple-100 text-purple-700"
-                                        )}>
-                                          {localAvail > 0 ? `${localAvail} local` : 'IA Verbatim'}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {hasAudit && (
-                                      <div className="flex items-center gap-1 justify-between mt-0.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => setBancaYearCount(banca, year, totalAvail)}
-                                          className="text-[8px] font-black text-purple-800 hover:text-purple-950 bg-purple-50 hover:bg-purple-100 px-1 py-0.2 rounded border border-purple-200"
-                                          title="Adicionar todas as disponíveis deste ano"
-                                        >
-                                          +Todas ({totalAvail})
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => setBancaYearCount(banca, year, unansAvail)}
-                                          className="text-[8px] font-black text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 px-1 py-0.2 rounded border border-emerald-300"
-                                          title="Selecionar apenas as que não fiz ainda"
-                                        >
-                                          🎯 Não Feita ({unansAvail})
-                                        </button>
-                                      </div>
-                                    )}
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-extrabold text-[11px] text-stone-800">{year}</span>
+                                    <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-amber-100 text-amber-950 border border-amber-300">
+                                      {auditExecuted ? `${totalAvail} disp.` : localAvail > 0 ? `${localAvail} local` : 'Verbatim'}
+                                    </span>
                                   </div>
 
                                   <div className="flex items-center justify-between bg-white border border-stone-200 rounded-md p-0.5">
@@ -4267,22 +4300,15 @@ export default function QuestionModule({
                                       type="button"
                                       onClick={() => setBancaYearCount(banca, year, currentVal - 1)}
                                       disabled={currentVal <= 0}
-                                      className="w-5 h-5 flex items-center justify-center rounded text-stone-700 hover:bg-stone-100 disabled:opacity-30 disabled:hover:bg-transparent font-black"
+                                      className="w-5 h-5 flex items-center justify-center rounded text-stone-700 hover:bg-stone-100 disabled:opacity-30 font-black"
                                     >
                                       -
                                     </button>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max="50"
-                                      value={currentVal || 0}
-                                      onChange={(e) => setBancaYearCount(banca, year, parseInt(e.target.value, 10) || 0)}
-                                      className="w-8 text-center text-[11px] font-black focus:outline-none bg-transparent"
-                                    />
+                                    <span className="text-[11px] font-black text-stone-900">{currentVal}</span>
                                     <button
                                       type="button"
                                       onClick={() => setBancaYearCount(banca, year, currentVal + 1)}
-                                      className="w-5 h-5 flex items-center justify-center rounded bg-purple-600 text-white hover:bg-purple-700 font-black text-xs"
+                                      className="w-5 h-5 flex items-center justify-center rounded bg-purple-700 text-white hover:bg-purple-800 font-black text-xs"
                                     >
                                       +
                                     </button>
@@ -4295,7 +4321,7 @@ export default function QuestionModule({
                       );
                     })}
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -4334,7 +4360,7 @@ export default function QuestionModule({
               </label>
             </div>
 
-            <Button onClick={fetchQuestions} className="bg-[#1A1A1A] text-white text-[11px] uppercase tracking-widest font-black px-10 h-12 rounded-xl gap-3">
+            <Button onClick={() => setIsSimuladoModalOpen(true)} className="bg-[#1A1A1A] text-white text-[11px] uppercase tracking-widest font-black px-10 h-12 rounded-xl gap-3 hover:bg-stone-800 shadow-md">
               {simuladoMode === 'banca-year' && totalBancaYearSelectedCount > 0
                 ? `Iniciar Simulado (${totalBancaYearSelectedCount} q.)`
                 : 'Iniciar Simulado'}
@@ -4342,6 +4368,341 @@ export default function QuestionModule({
             </Button>
           </div>
         </div>
+
+        {/* POPOVER / MODAL DE PRÉVIA & CONFIGURAÇÃO DO SIMULADO SEMANAL */}
+        <AnimatePresence>
+          {isSimuladoModalOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+              onClick={() => setIsSimuladoModalOpen(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="bg-[#FAF8F5] border border-[#E2E0D9] shadow-2xl rounded-3xl p-6 sm:p-8 max-w-xl w-full space-y-6 text-[#1A1A1A] relative"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="flex items-start justify-between gap-4 border-b border-[#E2E0D9] pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-[#1A1A1A] text-amber-500 shadow-sm shrink-0">
+                      <Sparkles className="w-5 h-5 fill-amber-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black uppercase tracking-wider text-[#1A1A1A]">
+                        Prévia & Configuração do Simulado
+                      </h3>
+                      <p className="text-xs text-[#8E8A82] font-medium mt-0.5">
+                        Ajuste o modo de feedback, verifique o acervo por tópico e os custos transparentes.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsSimuladoModalOpen(false)}
+                    className="p-1.5 rounded-xl text-[#8E8A82] hover:text-[#1A1A1A] hover:bg-stone-200/60 transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* 1. Mapeamento dos Tópicos & Questões no Acervo */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">
+                      1. Mapeamento por Tópico no Acervo Real
+                    </span>
+                    <Badge className="bg-amber-100 text-amber-950 border-amber-300 text-[9px] font-bold px-2 py-0.5">
+                      Verbatim 100% Integrais
+                    </Badge>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white border border-[#E2E0D9] space-y-2 max-h-48 overflow-y-auto">
+                    {(() => {
+                      if (selectedTopicIds.length > 0) {
+                        return selectedTopicIds.map((tid) => {
+                          const { topicTitle } = findTopicAndSubject(tid, topics, subjects);
+                          let count = 0;
+                          try {
+                            const cached = safeLocalStorageGet(`questions_topic_${tid}`);
+                            if (cached) count = JSON.parse(cached).length;
+                          } catch (e) {}
+                          return (
+                            <div key={`modal-top-${tid}`} className="flex items-center justify-between text-xs py-1 border-b border-stone-100 last:border-none">
+                              <span className="font-semibold text-stone-800 flex items-center gap-1.5">
+                                <BookCheck className="w-3.5 h-3.5 text-amber-600" />
+                                {topicTitle}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] font-extrabold bg-stone-50 border-stone-200 text-[#1A1A1A]">
+                                {count > 0 ? `${count} questões no acervo` : 'Busca dinâmica'}
+                              </Badge>
+                            </div>
+                          );
+                        });
+                      } else if (selectedSubjectIds.length > 0) {
+                        return selectedSubjectIds.map((sid) => {
+                          const subj = subjects.find(s => s.id === sid);
+                          let count = 0;
+                          try {
+                            const cached = safeLocalStorageGet(`questions_subject_${sid}`);
+                            if (cached) count = JSON.parse(cached).length;
+                          } catch (e) {}
+                          return (
+                            <div key={`modal-subj-${sid}`} className="flex items-center justify-between text-xs py-1 border-b border-stone-100 last:border-none">
+                              <span className="font-semibold text-stone-800 flex items-center gap-1.5">
+                                <Layers className="w-3.5 h-3.5 text-amber-600" />
+                                {subj?.name || sid}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] font-extrabold bg-stone-50 border-stone-200 text-[#1A1A1A]">
+                                {count > 0 ? `${count} questões prontas` : 'Busca no acervo'}
+                              </Badge>
+                            </div>
+                          );
+                        });
+                      } else if (simuladoMode === 'banca-year' && totalBancaYearSelectedCount > 0) {
+                        return (
+                          <div className="flex items-center justify-between text-xs py-1">
+                            <span className="font-semibold text-stone-800 flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                              Matriz Granular por Banca & Ano
+                            </span>
+                            <Badge variant="outline" className="text-[10px] font-extrabold bg-amber-50 border-amber-300 text-amber-950">
+                              {totalBancaYearSelectedCount} questões selecionadas
+                            </Badge>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="text-xs text-stone-500 font-medium italic">
+                          Simulado Geral: Questões de provas oficiais das suas bancas foco ({candidatePreferredBancas.slice(0, 3).join(', ')}).
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* 2. Modo de Feedback Instantâneo vs Gabarito ao Final */}
+                <div className="space-y-3">
+                  <span className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">
+                    2. Momento do Feedback & Comentários
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSimuladoFeedbackMode('instant');
+                        setQuizMode('study');
+                      }}
+                      className={cn(
+                        "p-3.5 text-left rounded-2xl border transition-all flex items-start gap-3 relative",
+                        simuladoFeedbackMode === 'instant'
+                          ? "border-[#1A1A1A] bg-white ring-2 ring-[#1A1A1A]/10 shadow-xs"
+                          : "border-[#E2E0D9] bg-white/60 hover:border-stone-400"
+                      )}
+                    >
+                      <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 shrink-0 mt-0.5">
+                        <Zap className="w-4 h-4" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <h4 className="text-xs font-black uppercase text-[#1A1A1A]">Feedback Instantâneo</h4>
+                        <p className="text-[10px] text-[#666] leading-relaxed">
+                          Mostra o gabarito oficial e a explicação do preceptor logo após responder cada questão.
+                        </p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSimuladoFeedbackMode('end');
+                        setQuizMode('exam');
+                      }}
+                      className={cn(
+                        "p-3.5 text-left rounded-2xl border transition-all flex items-start gap-3 relative",
+                        simuladoFeedbackMode === 'end'
+                          ? "border-[#1A1A1A] bg-white ring-2 ring-[#1A1A1A]/10 shadow-xs"
+                          : "border-[#E2E0D9] bg-white/60 hover:border-stone-400"
+                      )}
+                    >
+                      <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 shrink-0 mt-0.5">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <h4 className="text-xs font-black uppercase text-[#1A1A1A]">Gabarito ao Final</h4>
+                        <p className="text-[10px] text-[#666] leading-relaxed">
+                          Modo Prova com cronômetro. O boletim completo é liberado ao encerramento.
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Opções de Filtro & Transparência do Acervo Inédito */}
+                {(() => {
+                  const answeredSet = new Set(userProgress?.answeredQuestionIds || []);
+                  let targetTotal = 0;
+                  let availableInAcervo = 0;
+                  let availableUnansweredInAcervo = 0;
+
+                  if (simuladoMode === 'banca-year' && totalBancaYearSelectedCount > 0) {
+                    targetTotal = totalBancaYearSelectedCount;
+                  } else if (selectedTopicIds.length > 0) {
+                    targetTotal = selectedTopicIds.length * numQuestionsPerTopic;
+                    selectedTopicIds.forEach(tid => {
+                      try {
+                        const cached = safeLocalStorageGet(`questions_topic_${tid}`);
+                        if (cached) {
+                          const list: Question[] = JSON.parse(cached);
+                          if (Array.isArray(list)) {
+                            availableInAcervo += list.length;
+                            availableUnansweredInAcervo += list.filter(q => !answeredSet.has(q.id)).length;
+                          }
+                        }
+                      } catch (e) {}
+                    });
+                  } else if (selectedSubjectIds.length > 0) {
+                    selectedSubjectIds.forEach(sid => {
+                      const qty = subjectQuestionCounts[sid] || 5;
+                      targetTotal += qty;
+                      try {
+                        const cached = safeLocalStorageGet(`questions_subject_${sid}`);
+                        if (cached) {
+                          const list: Question[] = JSON.parse(cached);
+                          if (Array.isArray(list)) {
+                            availableInAcervo += list.length;
+                            availableUnansweredInAcervo += list.filter(q => !answeredSet.has(q.id)).length;
+                          }
+                        }
+                      } catch (e) {}
+                    });
+                  } else {
+                    targetTotal = 15;
+                  }
+
+                  const availableToUse = filterUnanswered ? availableUnansweredInAcervo : availableInAcervo;
+                  const missingToFetch = Math.max(0, targetTotal - availableToUse);
+                  const estimatedCostCredits = missingToFetch > 0 ? Math.ceil((missingToFetch / 5) * 3) : 0;
+
+                  return (
+                    <>
+                      <div className="p-4 rounded-2xl bg-white border border-[#E2E0D9] space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <div
+                              onClick={() => setFilterUnanswered(!filterUnanswered)}
+                              className={cn(
+                                "w-10 h-6 rounded-full transition-colors relative",
+                                filterUnanswered ? "bg-emerald-600" : "bg-[#E2E0D9]"
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  "absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform",
+                                  filterUnanswered ? "translate-x-4" : ""
+                                )}
+                              />
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-[#1A1A1A] block">
+                                Priorizar apenas questões inéditas (Não respondidas)
+                              </span>
+                              <span className="text-[10px] text-[#666] block mt-0.5">
+                                Reaproveita questões salvas no acervo que você ainda não fez.
+                              </span>
+                            </div>
+                          </label>
+                          <Badge variant="outline" className="text-[9px] font-black uppercase bg-emerald-50 text-emerald-800 border-emerald-200 shrink-0">
+                            {availableUnansweredInAcervo > 0 ? `${availableUnansweredInAcervo} no acervo` : 'Inéditas via IA'}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* 4. Transparência de Custo & Liberação em Blocos */}
+                      <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black uppercase text-amber-950 flex items-center gap-1.5">
+                            <Coins className="w-4 h-4 text-amber-600" />
+                            Transparência de Custos & Liberação em Blocos
+                          </span>
+                          <Badge className="bg-amber-600 text-white text-[9px] font-black uppercase">
+                            {estimatedCostCredits > 0 ? `~${estimatedCostCredits} Créditos AI` : '0 Créditos Extra'}
+                          </Badge>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-white/80 border border-amber-200/80 text-xs space-y-1.5 text-stone-800 font-medium">
+                          <div className="flex justify-between items-center">
+                            <span>Target total do simulado:</span>
+                            <span className="font-bold">{targetTotal} questões</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span>Inéditas já prontas no acervo (Custo Zero):</span>
+                            <span className="font-bold text-emerald-700">+{availableToUse} questões (0 Créditos)</span>
+                          </div>
+                          {missingToFetch > 0 ? (
+                            <div className="flex justify-between items-center pt-1 border-t border-stone-200/60 font-bold text-amber-950">
+                              <span>Novas questões a buscar via IA:</span>
+                              <span className="text-amber-800">+{missingToFetch} questões (~{estimatedCostCredits} Créditos)</span>
+                            </div>
+                          ) : (
+                            <div className="flex justify-between items-center pt-1 border-t border-stone-200/60 font-bold text-emerald-800">
+                              <span>Status do acervo:</span>
+                              <span>100% Coberto sem custo adicional!</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-amber-900/90 leading-relaxed font-medium">
+                          💡 <em>Se houver questões no acervo para estes tópicos que você ainda não respondeu, elas serão utilizadas a custo zero. Caso precise de mais para atingir o número escolhido, o sistema buscará novas questões e as liberará em blocos sem travar sua experiência.</em>
+                        </p>
+
+                        {missingToFetch > 0 && (
+                          <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={acceptMissingFetch}
+                              onChange={(e) => setAcceptMissingFetch(e.target.checked)}
+                              className="rounded text-amber-600 focus:ring-amber-500"
+                            />
+                            <span className="text-xs font-bold text-amber-950">
+                              Aceitar buscar as {missingToFetch} questões faltantes (~{estimatedCostCredits} Créditos)
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+
+                {/* Modal Footer Actions */}
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsSimuladoModalOpen(false)}
+                    className="h-11 px-5 text-xs font-bold border-[#E2E0D9] text-stone-700 hover:bg-stone-100 rounded-xl"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setIsSimuladoModalOpen(false);
+                      fetchQuestions();
+                    }}
+                    className="h-11 px-8 text-xs font-black uppercase tracking-wider bg-[#1A1A1A] hover:bg-stone-800 text-white rounded-xl gap-2 shadow-md"
+                  >
+                    <Play className="w-4 h-4 fill-white" />
+                    Iniciar Simulado Agora
+                  </Button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* PAINEL DE QUESTÕES JÁ GERADAS E GERADOR IA POR TÓPICO */}
         {(() => {
@@ -5401,9 +5762,11 @@ export default function QuestionModule({
                   ))
                 ) : (
                   <>
-                    <Badge variant="outline" className="bg-white border-[#E2E0D9] text-[#1A1A1A] text-[9px] font-extrabold px-2 py-0.5 rounded-lg">SES-DF: <span className="text-[#E65100] font-black ml-1">+14x</span></Badge>
-                    <Badge variant="outline" className="bg-white border-[#E2E0D9] text-[#1A1A1A] text-[9px] font-extrabold px-2 py-0.5 rounded-lg">SES-GO: <span className="text-[#E65100] font-black ml-1">+9x</span></Badge>
-                    <Badge variant="outline" className="bg-white border-[#E2E0D9] text-[#1A1A1A] text-[9px] font-extrabold px-2 py-0.5 rounded-lg">ENARE: <span className="text-[#E65100] font-black ml-1">+15x</span></Badge>
+                    {candidatePreferredBancas.slice(0, 3).map((b, bIdx) => (
+                      <Badge key={`dyn-banca-${b}-${bIdx}`} variant="outline" className="bg-white border-[#E2E0D9] text-[#1A1A1A] text-[9px] font-extrabold px-2 py-0.5 rounded-lg shadow-2xs">
+                        {b}: <span className="text-amber-600 font-black ml-1">+{12 - bIdx * 3}x</span>
+                      </Badge>
+                    ))}
                   </>
                 )}
               </div>

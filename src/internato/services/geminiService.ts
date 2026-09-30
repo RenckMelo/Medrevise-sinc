@@ -1377,31 +1377,41 @@ export async function analyzeBancaYearAvailability(
   const subjectsStr = subjectNames.length > 0 ? subjectNames.join(', ') : 'Grandes Áreas da Medicina';
 
   const prompt = `Você é um auditor sênior dos arquivos e acervos oficiais de provas de residência médica no Brasil.
-Sua missão é auditar a disponibilidade e quantidade exata de questões oficiais reais de concursos anteriores aplicadas entre 2021 e 2026 para os temas:
-Temas: ${topicsStr}
+Sua missão é auditar a quantidade ESTIMADA REALISTA de questões oficiais da prova de residência médica aplicadas entre 2021 e 2026 para os temas:
+Temas Selecionados: ${topicsStr}
 Áreas: ${subjectsStr}
 
 Bancas a Auditar:
 ENARE, SES-DF, SES-GO, USP, UNIFESP, UNICAMP, SUS-SP, PSU-MG, AMRIGS, AMP, SURCE, UFG, UnB, HBDF, UERJ, IAMSPE.
 
-Retorne APENAS um objeto JSON em que cada chave é no formato exatamente "SIGLA_ANO" (exemplo: "ENARE_2025", "SES-DF_2024", "SES-GO_2023", "USP_2024", "UFG_2025") e o valor é um número inteiro (ex: 8, 12, 15, 6) indicando quantas questões reais oficiais caíram nessa prova para esses temas.
+REGRA RÍGIDA DE REALISMO E TETO MÁXIMO POR ANO:
+- Numa prova oficial de residência de 100 questões divididas entre 5 grandes áreas, a quantidade de questões de um único assunto em um ano específico varia de 2 a 8 questões.
+- Se o usuário selecionou uma área inteira (ex: Pediatria), a quantidade nessa prova varia de 12 a 20 questões no máximo.
+- NUNCA retorne números inflados ou irreais (como +50 ou +100 questões por ano para uma única banca e tema). O valor por chave DEVE ESTAR ESTRITAMENTE ENTRE 1 E 20.
+
+Retorne APENAS um objeto JSON em que cada chave é no formato exatamente "SIGLA_ANO" (exemplo: "ENARE_2025", "SES-DF_2024", "USP_2024") e o valor é um número inteiro realista entre 1 e 20.
 
 Exemplo de formato de resposta JSON:
 {
-  "ENARE_2026": 12,
-  "ENARE_2025": 16,
-  "ENARE_2024": 14,
-  "SES-DF_2025": 10,
-  "SES-DF_2024": 12,
-  "SES-GO_2025": 8,
-  "USP_2024": 15
+  "ENARE_2026": 8,
+  "ENARE_2025": 10,
+  "ENARE_2024": 9,
+  "SES-DF_2025": 7,
+  "SES-DF_2024": 8,
+  "SES-GO_2025": 6,
+  "USP_2024": 12
 }`;
 
   try {
     const response = await callGemini('generateJson', prompt);
     let availabilityMap: Record<string, number> = {};
     if (response && typeof response === 'object' && !Array.isArray(response)) {
-      availabilityMap = response;
+      for (const [key, val] of Object.entries(response)) {
+        if (typeof val === 'number' && !isNaN(val)) {
+          // Strictly cap realistic estimates between 1 and 20 per banca/year
+          availabilityMap[key] = Math.max(1, Math.min(20, Math.round(val)));
+        }
+      }
     }
     await recordUsage(auditCost);
     return { availabilityMap, cost: auditCost };

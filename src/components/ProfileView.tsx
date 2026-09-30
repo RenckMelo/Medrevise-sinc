@@ -33,9 +33,9 @@ import { motion, AnimatePresence } from 'motion/react';
 export default function ProfileView() {
   const { user, profile } = useAuth();
   const isLucas = profile?.email === 'lucas1renck2melo@gmail.com' || profile?.role === 'admin';
-  const [dailyGoal, setDailyGoal] = useState(profile?.settings?.dailyGoalMinutes || 60);
-  const [residencyFocusType, setResidencyFocusType] = useState<string>(profile?.settings?.residencyFocusType || 'standard');
-  const [residencyFocus, setResidencyFocus] = useState<string>(profile?.settings?.residencyFocus || 'ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS');
+  const [dailyGoal, setDailyGoal] = useState<number>(() => profile?.settings?.dailyGoalMinutes || 60);
+  const [residencyFocusType, setResidencyFocusType] = useState<string>(() => profile?.settings?.residencyFocusType || safeLocalStorageGet('user_residency_focus_type') || 'standard');
+  const [residencyFocus, setResidencyFocus] = useState<string>(() => profile?.settings?.residencyFocus || (profile as any)?.residencyFocus || safeLocalStorageGet('user_residency_focus') || 'ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS');
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -656,13 +656,27 @@ export default function ProfileView() {
     setIsSaving(true);
     try {
       const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        'settings.dailyGoalMinutes': dailyGoal,
-        'settings.residencyFocusType': residencyFocusType,
-        'settings.residencyFocus': residencyFocus
-      });
+      await setDoc(userRef, {
+        residencyFocus: residencyFocus,
+        residencyFocusType: residencyFocusType,
+        targetExam: residencyFocus,
+        settings: {
+          dailyGoalMinutes: dailyGoal,
+          residencyFocusType: residencyFocusType,
+          residencyFocus: residencyFocus
+        }
+      }, { merge: true });
+
       safeLocalStorageSet('user_residency_focus', residencyFocus);
       safeLocalStorageSet('user_residency_focus_type', residencyFocusType);
+
+      // Trigger custom event and storage event so QuestionModule re-syncs immediately
+      try {
+        window.dispatchEvent(new CustomEvent('medrevise_settings_updated', {
+          detail: { residencyFocus, residencyFocusType }
+        }));
+        window.dispatchEvent(new Event('storage'));
+      } catch (_) {}
 
       // Clear cached questions so the new focus settings take effect immediately
       try {
@@ -673,7 +687,7 @@ export default function ProfileView() {
         });
       } catch (_) {}
 
-      alert('Configurações salvas com sucesso! O cache de questões foi atualizado e seus novos resumos e simulados utilizarão o seu foco personalizado.');
+      alert('Configurações salvas com sucesso! Suas preferências de faculdades/bancas e metas foram salvas no seu perfil.');
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('Erro ao salvar configurações.');

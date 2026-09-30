@@ -663,7 +663,17 @@ export default function ProfileView() {
       });
       safeLocalStorageSet('user_residency_focus', residencyFocus);
       safeLocalStorageSet('user_residency_focus_type', residencyFocusType);
-      alert('Configurações salvas com sucesso! Seus novos resumos e questões gerados a partir de agora utilizarão o seu foco personalizado.');
+
+      // Clear cached questions so the new focus settings take effect immediately
+      try {
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('questions_topic_') || key.startsWith('questions_subject_')) {
+            localStorage.removeItem(key);
+          }
+        });
+      } catch (_) {}
+
+      alert('Configurações salvas com sucesso! O cache de questões foi atualizado e seus novos resumos e simulados utilizarão o seu foco personalizado.');
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('Erro ao salvar configurações.');

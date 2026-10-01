@@ -2847,7 +2847,7 @@ export default function Cronograma({
     return foundId;
   };
 
-  // Helper to extract study plan topics of a given week
+  // Helper to extract study plan topics of a given week (includes both study & review items scheduled for that specific week)
   const getWeekTopics = (weekIdx: number): string[] => {
     if (!schedule) return [];
     const week = schedule.weeks[weekIdx];
@@ -2856,11 +2856,13 @@ export default function Cronograma({
     Object.values(week.days || {}).forEach(topicsArr => {
       if (Array.isArray(topicsArr)) {
         topicsArr.forEach(t => {
-          if (t && typeof t.title === 'string' && t.type === 'estudo') {
+          if (t && typeof t.title === 'string') {
             const clean = t.title
               .replace('⚡ [QUESTÕES AVANÇADAS] ', '')
               .replace('🔄 [REVISÃO DE REFORÇO] ', '')
               .replace(/^Revisão Ativa \+ Flashcards: /, '')
+              .replace(/^Revisão Agendada: /, '')
+              .replace(/^Revisão: /, '')
               .trim();
             if (clean && !list.includes(clean)) {
               list.push(clean);
@@ -2872,7 +2874,7 @@ export default function Cronograma({
     return list;
   };
 
-  // Helper to extract cumulative study plan topics from week 0 up to given weekIdx (ensures no future unstudied topics, and includes all past remaining topics)
+  // Helper to extract cumulative study plan topics from week 0 up to given weekIdx (includes study & review items)
   const getMonthTopics = (weekIdx: number): string[] => {
     if (!schedule) return [];
     const list: string[] = [];
@@ -2882,11 +2884,13 @@ export default function Cronograma({
         Object.values(week.days || {}).forEach(topicsArr => {
           if (Array.isArray(topicsArr)) {
             topicsArr.forEach(t => {
-              if (t && typeof t.title === 'string' && t.type === 'estudo') {
+              if (t && typeof t.title === 'string') {
                 const clean = t.title
                   .replace('⚡ [QUESTÕES AVANÇADAS] ', '')
                   .replace('🔄 [REVISÃO DE REFORÇO] ', '')
                   .replace(/^Revisão Ativa \+ Flashcards: /, '')
+                  .replace(/^Revisão Agendada: /, '')
+                  .replace(/^Revisão: /, '')
                   .trim();
                 if (clean && !list.includes(clean)) {
                   list.push(clean);

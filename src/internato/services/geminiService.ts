@@ -1824,15 +1824,41 @@ Formato JSON estrito:
 }
 
 export async function explainQuestion(questionText: string, options: string[], correctIndex: number, userId?: string) {
-  const prompt = `Você é um professor de medicina comentando uma questão de prova.
-  Questão: ${questionText}
-  Alternativas:
-  ${options.map((opt, i) => `${String.fromCharCode(65 + i)}) ${opt}`).join('\n')}
-  A alternativa correta é a ${String.fromCharCode(65 + correctIndex)}.
- 
-  Explique detalhadamente por que a alternativa ${String.fromCharCode(65 + correctIndex)} está correta e por que cada uma das outras alternativas está incorreta.
-  Seja didático e use referências médicas atuais.
-  Responda estritamente em PORTUGUÊS (PORTUGUÊS DO BRASIL) usando Markdown.`;
+  const prompt = `Você é um COORDENADOR-PRECEPTOR de Medicina comente uma questão de prova de residência médica de alta performance.
+  
+Questão: ${questionText}
+Alternativas:
+${options.map((opt, i) => `${String.fromCharCode(65 + i)}) ${opt}`).join('\n')}
+Gabarito Oficial: Alternativa ${String.fromCharCode(65 + correctIndex)}
+
+CRIE UM COMENTÁRIO DENSE, EXAUSTIVO, DIDÁTICO E DE ALTO RENDIMENTO EM MARKDOWN:
+
+# 📋 COMENTÁRIO DA QUESTÃO & RACIOCÍNIO CLÍNICO
+
+## 1. 🎯 ANÁLISE DA ALTERNATIVA CORRETA (${String.fromCharCode(65 + correctIndex)})
+- Explique o diagnóstico, mecanismo fisiopatológico e o PORQUÊ exato desta alternativa ser a correta.
+- Detalhe exames de 1ª linha, conduta imediata e farmacologia completa com doses (mg/kg, vias, intervalos) se aplicável.
+
+## 2. ❌ ANÁLISE DAS ALTERNATIVAS INCORRETAS
+${options.map((_, i) => i === correctIndex ? '' : `- **Alternativa ${String.fromCharCode(65 + i)} (Incorreta)**: Explique o erro específico, a pegadinha ou em qual situação clínica essa alternativa seria a conduta indicada.`).filter(Boolean).join('\n')}
+
+## 3. 🔄 ALGORITMO & FLUXOGRAMA DE DECISÃO CLÍNICA
+Inclua obrigatoriamente um **FLUXOGRAMA DE DECISÃO COMPLETO** em sintaxe Mermaid válida para o raciocínio ou conduta desta questão:
+\`\`\`mermaid
+graph TD
+  A["1. Quadro Clínico / Suspeita"] -->|Estável / Resposta| B["2. Conduta Inicial / Exame"]
+  A -->|Instável / Emergência| C["3. Medida de Emergência / 2ª Linha"]
+  B -->|Confirmação| D["4. Tratamento Definitivo & Doses"]
+\`\`\`
+REGRAS OBRIGATÓRIAS DO FLUXOGRAMA:
+- Abra todos os ramos de decisão para cada variante (Sim/Não, Estável/Instável, Positivo/Negativo, Sucesso/Falha).
+- Escreva a conduta completa com doses e nomes de exames dentro das caixas sem frases cortadas.
+
+## 4. 💡 PÉROLA DE PROVA & PEGADINHA DA BANCA
+> [!IMPORTANT]
+> **DICA DO PRECEPTOR PARA A PROVA:** [Ponto-chave e pegadinha clássica cobrada pelas bancas neste tema]
+
+Responda em PORTUGUÊS DO BRASIL.`;
 
   return generateWithAI(prompt);
 }

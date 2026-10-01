@@ -462,7 +462,84 @@ export default function QuestionModule({
     }
   }, [showResults, seconds]);
 
-  // Multi-Topic MedRevise Sync Logic
+  // Sincroniza e inclui estritamente os temas de estudo e revisões agendadas da semana específica do cronograma
+  const syncWeeklyScheduleTopicsIntoSimulado = () => {
+    const weeklyTopicIds = new Set<string>();
+
+    try {
+      const cronoRaw = safeLocalStorageGet('medinternato_cronograma') || safeLocalStorageGet('medrevise_cronograma');
+      if (cronoRaw) {
+        const parsedCrono = JSON.parse(cronoRaw);
+        if (parsedCrono && Array.isArray(parsedCrono.weeks)) {
+          // Identify active week in schedule
+          const curWeek = parsedCrono.weeks.find((w: any) => w.isCurrentWeek) || parsedCrono.weeks[0];
+          if (curWeek) {
+            // 1. Extract topics from week days array (estudos + revisões programadas)
+            if (curWeek.days && typeof curWeek.days === 'object') {
+              Object.values(curWeek.days).forEach((dayTopicsArr: any) => {
+                if (Array.isArray(dayTopicsArr)) {
+                  dayTopicsArr.forEach((t: any) => {
+                    if (t && typeof t.title === 'string') {
+                      const cleanTitle = t.title
+                        .replace('⚡ [QUESTÕES AVANÇADAS] ', '')
+                        .replace('🔄 [REVISÃO DE REFORÇO] ', '')
+                        .replace(/^Revisão Ativa \+ Flashcards: /, '')
+                        .replace(/^Revisão Agendada: /, '')
+                        .replace(/^Revisão: /, '')
+                        .trim();
+
+                      const matched = topics.find(tp => 
+                        tp.id === t.id || 
+                        (tp.title && cleanTitle && tp.title.toLowerCase().trim() === cleanTitle.toLowerCase().trim())
+                      );
+
+                      if (matched) {
+                        weeklyTopicIds.add(matched.id);
+                      } else if (t.id) {
+                        weeklyTopicIds.add(t.id);
+                      }
+                    }
+                  });
+                }
+              });
+            }
+
+            // 2. Extract topics from week.topics array if present
+            if (Array.isArray(curWeek.topics)) {
+              curWeek.topics.forEach((topItem: any) => {
+                const cleanTitle = (topItem.title || topItem.name || '')
+                  .replace('⚡ [QUESTÕES AVANÇADAS] ', '')
+                  .replace('🔄 [REVISÃO DE REFORÇO] ', '')
+                  .replace(/^Revisão Ativa \+ Flashcards: /, '')
+                  .replace(/^Revisão Agendada: /, '')
+                  .replace(/^Revisão: /, '')
+                  .trim();
+
+                const matched = topics.find(tp => 
+                  tp.id === topItem.id || 
+                  (tp.title && cleanTitle && tp.title.toLowerCase().trim() === cleanTitle.toLowerCase().trim())
+                );
+
+                if (matched) {
+                  weeklyTopicIds.add(matched.id);
+                } else if (topItem.id) {
+                  weeklyTopicIds.add(topItem.id);
+                }
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao carregar planejamento da semana específica:", e);
+    }
+
+    const finalArray = Array.from(weeklyTopicIds);
+    if (finalArray.length > 0) {
+      setSelectedTopicIds(finalArray);
+    }
+    return finalArray.length;
+  };
   const syncQuizResultToMedRevise = async (
     quizQuestions: Question[],
     finalScore: number,
@@ -473,68 +550,56 @@ export default function QuestionModule({
     if (!userId) return null;
 
     try {
-      // 1. Collect all candidate topic IDs
-      const topicIdsFromParams = (selectedTopicIds || []).filter(Boolean);
-      const topicIdsFromQuestions = Array.from(new Set(quizQuestions.map(q => q.topicId).filter(Boolean) as string[]));
-      const allTopicIds = Array.from(new Set([...topicIdsFromParams, ...topicIdsFromQuestions]));
+      if (quizQuestions.length === 0) return null;
 
-      let targetTopics: Topic[] = [];
-
-      if (allTopicIds.length > 0) {
-        targetTopics = topics.filter(t => allTopicIds.includes(t.id));
-      }
-
-      // Check if any candidate topic IDs were missing from in-memory topics state array
-      for (const tid of allTopicIds) {
-        if (!targetTopics.some(t => t.id === tid) && typeof tid === 'string' && !tid.startsWith('local_')) {
-          try {
-            const snap = await getDoc(doc(db, 'users', userId, 'topics', tid));
-            if (snap.exists()) {
-              targetTopics.push({ id: snap.id, ...snap.data() } as Topic);
-            }
-          } catch (e) {}
-        }
-      }
-
-      // Fallback: if no topics matched by ID, try matching by subject
-      if (targetTopics.length === 0 && quizQuestions.length > 0) {
-        const subIds = Array.from(new Set(quizQuestions.map(q => q.subjectId).filter(Boolean) as string[]));
-        for (const sid of subIds) {
-          const matchedBySubj = topics.find(t => t.subjectId === sid);
-          if (matchedBySubj && !targetTopics.some(t => t.id === matchedBySubj.id)) {
-            targetTopics.push(matchedBySubj);
-          }
-        }
-      }
-
-      if (targetTopics.length === 0) return null;
-
+      const attemptsToUse = resultsToUse || currentQuizResults;
       const dateIso = new Date().toISOString();
+
+      // Group questions strictly by their specific topic
+      const topicMap = new Map<string, { topicObj: Topic; questions: Question[] }>();
+
+      for (const q of quizQuestions) {
+        let matched = topics.find(t => t.id === q.topicId || (t.title && q.topic && t.title.toLowerCase().trim() === q.topic.toLowerCase().trim()));
+        if (!matched && q.topicId) {
+          matched = { id: q.topicId, title: q.topic || 'Tópico', subjectId: q.subjectId || 'geral' } as Topic;
+        }
+        if (!matched && q.subjectId) {
+          const subObj = subjects.find(s => s.id === q.subjectId);
+          matched = { id: `subject_${q.subjectId}`, title: subObj?.name || 'Tópico de Matéria', subjectId: q.subjectId } as Topic;
+        }
+
+        const key = matched?.id || 'geral_topic';
+        if (!topicMap.has(key)) {
+          topicMap.set(key, {
+            topicObj: matched || ({ id: key, title: q.topic || 'Tópico Geral', subjectId: q.subjectId || 'geral' } as Topic),
+            questions: []
+          });
+        }
+        topicMap.get(key)!.questions.push(q);
+      }
+
+      const totalTopicsCount = topicMap.size;
       const calcMinutes = customMinutes || Math.max(1, Math.round(durationSeconds / 60));
-      const minutesPerTopic = Math.max(1, Math.round(calcMinutes / Math.max(1, targetTopics.length)));
+      const minutesPerTopic = Math.max(1, Math.round(calcMinutes / Math.max(1, totalTopicsCount)));
 
       const updatedTopicTitles: string[] = [];
       let lastIsFirst = false;
       let lastNextDateStr = '';
 
-      const attemptsToUse = resultsToUse || currentQuizResults;
+      for (const [tId, entry] of topicMap.entries()) {
+        const tObj = entry.topicObj;
+        const topicQs = entry.questions;
+        const qCount = topicQs.length;
 
-      for (const tObj of targetTopics) {
-        const topicQs = quizQuestions.filter(q => q.topicId === tObj.id);
-        const qCount = topicQs.length > 0 ? topicQs.length : Math.max(1, Math.round(quizQuestions.length / targetTopics.length));
-        
-        let cCount = 0;
-        if (topicQs.length > 0) {
-          cCount = topicQs.filter(q => {
-            const attempt = attemptsToUse.find(r => r.questionId === q.id);
-            return attempt ? attempt.isCorrect : false;
-          }).length;
-        } else {
-          cCount = Math.round((finalScore / Math.max(1, quizQuestions.length)) * qCount);
-        }
+        // Calculate EXACT hits and misses for THIS SPECIFIC TOPIC
+        const cCount = topicQs.filter(q => {
+          const attempt = attemptsToUse.find(r => r.questionId === q.id);
+          return attempt ? attempt.isCorrect : false;
+        }).length;
 
+        const accuracyPct = Math.round((cCount / Math.max(1, qCount)) * 100);
         const tTitle = tObj.title || (tObj as any).name || 'Tópico';
-        updatedTopicTitles.push(tTitle);
+        updatedTopicTitles.push(`${tTitle} (${cCount}/${qCount} acertos)`);
 
         const topicRef = doc(db, 'users', userId, 'topics', tObj.id);
         let currentReps = 0;
@@ -571,20 +636,21 @@ export default function QuestionModule({
 
         lastNextDateStr = new Date(srsUpdate.nextReviewDate).toLocaleDateString('pt-BR');
 
-        // Add studySession entry in Firestore
+        // 1. Add individual studySession entry per topic
         await addDoc(collection(db, 'users', userId, 'studySessions'), {
           topicId: tObj.id,
           subjectId: tObj.subjectId,
           date: dateIso,
           questionsCount: qCount,
           correctCount: cCount,
+          accuracyPercentage: accuracyPct,
           studyTimeMinutes: minutesPerTopic,
           description: isFirstRegistration
-            ? `Estudo Inicial por Questões (${cCount}/${qCount} acertos)`
-            : `Revisão por Questões (${cCount}/${qCount} acertos)`
+            ? `Estudo Inicial por Questões: ${cCount}/${qCount} acertos (${accuracyPct}%)`
+            : `Revisão por Questões: ${cCount}/${qCount} acertos (${accuracyPct}%)`
         });
 
-        // Update topic SM-2 and completion in MedRevise
+        // 2. Update topic SM-2 spaced repetition and accuracy stats in MedRevise
         await setDoc(topicRef, {
           name: tTitle,
           subjectId: tObj.subjectId,
@@ -594,23 +660,48 @@ export default function QuestionModule({
           easinessFactor: srsUpdate.ease,
           lastReviewDate: dateIso,
           nextReviewDate: srsUpdate.nextReviewDate,
+          lastQuestionsCount: qCount,
+          lastCorrectCount: cCount,
+          lastAccuracyPercentage: accuracyPct,
           wasRescheduledOverdue: false,
           updatedAt: dateIso
         }, { merge: true });
+
+        // 3. Update userProgress.topicStats for precise dashboard tracking
+        try {
+          const userDocRef = doc(db, 'users', userId);
+          const userSnap = await getDoc(userDocRef);
+          if (userSnap.exists()) {
+            const prevStats = userSnap.data()?.topicStats || {};
+            const existing = prevStats[tObj.id] || { total: 0, hits: 0 };
+            const newTotal = (existing.total || 0) + qCount;
+            const newHits = (existing.hits || 0) + cCount;
+            const newAcc = Math.round((newHits / Math.max(1, newTotal)) * 100);
+
+            await updateDoc(userDocRef, {
+              [`topicStats.${tObj.id}`]: {
+                total: newTotal,
+                hits: newHits,
+                accuracy: newAcc,
+                lastUpdated: dateIso
+              }
+            });
+          }
+        } catch (e) {}
       }
 
       const summaryObj = {
         isFirst: lastIsFirst,
         nextDate: lastNextDateStr,
         topicTitle: updatedTopicTitles.length > 1 
-          ? `${updatedTopicTitles.length} tópicos (${updatedTopicTitles.slice(0, 3).join(', ')}${updatedTopicTitles.length > 3 ? '...' : ''})`
+          ? `${updatedTopicTitles.length} tópicos com estatísticas individuais salvas (${updatedTopicTitles.slice(0, 2).join(', ')}${updatedTopicTitles.length > 2 ? '...' : ''})`
           : updatedTopicTitles[0] || 'Tópico'
       };
 
       setMedReviseResult(summaryObj);
       return summaryObj;
     } catch (err) {
-      console.error("Erro ao sincronizar com o MedRevise:", err);
+      console.error("Erro ao sincronizar com o MedRevise por tópico:", err);
       return null;
     }
   };
@@ -4495,17 +4586,31 @@ export default function QuestionModule({
 
                 {/* 1. Mapeamento & Identificação dos Tópicos da Semana */}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <span className="text-[10px] uppercase tracking-widest font-extrabold text-[#8E8A82]">
-                      1. Tópicos da Semana Identificados
+                      1. Tópicos & Revisões Programadas da Semana
                     </span>
-                    <Badge className="bg-amber-100 text-amber-950 border-amber-300 text-[9px] font-extrabold px-2.5 py-0.5">
-                      {selectedTopicIds.length > 0
-                        ? `${selectedTopicIds.length} Tópico(s) da Semana`
-                        : selectedSubjectIds.length > 0
-                        ? `${selectedSubjectIds.length} Área(s) Selecionada(s)`
-                        : 'Simulado Geral'}
-                    </Badge>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const count = syncWeeklyScheduleTopicsIntoSimulado();
+                          alert(`📅 ${count} tópico(s) (novos estudos + revisões agendadas da semana no seu cronograma) foram incluídos no Simulado Semanal!`);
+                        }}
+                        className="px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 font-mono text-[9.5px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                        title="Sincronizar revisões agendadas para esta semana no cronograma"
+                      >
+                        <Sparkles className="w-3 h-3 text-amber-600" />
+                        <span>📅 Incluir Revisões da Semana</span>
+                      </button>
+                      <Badge className="bg-amber-100 text-amber-950 border-amber-300 text-[9px] font-extrabold px-2.5 py-0.5">
+                        {selectedTopicIds.length > 0
+                          ? `${selectedTopicIds.length} Tópico(s) da Semana`
+                          : selectedSubjectIds.length > 0
+                          ? `${selectedSubjectIds.length} Área(s) Selecionada(s)`
+                          : 'Simulado Geral'}
+                      </Badge>
+                    </div>
                   </div>
 
                   <div className="p-4 rounded-2xl bg-white border border-[#E2E0D9] space-y-2 max-h-48 overflow-y-auto">

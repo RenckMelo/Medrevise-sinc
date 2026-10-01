@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { db, doc, updateDoc, collection, getDocs, deleteDoc, serverTimestamp, getDoc, query, where, addDoc } from '../firebase';
+import { db, doc, updateDoc, collection, getDocs, deleteDoc, serverTimestamp, getDoc, query, where, addDoc, setDoc } from '../firebase';
 import { safeLocalStorageSet } from '../internato/utils/storageUtils';
 import { 
   User, 
@@ -155,11 +155,12 @@ export default function ProfileView() {
       if (profile.settings?.dailyGoalMinutes) {
         setDailyGoal(profile.settings.dailyGoalMinutes);
       }
-      if (profile.settings?.residencyFocusType) {
-        setResidencyFocusType(profile.settings.residencyFocusType);
+      if (profile.settings?.residencyFocusType || (profile as any)?.residencyFocusType) {
+        setResidencyFocusType(profile.settings?.residencyFocusType || (profile as any)?.residencyFocusType);
       }
-      if (profile.settings?.residencyFocus) {
-        setResidencyFocus(profile.settings.residencyFocus);
+      const loadedFocus = profile.settings?.residencyFocus || (profile as any)?.residencyFocus || (profile as any)?.targetExam;
+      if (loadedFocus) {
+        setResidencyFocus(loadedFocus);
       }
     }
   }, [profile]);
@@ -656,11 +657,16 @@ export default function ProfileView() {
   };
 
   const handleSaveSettings = async () => {
-    if (!user) return;
+    if (!user) {
+      alert("Sua sessão expirou. Por favor, faça login novamente.");
+      return;
+    }
     setIsSaving(true);
     try {
       const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, {
+      const settingsPayload = {
+        uid: user.uid,
+        email: user.email || '',
         residencyFocus: residencyFocus,
         residencyFocusType: residencyFocusType,
         targetExam: residencyFocus,
@@ -669,7 +675,23 @@ export default function ProfileView() {
           residencyFocusType: residencyFocusType,
           residencyFocus: residencyFocus
         }
-      }, { merge: true });
+      };
+
+      await setDoc(userRef, settingsPayload, { merge: true });
+
+      // Secondary sync to userSettings collection to guarantee state persistence
+      try {
+        await setDoc(doc(db, 'userSettings', user.uid), {
+          uid: user.uid,
+          residencyFocus: residencyFocus,
+          residencyFocusType: residencyFocusType,
+          targetExam: residencyFocus,
+          dailyGoalMinutes: dailyGoal,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Could not sync to userSettings collection:", err);
+      }
 
       safeLocalStorageSet('user_residency_focus', residencyFocus);
       safeLocalStorageSet('user_residency_focus_type', residencyFocusType);
@@ -691,10 +713,10 @@ export default function ProfileView() {
         });
       } catch (_) {}
 
-      alert('Configurações salvas com sucesso! Suas preferências de faculdades/bancas e metas foram salvas no seu perfil.');
-    } catch (error) {
+      alert('Configurações salvas com sucesso! Suas preferências de bancas e metas foram salvas no seu perfil.');
+    } catch (error: any) {
       console.error('Error saving settings:', error);
-      alert('Erro ao salvar configurações.');
+      alert(`Erro ao salvar configurações: ${error?.message || 'Erro de conexão ou permissão'}`);
     } finally {
       setIsSaving(false);
     }

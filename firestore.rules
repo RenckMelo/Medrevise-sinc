@@ -49,7 +49,7 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.uid is string && 
+      return (data.uid == null || data.uid is string) && 
              (data.email == null || data.email is string) &&
              (data.settings == null || data.settings is map);
     }

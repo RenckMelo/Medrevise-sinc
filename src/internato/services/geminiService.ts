@@ -1226,13 +1226,16 @@ export async function generateQuestions(
   const currentExisting = existingQuestions.map(t => (t || '').substring(0, 70));
 
   const { residencyFocus } = await getUserFocusSettings(userId);
-  let examFocusText = `Você DEVE priorizar com 100% de rigidez as seguintes bancas de residência médica de interesse do candidato: **${residencyFocus}** (2022 a 2026).`;
+  const userBancas = (residencyFocus || '').split(/[,;\/]+/).map(s => s.trim()).filter(Boolean);
+  const bancasToUse = userBancas.length > 0 ? userBancas : ['ENARE', 'USP-SP', 'UNICAMP', 'PSU-MG', 'SUS-SP', 'AMRIGS'];
+
+  let examFocusText = `Você DEVE priorizar com 100% de rigidez as seguintes bancas de residência médica de interesse do candidato: **${bancasToUse.join(', ')}** (2021 a 2026).`;
 
   if (targetExam && targetExam !== 'all') {
     if (targetYear) {
       examFocusText = `Você DEVE priorizar com 100% de rigidez a banca de residência médica: **${targetExam}** especificamente do ano **${targetYear}**. O campo "source" DEVE ser rigorosamente "${targetExam} (${targetYear})".`;
     } else {
-      examFocusText = `Você DEVE priorizar com 100% de rigidez a banca de residência médica: **${targetExam}** (2022 a 2026).`;
+      examFocusText = `Você DEVE priorizar com 100% de rigidez a banca de residência médica: **${targetExam}** (2021 a 2026).`;
     }
   }
 
@@ -1253,18 +1256,19 @@ export async function generateQuestions(
     - O enunciado ("text"), as dados do paciente, sinais vitais, comorbidades, achados de exames laboratoriais/imagem, a pergunta e cada uma das alternativas em "options" (A, B, C, D) DEVEM SER COPIADOS PALAVRA POR PALAVRA do gabarito/caderno de prova oficial.
     - GARANTIA DE BUSCA POSTERIOR: Se o aluno copiar qualquer trecho do enunciado ou das alternativas e pesquisar na internet ou em PDFs oficiais da banca, ele DEVE encontrar exatamente a mesma questão idêntica com as mesmas opções.
 
-    REGRA RÍGIDA DE BALANCEAMENTO EQUITATIVO E CASCATA DE BANCAS (CAMPO "source"):
+    REGRA RÍGIDA DE ROTATIVIDADE E CASCATA DE BANCAS (CAMPO "source"):
     ${targetExam && targetExam !== 'all' 
       ? `Todas as questões geradas neste lote devem ser obrigatoriamente da banca **${targetExam}** ${targetYear ? `(ano ${targetYear})` : '(anos 2021 a 2026)'}.` 
-      : `1ª PRIORIDADE - BALANCEAMENTO EQUITATIVO DENTRO DAS BANCAS SELECIONADAS (${residencyFocus}):
-    - Se o candidato tem mais de uma banca selecionada em "${residencyFocus}", você DEVE DISTRIBUIR As ${currentChunkSize} QUESTÕES DE FORMA EQUITATIVA (IGUAL) ENTRE ELAS (ex: se houver 3 bancas na lista, divida o lote com 1 ou 2 questões de cada uma delas).
-    - É ESTRITAMENTE PROIBIDO gerar todas as questões de uma única banca (como SES-DF) quando o candidato selecionou múltiplas bancas de preferência!
+      : `1ª PRIORIDADE OBRIGATÓRIA - ROTATIVIDADE ENTRE AS BANCAS DO CANDIDATO (${bancasToUse.join(', ')}):
+    - O candidato possui as seguintes ${bancasToUse.length} bancas cadastradas no seu perfil: [${bancasToUse.join(', ')}].
+    - Você DEVE DISTRIBUIR E VARIAR o campo "source" entre essas bancas (exemplo: para este lote de ${currentChunkSize} questões, atribua a Questão 1 à banca "${bancasToUse[0]}", a Questão 2 à banca "${bancasToUse[1] || bancasToUse[0]}", a Questão 3 à banca "${bancasToUse[2] || bancasToUse[0]}", etc.).
+    - É STRICTAMENTE PROIBIDO colocar a mesma banca única em todas as questões do lote quando o aluno cadastrou múltiplas bancas!
 
     2ª PRIORIDADE - REDISTRIBUIÇÃO ENTRE AS BANCAS SELECIONADAS POR FALTA DE QUESTÕES DO TEMA:
-    - Se uma das bancas selecionadas pelo aluno não tiver questões reais sobre o tema específico "${topicTitle}", busque a quantidade restante nas OUTRAS bancas selecionadas na lista do aluno [${residencyFocus}].
+    - Se uma das bancas selecionadas pelo aluno não tiver questões reais sobre o tema específico "${topicTitle}", busque a quantidade restante nas OUTRAS bancas selecionadas na lista do aluno [${bancasToUse.join(', ')}].
 
     3ª PRIORIDADE - EXPANSÃO PARA OUTRAS GRANDES BANCAS OFICIAIS NACIONAIS:
-    - Se e somente se a soma de TODAS as bancas selecionadas pelo candidato não possuir questões reais suficientes do tema "${topicTitle}", busque questões reais de outras grandes bancas oficiais do Brasil (ex: ENARE, USP-SP, UNICAMP, UNIFESP, PSU-MG, SUS-SP, AMRIGS, AMP, SURCE, UFG, UnB, SES-DF). Indique a banca real no campo "source".
+    - Se e somente se a soma de TODAS as bancas selecionadas pelo candidato não possuir questões reais suficientes do tema "${topicTitle}", busque questões reais de outras grandes bancas oficiais do Brasil (ex: ENARE, USP-SP, UNICAMP, UNIFESP, PSU-MG, SUS-SP, AMRIGS, AMP, SURCE, UFG, UnB). Indique a banca real no campo "source".
 
     4ª PRIORIDADE - QUESTÃO INÉDITA NO ESTILO DA BANCA (ÚLTIMO RECURSO ABSOLUTO):
     - Apenas se não existir nenhuma questão real de concurso público sobre este tema em nenhuma banca reconhecida no Brasil, elabore uma questão inédita no estilo exato da banca prioritária e identifique o "source" como "Inédita Estilo [BANCA] (2026)".`}
@@ -1280,7 +1284,7 @@ export async function generateQuestions(
     4. EXPLICAÇÃO DIDÁTICA E EXCLUSÃO DE ALTERNATIVAS: O campo "explanation" DEVE conter um comentário técnico completo em PORTUGUÊS garantindo o entendimento total da questão, explicando fundamentadamente por que a alternativa correta é a verdadeira E detalhando a exclusão exata/motivo do erro de cada uma das alternativas incorretas (ex: "Alternativa A incorreta pois...", "Alternativa B correta por...").
 
     REQUISITOS ADICIONAIS:
-    1. DIVERSIDADE REAL DE ORIGEM E ANO: Cada questão gerada/recuperada DEVE possuir a sua banca e o seu ano ESPECÍFICOS e REAIS (ex: varie entre ENARE, SES-DF, SES-GO, UFG, UnB, USP, UNIFESP, UNICAMP, PSU-MG, AMRIGS e anos entre 2021 e 2026). É ESTRITAMENTE PROIBIDO atribuir a mesma banca e o mesmo ano fixo a todas as questões de um lote, a menos que o candidato tenha selecionado um filtro específico de banca única.
+    1. DIVERSIDADE REAL DE ORIGEM E ANO: Cada questão gerada/recuperada DEVE possuir a sua banca e o seu ano ESPECÍFICOS e REAIS de forma variada entre [${bancasToUse.join(', ')}] (anos entre 2021 e 2026).
     2. Evite repetir enunciados parecidos com: ${currentExisting.join(' | ')}.
     3. Estatísticas Regionais ("regionalIncidenceStats") e Termômetro ("heatLevel"): Frequência aproximada de cobrança do tema e termômetro ('baixo', 'medio', 'alto', 'extremo').
     4. Pegadinhas ("frequentMistakesExplanation"): Detalhes do distrator da banca em português.
@@ -1293,13 +1297,11 @@ export async function generateQuestions(
         "options": ["Alternativa A completa", "Alternativa B completa", "Alternativa C completa", "Alternativa D completa"],
         "correctOptionIndex": 0,
         "explanation": "Comentário técnico minucioso e fundamentado em português...",
-        "source": "${targetExam ? `${targetExam} (${targetYear || 2024})` : 'SIGLA DA BANCA REAL (ANO REAL DA QUESTÃO)'}",
+        "source": "${targetExam ? `${targetExam} (${targetYear || 2024})` : 'BANCA_SELECIONADA (ANO)'}",
         "regionalIncidenceStats": {
-          "SES-DF": 12,
-          "SES-GO": 8,
-          "SUS-GO": 6,
-          "HBDF": 5,
-          "ENARE": 14
+          "${bancasToUse[0] || 'ENARE'}": 12,
+          "${bancasToUse[1] || 'USP-SP'}": 8,
+          "${bancasToUse[2] || 'UNICAMP'}": 6
         },
         "heatLevel": "alto",
         "frequentMistakesExplanation": "Explicação da pegadinha da banca em português...",
@@ -1834,19 +1836,19 @@ Gabarito Oficial: Alternativa ${String.fromCharCode(65 + correctIndex)}
 
 CRIE UM COMENTÁRIO DENSE, EXAUSTIVO, DIDÁTICO E DE ALTO RENDIMENTO EM MARKDOWN:
 
-# 📋 COMENTÁRIO DA QUESTÃO & RACIOCÍNIO CLÍNICO
+# COMENTÁRIO DA QUESTÃO & RACIOCÍNIO CLÍNICO
 
-## 1. 🎯 ANÁLISE DA ALTERNATIVA CORRETA (${String.fromCharCode(65 + correctIndex)})
+## 1. ANÁLISE DA ALTERNATIVA CORRETA (${String.fromCharCode(65 + correctIndex)})
 - Explique o diagnóstico, mecanismo fisiopatológico e o PORQUÊ exato desta alternativa ser a correta.
 - Detalhe exames de 1ª linha, conduta imediata e farmacologia completa com doses (mg/kg, vias, intervalos) se aplicável.
 
-## 2. ❌ ANÁLISE DAS ALTERNATIVAS INCORRETAS
+## 2. ANÁLISE DAS ALTERNATIVAS INCORRETAS
 ${options.map((_, i) => i === correctIndex ? '' : `- **Alternativa ${String.fromCharCode(65 + i)} (Incorreta)**: Explique o erro específico, a pegadinha ou em qual situação clínica essa alternativa seria a conduta indicada.`).filter(Boolean).join('\n')}
 
-## 3. 🔄 ALGORITMO & CONDUTA CLÍNICA
+## 3. ALGORITMO & CONDUTA CLÍNICA
 - Apresente a sequência diagnóstica, terapêutica e os pontos de decisão desta questão em formato escrito de texto (passos numerados, tópicos e setas em texto ➔, sem blocos de código gráficos ou sintaxe de fluxogramas).
 
-## 4. 💡 PÉROLA DE PROVA & PEGADINHA DA BANCA
+## 4. PÉROLA DE PROVA & PEGADINHA DA BANCA
 > [!IMPORTANT]
 > **DICA DO PRECEPTOR PARA A PROVA:** [Ponto-chave e pegadinha clássica cobrada pelas bancas neste tema]
 

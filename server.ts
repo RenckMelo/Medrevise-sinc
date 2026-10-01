@@ -529,7 +529,7 @@ app.post("/api/gemini", async (req, res) => {
     const userEmail = (email || "").toLowerCase().trim();
     const isSpecialUser = userEmail === 'ysabelleosaraiva@gmail.com' || userEmail === 'yasabelleosaraiva@gmail.com' || userEmail === 'lucas1renck2melo@gmail.com';
     const { prompt, model } = payload;
-    let modelToUse = model || "gemini-3.1-flash-lite";
+    let modelToUse = "gemini-3.1-flash-lite";
     const promptText = prompt || payload.promptText || "";
 
     const groqKey = allEnv['GROQ_API_KEY'];
@@ -563,7 +563,7 @@ app.post("/api/gemini", async (req, res) => {
 
     let providerSteps: { provider: 'groq' | 'gemini', keys?: string[] }[] = [];
 
-    // Strictly prioritize requested fixed Gemini Key / Groq if selected by VIP user
+    // Strictly prioritize requested fixed Gemini Key / Groq if explicitly selected
     if (preferredProvider === 'gemini_key2' && isValidKey(key2)) {
       providerSteps.push({ provider: 'gemini', keys: [key2!] });
     } else if (preferredProvider === 'gemini_key3' && isValidKey(key3)) {
@@ -614,14 +614,15 @@ app.post("/api/gemini", async (req, res) => {
     let resultText = "";
     let lastError: any = null;
 
-    // Execute provider steps in up to 3 rounds (initial attempt + retries)
+    // Execute provider steps in up to 3 rounds (initial attempt + retries with progressive delay)
     const MAX_ROUNDS = 3;
     for (let round = 1; round <= MAX_ROUNDS; round++) {
       if (success) break;
 
       if (round > 1) {
-        console.warn(`[AI Engine] Rodada ${round}/${MAX_ROUNDS} de retentativas... Aguardando 1.2s para reset de cota/bucket...`);
-        await new Promise(r => setTimeout(r, 1200));
+        const delayMs = (round - 1) * 1500; // 1.5s na rodada 2, 3.0s na rodada 3
+        console.warn(`[AI Engine] Rodada ${round}/${MAX_ROUNDS} de retentativas do rodízio... Aguardando ${delayMs / 1000}s...`);
+        await new Promise(r => setTimeout(r, delayMs));
       }
 
       for (const step of providerSteps) {
@@ -652,7 +653,8 @@ app.post("/api/gemini", async (req, res) => {
           const keysToTry = step.keys || [];
           const keysInOrder = keysToTry.length === 1 ? keysToTry : [...keysToTry].sort(() => Math.random() - 0.5);
 
-          const candidateModels = [modelToUse, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"].filter((v, idx, a) => a.indexOf(v) === idx);
+          // Strictly use gemini-3.1-flash-lite without model cascading
+          const candidateModels = ["gemini-3.1-flash-lite"];
 
           for (let i = 0; i < keysInOrder.length; i++) {
             if (success) break;
@@ -765,11 +767,6 @@ app.post("/api/gemini", async (req, res) => {
                 lastError = mErr;
                 const isRateLimit = mErr?.message?.includes('429') || mErr?.message?.includes('RESOURCE_EXHAUSTED') || mErr?.message?.includes('quota');
                 console.warn(`[Gemini] Falha (${isRateLimit ? '429 Rate Limit' : 'Erro'}) no modelo ${currentModelName} da chave ${keyObfuscated}: ${mErr?.message || 'Erro'}.`);
-                
-                if (isRateLimit) {
-                  await new Promise(r => setTimeout(r, 800));
-                  continue;
-                }
               }
             }
           }
@@ -777,71 +774,8 @@ app.post("/api/gemini", async (req, res) => {
       }
     }
 
-    // Outer retry if all providers failed due to rate limits or transient errors
     if (!success) {
-      console.warn("[AI Engine] Primeira rodada de provedores falhou. Tentando rodada rápida de emergência (1s pause)...");
-      await new Promise(r => setTimeout(r, 1000));
-      
-      for (const step of providerSteps) {
-        if (success) break;
-        if (step.provider === 'gemini') {
-          const keys = step.keys || [];
-          for (const apiKey of keys) {
-            if (success) break;
-            const ai = new GoogleGenerativeAI(apiKey);
-            const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
-            
-            for (const currentModelName of models) {
-              try {
-                let currentResult = "";
-                const isJsonReq = action === 'generateJson' || (typeof promptText === 'string' && (promptText.includes('"weeks":') || promptText.toLowerCase().includes('retorne estritamente um objeto json')));
-                const genConfig: any = isJsonReq ? { responseMimeType: "application/json" } : {};
-                
-                const modelInstance = ai.getGenerativeModel({ model: currentModelName, generationConfig: genConfig });
-                let contentsToUse: any = [{ role: "user", parts: [{ text: promptText }] }];
-                if (payload.parts && Array.isArray(payload.parts)) {
-                  contentsToUse = [{ role: "user", parts: payload.parts }];
-                }
-                const result = await modelInstance.generateContent({ contents: contentsToUse });
-                currentResult = result.response.text() || "";
-
-                if (currentResult && currentResult.trim().length > 0) {
-                  success = true;
-                  resultText = currentResult;
-                  aiUsageStats.gemini.requestsToday++;
-                  aiUsageStats.gemini.status = "OK";
-                  aiUsageStats.gemini.lastUsed = new Date().toISOString();
-                  aiUsageStats.lastActiveProvider = "Google Gemini (Emergency Fallback)";
-                  aiUsageStats.lastActiveModel = currentModelName;
-                  await persistProviderCall('gemini', userEmail);
-                  break;
-                }
-              } catch (e: any) {
-                lastError = e;
-              }
-            }
-          }
-        } else if (step.provider === 'groq' && groqKey) {
-          try {
-            resultText = await callGroqApi(groqKey, action, promptText, payload);
-            if (resultText && resultText.trim().length > 0) {
-              success = true;
-              aiUsageStats.groq.requestsToday++;
-              aiUsageStats.groq.status = "OK";
-              aiUsageStats.lastActiveProvider = "Groq Cloud (Emergency Fallback)";
-              aiUsageStats.lastActiveModel = "llama-3.3-70b-versatile";
-              await persistProviderCall('groq', userEmail);
-              break;
-            }
-          } catch (e: any) {
-            lastError = e;
-          }
-        }
-      }
-    }
-
-    if (!success) {
-      throw lastError || new Error("Todos os provedores de IA (Gemini e Groq) falharam ou atingiram limite temporário de requisições.");
+      throw lastError || new Error("Todos os provedores de IA (Gemini e Groq) falharam ou atingiram limite temporário de requisições após 3 rodadas.");
     }
 
     const text = resultText;

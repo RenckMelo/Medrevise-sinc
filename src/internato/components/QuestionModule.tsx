@@ -1453,7 +1453,7 @@ export default function QuestionModule({
         
         // Auto-generate fallback if no questions exist in Firestore for selected topics
         if (fetched.length === 0 && selectedTopicIds.length > 0) {
-          const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+          const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
           const targetExam = preset ? preset.name : undefined;
           for (const tid of selectedTopicIds) {
             const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
@@ -2455,7 +2455,7 @@ export default function QuestionModule({
     setGenerationProgress(15);
     setGenerationStatus("Conectando ao preceptor IA de residência...");
 
-    const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+    const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
     const targetExam = preset ? preset.name : undefined;
     const initialBatch: Question[] = [];
 
@@ -2588,7 +2588,7 @@ export default function QuestionModule({
     if (initialSelection.length < countToUse) {
       const missingCount = countToUse - initialSelection.length;
       const uniqueTids = Array.from(new Set(selectedTopicIds)).filter(Boolean);
-      const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+      const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
       const targetExam = preset ? preset.name : undefined;
 
       if (uniqueTids.length > 0) {
@@ -2610,7 +2610,7 @@ export default function QuestionModule({
     try {
       const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
       const existing = topicStatsMap[tid]?.questions?.map(q => q.text) || [];
-      const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+      const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
       const targetExam = preset ? preset.name : undefined;
 
       const newQuestions = await generateQuestions(topicTitle, subjectName, countToGen, existing, userId, targetExam);
@@ -2714,7 +2714,7 @@ export default function QuestionModule({
     }
     
     setIsGeneratingMore(true);
-    const preset = EXAM_PRESETS.find(p => p.id === selectedPresetId);
+    const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
     const targetExam = preset ? preset.name : undefined;
     const allAdded: Question[] = [];
     

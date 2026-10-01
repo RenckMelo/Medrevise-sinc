@@ -1607,9 +1607,9 @@ async function processReferralRewardForUser(userId: string) {
           if (friendData?.premiumUntil) {
             const currentUntilMs = new Date(friendData.premiumUntil).getTime();
             const baseMs = currentUntilMs > nowMs ? currentUntilMs : nowMs;
-            newUntilDate = new Date(baseMs + 5 * 24 * 60 * 60 * 1000);
+            newUntilDate = new Date(baseMs + 30 * 24 * 60 * 60 * 1000);
           } else {
-            newUntilDate = new Date(nowMs + 5 * 24 * 60 * 60 * 1000);
+            newUntilDate = new Date(nowMs + 30 * 24 * 60 * 60 * 1000);
           }
 
           const currentNotifications = Array.isArray(friendData?.referralNotifications) ? friendData.referralNotifications : [];
@@ -1618,7 +1618,7 @@ async function processReferralRewardForUser(userId: string) {
             fromName: userData.displayName || userData.email || 'Um usuário indicado',
             date: new Date().toISOString(),
             type: 'bonus_received',
-            daysGranted: 5
+            daysGranted: 30
           };
 
           await db.collection('users').doc(friendUid).update({
@@ -1638,10 +1638,10 @@ async function processReferralRewardForUser(userId: string) {
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             status: 'reward_granted',
             type: 'payment_confirmed',
-            daysGranted: 5
+            daysGranted: 30
           });
 
-          console.log(`[Referral Process] Successfully granted +5 days extended plan access to key owner ${friendUid}`);
+          console.log(`[Referral Process] Successfully granted +30 days extended plan access to key owner ${friendUid}`);
         }
       }
 
@@ -1837,16 +1837,19 @@ app.get('/api/mercadopago/check-payment/:paymentId', async (req, res) => {
         const desc = (paymentDetails.description || '').toLowerCase();
         if (desc.includes('internato premium')) {
           planId = 'med_internato_premium';
-        } else if (desc.includes('combo ouro')) {
+        } else if (desc.includes('combo ouro') || desc.includes('combo')) {
           planId = 'combo_ouro';
         }
+        const defaultUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
         try {
           await db.collection('users').doc(paymentUserId).update({
             isPremium: true,
+            planType: planId,
             premiumPlan: planId,
             premiumPaymentId: String(paymentId),
             premiumProvider: 'MercadoPago',
             premiumSince: admin.firestore.FieldValue.serverTimestamp(),
+            premiumUntil: defaultUntil,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
           console.log(`[Check Payment API] Upgraded user ${paymentUserId} to ${planId} status successfully in Firestore.`);
@@ -1904,16 +1907,19 @@ app.post('/api/mercadopago/webhook', async (req, res) => {
         const desc = (paymentDetails.description || '').toLowerCase();
         if (desc.includes('internato premium')) {
           planId = 'med_internato_premium';
-        } else if (desc.includes('combo ouro')) {
+        } else if (desc.includes('combo ouro') || desc.includes('combo')) {
           planId = 'combo_ouro';
         }
+        const defaultUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
         try {
           await db.collection('users').doc(userId).update({
             isPremium: true,
+            planType: planId,
             premiumPlan: planId,
             premiumPaymentId: String(paymentId),
             premiumProvider: 'MercadoPago',
             premiumSince: admin.firestore.FieldValue.serverTimestamp(),
+            premiumUntil: defaultUntil,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
           console.log(`[MercadoPago webhook] Upgraded user ${userId} to ${planId} status successfully in Firestore.`);

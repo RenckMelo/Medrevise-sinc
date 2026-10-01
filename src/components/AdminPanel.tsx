@@ -170,26 +170,29 @@ export default function AdminPanel() {
       const isLifetime = checkIsLifetime(newPlan);
       const isTrial = checkIsTrial(newPlan);
       const pPlan = getPremiumPlan(newPlan);
-      const oneWeekLater = isTrial ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
+      
+      let newUntilIso: string | null = null;
+      if (isLifetime) {
+        newUntilIso = null;
+      } else if (isTrial) {
+        newUntilIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      } else {
+        let durationDays = 30;
+        if (newPlan === 'quarterly') durationDays = 90;
+        else if (newPlan === 'semiannual') durationDays = 180;
+        else if (newPlan === 'annual') durationDays = 365;
+        newUntilIso = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+      }
       
       const updateData: any = {
         isPremium: true,
         isLifetimePremium: isLifetime,
         planType: newPlan,
         premiumPlan: pPlan,
-        premiumProvider: getProviderName(newPlan)
+        premiumProvider: getProviderName(newPlan),
+        premiumSince: isLifetime ? null : new Date().toISOString(),
+        premiumUntil: newUntilIso
       };
-
-      if (isLifetime) {
-        updateData.premiumSince = null;
-        updateData.premiumUntil = null;
-      } else if (isTrial) {
-        updateData.premiumSince = new Date().toISOString();
-        updateData.premiumUntil = oneWeekLater;
-      } else {
-        updateData.premiumSince = targetUser.isPremium ? (targetUser.createdAt || new Date().toISOString()) : new Date().toISOString();
-        updateData.premiumUntil = null;
-      }
 
       await updateDoc(userRef, updateData);
 
@@ -200,10 +203,50 @@ export default function AdminPanel() {
           isLifetimePremium: isLifetime,
           planType: newPlan,
           premiumPlan: pPlan,
-          premiumUntil: oneWeekLater || undefined
+          premiumUntil: newUntilIso || undefined
         } : u
       ));
-      alert(`Plano do usuário ${targetUser.email || targetUser.uid} alterado para: ${PLAN_LABELS[newPlan] || newPlan}${isTrial ? ' (Concedido 7 dias de teste)' : ''}`);
+      alert(`Plano do usuário ${targetUser.email || targetUser.uid} alterado para: ${PLAN_LABELS[newPlan] || newPlan}`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${targetUser.uid}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Adjust remaining days (+30d, +7d, -7d, etc.) for a user
+  const adjustUserDays = async (targetUser: RegisteredUser, daysToAdd: number) => {
+    setActionLoading(`days-${targetUser.uid}`);
+    try {
+      const userRef = doc(db, 'users', targetUser.uid);
+      const nowMs = Date.now();
+      let currentUntilMs = nowMs;
+      
+      if (targetUser.premiumUntil) {
+        const parsed = new Date(targetUser.premiumUntil).getTime();
+        if (!isNaN(parsed) && parsed > nowMs) {
+          currentUntilMs = parsed;
+        }
+      }
+      
+      const newUntilMs = Math.max(nowMs, currentUntilMs + daysToAdd * 24 * 60 * 60 * 1000);
+      const newUntilIso = new Date(newUntilMs).toISOString();
+      
+      await updateDoc(userRef, {
+        isPremium: true,
+        premiumUntil: newUntilIso,
+        planType: targetUser.planType || 'combo_ouro',
+        premiumPlan: targetUser.premiumPlan || 'combo_ouro'
+      });
+
+      setUsers(prev => prev.map(u => 
+        u.uid === targetUser.uid ? {
+          ...u,
+          isPremium: true,
+          premiumUntil: newUntilIso
+        } : u
+      ));
+      alert(`Validade estendida em ${daysToAdd > 0 ? `+${daysToAdd}` : daysToAdd} dias para ${targetUser.email || targetUser.uid}! Nova data: ${new Date(newUntilIso).toLocaleDateString('pt-BR')}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${targetUser.uid}`);
     } finally {
@@ -683,7 +726,7 @@ export default function AdminPanel() {
                           {item.createdAt ? new Date(item.createdAt).toLocaleDateString('pt-BR') : 'N/A'}
                         </td>
 
-                        {/* Column 3: Badge status */}
+                        {/* Column 3: Badge status & Days Remaining */}
                         <td className="p-3">
                           {(() => {
                             if (!item.isPremium) {
@@ -694,26 +737,42 @@ export default function AdminPanel() {
                               );
                             }
                             const plan = item.planType || (item.isLifetimePremium ? 'lifetime' : 'monthly');
-                            const isTrialPlan = plan?.startsWith('trial_1week') || !!item.premiumUntil;
+                            const isTrialPlan = plan?.startsWith('trial_1week');
                             const badgeStyle = 
                               isTrialPlan ? 'bg-amber-100 border-amber-300 text-amber-900 font-black' :
-                              plan === 'lifetime' ? 'bg-purple-50 border-purple-200 text-purple-700 font-black' :
-                              plan === 'combo_ouro' ? 'bg-amber-100 border-amber-300 text-amber-800 font-black' :
+                              plan === 'lifetime' || item.isLifetimePremium ? 'bg-purple-50 border-purple-200 text-purple-700 font-black' :
+                              plan === 'combo_ouro' || plan === 'combo_ouro_lifetime' ? 'bg-amber-100 border-amber-300 text-amber-800 font-black' :
                               plan === 'med_internato_premium' || (plan as string) === 'internato' ? 'bg-teal-50 border-teal-200 text-teal-700 font-black' :
                               plan === 'annual' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                              plan === 'semiannual' ? 'bg-blue-50 border-blue-200 text-blue-700' :
-                              plan === 'quarterly' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
                               'bg-amber-50 border-amber-200 text-amber-700 font-bold';
+                            
+                            let daysLeftStr = 'Vitalício ♾️';
+                            let isExpired = false;
+                            if (!item.isLifetimePremium && item.premiumUntil) {
+                              const untilMs = new Date(item.premiumUntil).getTime();
+                              const diffDays = Math.ceil((untilMs - Date.now()) / (1000 * 60 * 60 * 24));
+                              if (diffDays <= 0) {
+                                isExpired = true;
+                                daysLeftStr = `Expirado (${Math.abs(diffDays)}d atrás)`;
+                              } else {
+                                daysLeftStr = `${diffDays} dias restantes`;
+                              }
+                            } else if (!item.isLifetimePremium && item.createdAt) {
+                              daysLeftStr = '30 dias (padrão)';
+                            }
+
                             return (
-                              <div className="flex flex-col items-start gap-0.5">
+                              <div className="flex flex-col items-start gap-1">
                                 <span className={`inline-flex px-2 py-0.5 rounded-full border font-mono text-[8px] font-black uppercase tracking-wider ${badgeStyle}`}>
                                   ★ {PLAN_LABELS[plan] || 'PRO'}
                                 </span>
-                                {item.premiumUntil && item.isPremium && (
-                                  <span className="text-[7.5px] font-mono text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-semibold whitespace-nowrap">
-                                    ⚡ Expira em: {new Date(item.premiumUntil).toLocaleDateString('pt-BR')}
-                                  </span>
-                                )}
+                                <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded font-bold whitespace-nowrap border ${
+                                  item.isLifetimePremium ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                  isExpired ? 'bg-rose-100 text-rose-800 border-rose-300 font-black' :
+                                  'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold'
+                                }`}>
+                                  ⏳ {daysLeftStr}
+                                </span>
                               </div>
                             );
                           })()}
@@ -747,14 +806,14 @@ export default function AdminPanel() {
                             </select>
 
                             <button
-                              id={`btn-trial-quick-${item.uid}`}
-                              onClick={() => grantOneWeekTrial(item, subTypeMap[item.uid]?.startsWith('trial_1week') ? subTypeMap[item.uid] : 'trial_1week_combo')}
-                              disabled={actionLoading === item.uid || actionLoading === `trial-${item.uid}`}
-                              title="Conceder 1 Semana de Teste Gratuito"
-                              className="h-8 px-2 rounded-lg font-mono text-[8.5px] uppercase tracking-wider font-black transition-all border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 shrink-0 cursor-pointer flex items-center gap-1"
+                              id={`btn-extend-30d-${item.uid}`}
+                              onClick={() => adjustUserDays(item, 30)}
+                              disabled={actionLoading === `days-${item.uid}`}
+                              title="Adicionar +30 Dias ao Plano do Usuário"
+                              className="h-8 px-2 rounded-lg font-mono text-[8.5px] uppercase tracking-wider font-black transition-all border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 shrink-0 cursor-pointer flex items-center gap-1"
                             >
-                              <Zap className="w-3 h-3 text-amber-600 shrink-0" />
-                              <span>1 Sem. Teste</span>
+                              <Calendar className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>+30d</span>
                             </button>
 
                             {item.isPremium && subTypeMap[item.uid] && subTypeMap[item.uid] !== item.planType && (

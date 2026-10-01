@@ -211,16 +211,16 @@ export default function ProfileView() {
             const friendData = friendDoc.data();
             
             if (friendUid !== user.uid) {
-              // Calculate new expiration date (+5 days bonus added to current plan)
+              // Calculate new expiration date (+30 days bonus added to current plan)
               let newUntilDate: Date;
               const nowMs = Date.now();
               
               if (friendData.premiumUntil) {
                 const currentUntilMs = new Date(friendData.premiumUntil).getTime();
                 const baseMs = currentUntilMs > nowMs ? currentUntilMs : nowMs;
-                newUntilDate = new Date(baseMs + 5 * 24 * 60 * 60 * 1000);
+                newUntilDate = new Date(baseMs + 30 * 24 * 60 * 60 * 1000);
               } else {
-                newUntilDate = new Date(nowMs + 5 * 24 * 60 * 60 * 1000);
+                newUntilDate = new Date(nowMs + 30 * 24 * 60 * 60 * 1000);
               }
               
               const friendRef = doc(db, 'users', friendUid);
@@ -232,7 +232,7 @@ export default function ProfileView() {
                 fromName: profile.displayName || 'Um usuário indicado',
                 date: new Date().toISOString(),
                 type: 'bonus_received',
-                daysGranted: 5
+                daysGranted: 30
               };
               
               await updateDoc(friendRef, {
@@ -241,7 +241,7 @@ export default function ProfileView() {
                 referralNotifications: [...currentNotifications, newNotification]
               });
               
-              console.log('[Referral] Friend updated successfully with +5 days bonus and notification.');
+              console.log('[Referral] Friend updated successfully with +30 days bonus and notification.');
               
               // Log to referralLogs collection
               try {
@@ -257,7 +257,7 @@ export default function ProfileView() {
                   createdAt: serverTimestamp(),
                   status: 'reward_granted',
                   type: 'premium_activation',
-                  daysGranted: 5
+                  daysGranted: 30
                 });
               } catch (logErr) {
                 console.error('[Referral] Error creating referral log:', logErr);
@@ -329,7 +329,7 @@ export default function ProfileView() {
       
       setReferralFeedback({
         type: 'success',
-        message: `Chave ${cleanKey} vinculada com sucesso! O dono da chave (${friendData.displayName || 'Usuário'}) receberá +5 dias adicionais no plano atual assim que o seu pagamento for confirmado.`
+        message: `Chave ${cleanKey} vinculada com sucesso! O dono da chave (${friendData.displayName || 'Usuário'}) receberá +30 dias adicionais no plano atual assim que o seu pagamento for confirmado.`
       });
       
       setEnteredReferralKey('');
@@ -532,17 +532,21 @@ export default function ProfileView() {
           if (data.isPremium || data.status === 'approved') {
             try {
               const userRef = doc(db, 'users', user.uid);
+              const defaultUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
               await updateDoc(userRef, {
                 isPremium: true,
+                planType: selectedPlanId,
                 premiumPlan: selectedPlanId,
                 premiumPaymentId: String(pixPaymentId),
                 premiumProvider: 'MercadoPago',
                 premiumSince: serverTimestamp(),
+                premiumUntil: defaultUntil,
                 updatedAt: serverTimestamp()
               });
               console.log('[Check Pix Status] Updated user doc on client side successfully.');
               if (typeof window !== 'undefined') {
                 window.dispatchEvent(new CustomEvent('ai-credits-updated'));
+                window.dispatchEvent(new CustomEvent('user-profile-updated'));
               }
             } catch (clientErr) {
               console.error('[Check Pix Status] Client-side Firestore update error:', clientErr);
@@ -756,7 +760,7 @@ export default function ProfileView() {
             <div className="space-y-1">
               <h4 className="font-serif italic text-lg font-bold">Parabéns! Sua Chave de Compartilhamento foi Utilizada! 🌟</h4>
               <p className="text-xs text-neutral-700 leading-relaxed font-sans">
-                Seu colega utilizou sua chave de acesso e assinou a plataforma. Como recompensa, <strong>você acaba de receber +5 dias de extensão no seu plano cadastrado</strong>! Seu acesso foi estendido com sucesso na nuvem.
+                Seu colega utilizou sua chave de acesso e assinou a plataforma. Como recompensa, <strong>você acaba de receber +30 dias de extensão no seu plano cadastrado</strong>! Seu acesso foi estendido com sucesso na nuvem.
               </p>
               <div className="pt-2 flex flex-wrap gap-2">
                 <button
@@ -995,7 +999,7 @@ export default function ProfileView() {
             </div>
             
             <p className="text-xs text-neutral-600 leading-relaxed font-sans">
-              Compartilhe o MedRevise com seus amigos e colegas de internato! Se algum colega assinar qualquer plano utilizando a sua chave exclusiva de acesso, <strong>você receberá +5 dias adicionais no seu plano atual</strong> por cada indicação!
+              Compartilhe o MedRevise com seus amigos e colegas de internato! Sua chave garante <strong>30 dias de acesso completo</strong> para a conta que utilizá-la ao assinar, e como recompensa <strong>você também recebe +30 dias adicionais no seu plano atual</strong> por cada indicação confirmada!
             </p>
 
             {/* User's own key */}
@@ -1081,18 +1085,56 @@ export default function ProfileView() {
                   <div className="flex items-center gap-3 pb-3 border-b border-[#141414]/10">
                     <ShieldCheck className="text-yellow-600 shrink-0" size={32} />
                     <div>
-                      <h4 className="font-serif italic text-lg font-bold">Sua Assinatura: Pro</h4>
+                      <h4 className="font-serif italic text-lg font-bold">
+                        Sua Assinatura: {profile.planType === 'combo_ouro' || profile.premiumPlan === 'combo_ouro' ? 'Combo Ouro 👑' : profile.planType === 'med_internato_premium' || profile.premiumPlan === 'med_internato_premium' ? 'Med Internato Premium' : 'MedRevise Pro'}
+                      </h4>
                       <p className="text-[10px] font-mono text-neutral-400 uppercase font-bold text-[8px]">SINCERIDADE & ACESSO LIBERADO</p>
                     </div>
                   </div>
 
-                  <div className="p-4 bg-emerald-50 border border-emerald-250 rounded">
-                    <span className="block text-[8px] font-mono text-emerald-600 uppercase font-bold">Status da Conta</span>
-                    <span className="block font-serif text-lg font-bold text-emerald-950 mt-1">Acesso Pro Habilitado</span>
-                    <span className="block text-[11px] font-sans text-neutral-650 mt-2 leading-relaxed">
-                      Sua conta possui matérias, assuntos/tópicos, relatórios estendidos e calendários científicos 100% integrados e ilimitados.
+                  <div className="p-4 bg-emerald-50 border border-emerald-250 rounded space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="block text-[8px] font-mono text-emerald-600 uppercase font-bold">Status da Conta</span>
+                      <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                        {remainingDays === 'ilimitado' ? 'Acesso Vitalício ♾️' : `⏳ ${remainingDays} dias restantes`}
+                      </span>
+                    </div>
+                    <span className="block font-serif text-lg font-bold text-emerald-950 mt-1">
+                      {profile.planType === 'combo_ouro' || profile.premiumPlan === 'combo_ouro' ? 'Plano Combo Ouro VIP Ativo' : 'Acesso Pro Habilitado'}
                     </span>
+                    <span className="block text-[11px] font-sans text-neutral-650 leading-relaxed">
+                      Sua conta possui matérias, banco de questões do internato, relatórios estendidos e cronogramas 100% integrados e ilimitados.
+                    </span>
+
+                    {/* Progress bar for remaining days */}
+                    {typeof remainingDays === 'number' && (
+                      <div className="pt-2 space-y-1">
+                        <div className="w-full bg-emerald-200/80 h-2 rounded-full overflow-hidden">
+                          <div 
+                            className="bg-emerald-600 h-full rounded-full transition-all duration-500" 
+                            style={{ width: `${Math.min(100, Math.max(5, (remainingDays / 30) * 100))}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[9px] font-mono text-emerald-900">
+                          <span>Início do ciclo</span>
+                          <span>{remainingDays} dias de 30</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Expiring Soon Banner (<= 5 days) */}
+                  {typeof remainingDays === 'number' && remainingDays <= 5 && remainingDays > 0 && (
+                    <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl space-y-2">
+                      <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                        <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Seu plano vence em {remainingDays} {remainingDays === 1 ? 'dia' : 'dias'}!</span>
+                      </div>
+                      <p className="text-[11px] text-amber-800 leading-relaxed">
+                        Renove antecipadamente seu plano para não interromper suas revisões e manter seu progresso no acervo.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="space-y-2 text-xs text-neutral-650 font-sans">
                     <div className="flex justify-between font-mono py-1.5 border-b border-dashed border-[#141414]/10">

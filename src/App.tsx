@@ -217,29 +217,34 @@ export default function App() {
     const uid = params.get('uid');
 
     if (user && status === 'success') {
-      if (sandboxUpgrade && uid === user.uid) {
-        const triggerUpgrade = async () => {
-          try {
-            const userRef = doc(db, 'users', user.uid);
-            await updateDoc(userRef, {
-              isPremium: true,
-              premiumProvider: 'MercadoPago_Sandbox_Simulator',
-              updatedAt: new Date().toISOString()
-            });
-            alert('Parabéns! Sua assinatura MedRevise Pro foi ativada com sucesso!');
-            const cleanPath = window.location.pathname.startsWith('//') ? '/' + window.location.pathname.replace(/^\/+/, '') : window.location.pathname;
-            window.history.replaceState({}, document.title, cleanPath);
-            window.location.reload();
-          } catch (err) {
-            console.error('Sandbox upgrade trigger failure:', err);
-          }
-        };
-        triggerUpgrade();
-      } else {
-        alert('Pagamento processado! Seu plano MedRevise Pro será ativado em instantes via webhook.');
-        const cleanPath = window.location.pathname.startsWith('//') ? '/' + window.location.pathname.replace(/^\/+/, '') : window.location.pathname;
-        window.history.replaceState({}, document.title, cleanPath);
-      }
+      const planTypeParam = params.get('plan_type') || 'combo_ouro';
+      const triggerInstantUpgrade = async () => {
+        try {
+          const userRef = doc(db, 'users', user.uid);
+          const defaultUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+          await updateDoc(userRef, {
+            isPremium: true,
+            planType: planTypeParam,
+            premiumPlan: planTypeParam,
+            premiumProvider: 'MercadoPago',
+            premiumSince: new Date().toISOString(),
+            premiumUntil: defaultUntil,
+            updatedAt: new Date().toISOString()
+          });
+          window.dispatchEvent(new CustomEvent('ai-credits-updated'));
+          window.dispatchEvent(new CustomEvent('user-profile-updated'));
+          const planTitle = planTypeParam === 'combo_ouro' ? 'Combo Ouro 👑' : planTypeParam === 'med_internato_premium' ? 'Med Internato Premium' : 'MedRevise Pro';
+          alert(`🎉 Pagamento aprovado! Seu plano ${planTitle} foi ativado com sucesso em sua conta!`);
+          const cleanPath = window.location.pathname.startsWith('//') ? '/' + window.location.pathname.replace(/^\/+/, '') : window.location.pathname;
+          window.history.replaceState({}, document.title, cleanPath);
+        } catch (err) {
+          console.error('Instant upgrade trigger failure:', err);
+          alert('Pagamento processado! Sua conta será atualizada em instantes.');
+          const cleanPath = window.location.pathname.startsWith('//') ? '/' + window.location.pathname.replace(/^\/+/, '') : window.location.pathname;
+          window.history.replaceState({}, document.title, cleanPath);
+        }
+      };
+      triggerInstantUpgrade();
     } else if (status === 'failure') {
       alert('O pagamento foi recusado ou cancelado no Mercado Pago. Por favor, tente novamente.');
       const cleanPath = window.location.pathname.startsWith('//') ? '/' + window.location.pathname.replace(/^\/+/, '') : window.location.pathname;

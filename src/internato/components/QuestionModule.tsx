@@ -197,14 +197,15 @@ export default function QuestionModule({
     };
   }, []);
 
-  // Ensure pausedSession is reliably loaded whenever userId resolves
+  // Ensure pausedSession is reliably loaded whenever userId or userProgress resolves (including Cloud Firestore sync for Netlify)
   useEffect(() => {
-    const loadSavedSession = () => {
+    const loadSavedSession = async () => {
       try {
         const keys = [
-          `medinternato_paused_question_session_${userId}`,
-          `medinternato_paused_question_session_guest`,
-          `medinternato_paused_question_session_global`
+          `medinternato_paused_question_session_${userId || 'guest'}`,
+          `medinternato_paused_question_session_global`,
+          `medrevise_paused_simulado`,
+          `medinternato_paused_question_session_guest`
         ];
         for (const k of keys) {
           const saved = localStorage.getItem(k);
@@ -216,10 +217,40 @@ export default function QuestionModule({
             }
           }
         }
-      } catch (e) {}
+
+        // Cloud sync fallback from Firestore (vital for Netlify cross-domain/fresh sessions)
+        if (userId && db) {
+          const userDocRef = doc(db, 'users', userId);
+          const snap = await getDoc(userDocRef);
+          if (snap.exists()) {
+            const fsData = snap.data();
+            if (fsData?.pausedSimuladoSession && Array.isArray(fsData.pausedSimuladoSession.questions) && fsData.pausedSimuladoSession.questions.length > 0) {
+              setPausedSession(fsData.pausedSimuladoSession);
+              try {
+                localStorage.setItem(`medinternato_paused_question_session_${userId}`, JSON.stringify(fsData.pausedSimuladoSession));
+                localStorage.setItem('medinternato_paused_question_session_global', JSON.stringify(fsData.pausedSimuladoSession));
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error loading paused session:', e);
+      }
     };
+
     loadSavedSession();
-  }, [userId]);
+
+    const handleWindowFocus = () => {
+      loadSavedSession();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('storage', handleWindowFocus);
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('storage', handleWindowFocus);
+    };
+  }, [userId, userProgress]);
   const [countdownMinutes, setCountdownMinutes] = useState(15);
   const [secondsRemaining, setSecondsRemaining] = useState(15 * 60);
   const [examAnswers, setExamAnswers] = useState<Record<string, number>>({});
@@ -282,8 +313,17 @@ export default function QuestionModule({
       localStorage.removeItem(`medinternato_paused_question_session_${userId || 'guest'}`);
       localStorage.removeItem('medinternato_paused_question_session_global');
       localStorage.removeItem('medinternato_paused_question_session_guest');
+      localStorage.removeItem('medrevise_paused_simulado');
     } catch (e) {}
     setPausedSession(null);
+
+    if (userId && db) {
+      try {
+        updateDoc(doc(db, 'users', userId), {
+          pausedSimuladoSession: null
+        }).catch(err => console.warn('Firestore clear paused session error:', err));
+      } catch (err) {}
+    }
   };
 
   // Explicit Pause Session handler
@@ -326,9 +366,18 @@ export default function QuestionModule({
     try {
       localStorage.setItem(PAUSED_SESSION_KEY, JSON.stringify(sessionToSave));
       localStorage.setItem('medinternato_paused_question_session_global', JSON.stringify(sessionToSave));
+      localStorage.setItem('medrevise_paused_simulado', JSON.stringify(sessionToSave));
       setPausedSession(sessionToSave);
     } catch (e) {
       console.error('Error saving paused session:', e);
+    }
+
+    if (userId && db) {
+      try {
+        updateDoc(doc(db, 'users', userId), {
+          pausedSimuladoSession: sessionToSave
+        }).catch(err => console.warn('Firestore sync error for paused session:', err));
+      } catch (err) {}
     }
 
     setQuestions([]);

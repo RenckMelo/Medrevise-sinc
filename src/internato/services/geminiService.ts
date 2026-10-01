@@ -1746,7 +1746,21 @@ CRIE UM APROFUNDAMENTO TÉCNICO COMPLETO EM MARKDOWN COM A SEGUINTE ESTRUTURA VI
 - Farmacologia detalhada com Doses exatas (mg/kg), vias, posologias, duração do tratamento e ajustes em falência renal ou hepática.
 - Algoritmo de conduta passo a passo (1ª e 2ª linhas de tratamento).
 
-## 4. 🎯 PÉROLA DE PROVA & DICA DO PRECEPTOR
+## 4. 🔄 ALGORITMO & FLUXOGRAMA DE DECISÃO CLÍNICA
+Inclua um **FLUXOGRAMA DE DECISÃO CLÍNICA COMPLETO** em sintaxe Mermaid válida para o raciocínio diagnóstico e terapêutico.
+Exemplo obrigatorio:
+\`\`\`mermaid
+graph TD
+  A["1. Avaliação Inicial / Quadro Clínico"] -->|Estável| B["2. Exame de 1ª Linha & Propedêutica"]
+  A -->|Instável / Emergência| C["3. Conduta de Urgência & Medidas Imediatas"]
+  B -->|Positivo / Sucesso| D["4. Tratamento Definitivo & Doses"]
+  B -->|Negativo / Falha| E["5. Diagnóstico Diferencial & Investigação"]
+\`\`\`
+REGRAS DO FLUXOGRAMA:
+- Abra todos os ramos para cada variante de possibilidade (Sim/Não, Estável/Instável, Resposta/Falha).
+- Escreva a conduta completa com doses e nomes de exames dentro das caixas sem cortar frases.
+
+## 5. 🎯 PÉROLA DE PROVA & DICA DO PRECEPTOR
 > [!IMPORTANT]
 > **HIGHLIGHT DE ALTO RENDIMENTO PARA PROVAS (ENARE / UFG / SES-GO / SES-DF):**
 > [Dica cirúrgica sobre como as bancas cobram essa pegadinha ou exceção na prova]

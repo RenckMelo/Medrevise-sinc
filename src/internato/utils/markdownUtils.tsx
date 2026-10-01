@@ -5727,7 +5727,17 @@ export const markdownComponents: any = {
       );
     }
     
-    // 1. Graphviz DOT algorithms
+    // 1. Mermaid / Flowchart & Graphviz DOT algorithms
+    const isMermaidOrFlowchart = (
+      codeContent.includes('graph TD') || 
+      codeContent.includes('graph LR') || 
+      codeContent.includes('flowchart') || 
+      (className && String(className).toLowerCase().includes('mermaid'))
+    );
+    if (isMermaidOrFlowchart) {
+      return <ClinicalAsciiDiagramViewer text={codeContent} />;
+    }
+
     const isGraphviz = codeContent.includes('digraph') || codeContent.includes('graph {') || codeContent.includes('subgraph');
     if (isGraphviz) {
       return <ClinicalAlgorithm dotText={codeContent} />;

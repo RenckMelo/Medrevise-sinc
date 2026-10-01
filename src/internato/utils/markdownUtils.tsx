@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
+import mermaid from 'mermaid';
 import { 
   Image as ImageIcon, ExternalLink, AlertCircle, Search, ImageOff, Heart, RotateCw, RotateCcw,
   Upload, Trash2, Link, Activity, Stethoscope, CheckCircle2, ShieldAlert, Sparkles, 
@@ -5381,6 +5382,315 @@ export const TreeBranchRenderer = ({ text }: { text: string }) => {
   );
 };
 
+// Initialize Mermaid once globally
+try {
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'neutral',
+    securityLevel: 'loose',
+    fontFamily: 'system-ui, sans-serif',
+    flowchart: {
+      htmlLabels: true,
+      curve: 'basis',
+      padding: 16,
+      nodeSpacing: 45,
+      rankSpacing: 50,
+      useMaxWidth: true
+    }
+  });
+} catch (e) {}
+
+// Preprocesses and sanitizes Mermaid syntax to prevent node text overflow or unescaped character crashes
+const sanitizeMermaidCode = (code: string): string => {
+  if (!code) return 'graph TD\n  A["Algoritmo Decisório"]';
+
+  let cleaned = code
+    .replace(/^```mermaid\s*/i, '')
+    .replace(/^```flowchart\s*/i, '')
+    .replace(/^```\s*/, '')
+    .replace(/```$/, '')
+    .trim();
+
+  // Convert shorthand link "B -- Sim --> C" into standard "B -->|Sim| C"
+  cleaned = cleaned.replace(/(\w+)\s+--\s*([^-\n>]+)\s*-->\s*(\w+)/g, '$1 -->|$2| $3');
+
+  // Insert <br/> in long labels to prevent text overflow outside node boundaries
+  cleaned = cleaned.replace(/(\[[^\]]+\]|\{[^\}]+\}|\([^)]+\))/g, (match) => {
+    if (match.length > 28 && !match.includes('<br') && !match.includes('\n')) {
+      const isSquare = match.startsWith('[') && match.endsWith(']');
+      const isCurly = match.startsWith('{') && match.endsWith('}');
+      const isRound = match.startsWith('(') && match.endsWith(')');
+
+      let openBracket = '[';
+      let closeBracket = ']';
+      if (isCurly) { openBracket = '{'; closeBracket = '}'; }
+      if (isRound) { openBracket = '('; closeBracket = ')'; }
+
+      let inner = match.slice(1, -1).trim();
+      if (inner.startsWith('"') && inner.endsWith('"')) {
+        inner = inner.slice(1, -1);
+        openBracket += '"';
+        closeBracket = '"' + closeBracket;
+      }
+
+      const words = inner.split(' ');
+      if (words.length > 3) {
+        const mid = Math.floor(words.length / 2);
+        const line1 = words.slice(0, mid).join(' ');
+        const line2 = words.slice(mid).join(' ');
+        return `${openBracket}${line1}<br/>${line2}${closeBracket}`;
+      }
+    }
+    return match;
+  });
+
+  if (!cleaned.startsWith('graph') && !cleaned.startsWith('flowchart')) {
+    cleaned = 'graph TD\n' + cleaned;
+  }
+
+  return cleaned;
+};
+
+export const MermaidVisualFlowchart = ({ code }: { code: string }) => {
+  const [svgContent, setSvgContent] = useState<string>('');
+  const [hasError, setHasError] = useState<boolean>(false);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [zoomScale, setZoomScale] = useState<number>(1.0);
+  const [activeTab, setActiveTab] = useState<'visual' | 'text'>('visual');
+  const [copied, setCopied] = useState<boolean>(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const sanitized = useMemo(() => sanitizeMermaidCode(code), [code]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const renderDiagram = async () => {
+      try {
+        setHasError(false);
+        const uniqueId = `mermaid-id-${Math.random().toString(36).substring(2, 9)}`;
+        const { svg } = await mermaid.render(uniqueId, sanitized);
+        if (isMounted) {
+          setSvgContent(svg);
+        }
+      } catch (err) {
+        console.error('Mermaid render error, falling back to clean text tree:', err);
+        if (isMounted) {
+          setHasError(true);
+        }
+      }
+    };
+
+    renderDiagram();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [sanitized]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (hasError) {
+    return <ClinicalAsciiDiagramViewer text={code} />;
+  }
+
+  return (
+    <div className="my-6 w-full font-sans">
+      <style>{`
+        .node rect, .node circle, .node polygon, .node path {
+          fill: #FFFFFF !important;
+          stroke: #0284C7 !important;
+          stroke-width: 2px !important;
+          rx: 10px !important;
+          ry: 10px !important;
+        }
+        .node foreignObject div {
+          white-space: normal !important;
+          word-wrap: break-word !important;
+          text-align: center !important;
+          font-family: system-ui, sans-serif !important;
+          font-size: 12.5px !important;
+          font-weight: 600 !important;
+          color: #0F172A !important;
+          line-height: 1.4 !important;
+          padding: 6px !important;
+        }
+        .edgeLabel {
+          background-color: #F1F5F9 !important;
+          border-radius: 6px !important;
+          padding: 2px 6px !important;
+          font-size: 11px !important;
+          font-weight: 700 !important;
+          color: #0369A1 !important;
+        }
+        .edgePath path {
+          stroke: #0284C7 !important;
+          stroke-width: 2px !important;
+        }
+      `}</style>
+
+      <div className="rounded-3xl border-2 border-stone-200 bg-white shadow-md overflow-hidden transition-all">
+        {/* Header toolbar */}
+        <div className="p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-slate-900 via-stone-900 to-slate-900 text-white">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shrink-0">
+              <GitBranch className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-teal-300 block">
+                Fluxograma Gráfico de Decisão
+              </span>
+              <h4 className="text-xs sm:text-sm font-bold text-white truncate">
+                Algoritmo Clínico de Conduta
+              </h4>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
+            {/* Tab switch */}
+            <div className="flex bg-white/10 p-1 rounded-xl border border-white/15 gap-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab('visual')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'visual' ? 'bg-teal-600 text-white shadow-xs' : 'text-stone-300 hover:text-white'
+                }`}
+              >
+                📊 Diagrama Visual
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('text')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'text' ? 'bg-teal-600 text-white shadow-xs' : 'text-stone-300 hover:text-white'
+                }`}
+              >
+                📋 Matriz de Texto
+              </button>
+            </div>
+
+            {/* Zoom Controls */}
+            {activeTab === 'visual' && (
+              <div className="hidden sm:flex items-center bg-white/10 p-1 rounded-xl border border-white/15 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setZoomScale(p => Math.max(0.6, p - 0.15))}
+                  className="p-1 rounded hover:bg-white/20 text-white cursor-pointer"
+                  title="Diminuir Zoom"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[10px] font-mono font-bold px-1">{Math.round(zoomScale * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setZoomScale(p => Math.min(2.0, p + 0.15))}
+                  className="p-1 rounded hover:bg-white/20 text-white cursor-pointer"
+                  title="Aumentar Zoom"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(true)}
+              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all border border-white/15 cursor-pointer"
+              title="Expandir Tela Cheia"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> : <FileText className="w-3.5 h-3.5" />}
+              <span>{copied ? 'Copiado!' : 'Copiar'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Content area */}
+        <div className="p-4 sm:p-6 bg-slate-50/70 overflow-x-auto min-h-[220px] flex items-center justify-center">
+          {activeTab === 'text' ? (
+            <div className="w-full bg-slate-900 text-slate-100 p-4 rounded-2xl font-mono text-xs overflow-x-auto whitespace-pre">
+              {code}
+            </div>
+          ) : (
+            <div 
+              ref={containerRef}
+              className="w-full overflow-auto flex justify-center items-center transition-transform duration-200 py-2"
+              style={{ transform: `scale(${zoomScale})`, transformOrigin: 'top center' }}
+              dangerouslySetInnerHTML={{ __html: svgContent }}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Fullscreen Landscape Modal */}
+      {isFullscreen && (
+        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col p-4 sm:p-6 text-white overflow-hidden animate-fade-in">
+          <div className="flex items-center justify-between border-b border-white/20 pb-3 mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold">
+                <GitBranch className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black uppercase tracking-wider text-teal-300">
+                  Algoritmo Decisório em Tela Cheia
+                </h4>
+                <p className="text-[10px] text-slate-300 font-mono">Modo Gráfico Expandido — Visualização Vetorial HD</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center bg-white/10 p-1 rounded-xl border border-white/15 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setZoomScale(p => Math.max(0.6, p - 0.15))}
+                  className="p-1.5 rounded hover:bg-white/20 text-white font-bold cursor-pointer"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-mono font-bold px-2">{Math.round(zoomScale * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setZoomScale(p => Math.min(2.5, p + 0.15))}
+                  className="p-1.5 rounded hover:bg-white/20 text-white font-bold cursor-pointer"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsFullscreen(false)}
+                className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Minimize2 className="w-4 h-4" />
+                <span>Fechar</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 bg-slate-900 rounded-2xl p-6 overflow-auto flex items-center justify-center">
+            <div 
+              style={{ transform: `scale(${zoomScale})`, transformOrigin: 'center center' }}
+              className="transition-transform duration-200"
+              dangerouslySetInnerHTML={{ __html: svgContent }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const ClinicalFlowchartText = ({ text }: { text: string }) => {
   const normalizedText = normalizeTextForMarkdown(text);
   const lines = normalizedText.trim().split('\n');
@@ -5735,7 +6045,7 @@ export const markdownComponents: any = {
       (className && String(className).toLowerCase().includes('mermaid'))
     );
     if (isMermaidOrFlowchart) {
-      return <ClinicalAsciiDiagramViewer text={codeContent} />;
+      return <MermaidVisualFlowchart code={codeContent} />;
     }
 
     const isGraphviz = codeContent.includes('digraph') || codeContent.includes('graph {') || codeContent.includes('subgraph');

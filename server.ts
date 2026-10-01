@@ -530,12 +530,6 @@ app.post("/api/gemini", async (req, res) => {
     const isSpecialUser = userEmail === 'ysabelleosaraiva@gmail.com' || userEmail === 'yasabelleosaraiva@gmail.com' || userEmail === 'lucas1renck2melo@gmail.com';
     const { prompt, model } = payload;
     let modelToUse = model || "gemini-3.1-flash-lite";
-    if (typeof modelToUse === 'string') {
-      const lowerModel = modelToUse.toLowerCase();
-      if (lowerModel.includes("1.5") || lowerModel.includes("2.5-flash-lite") || lowerModel === "gemini-1.5-flash-8b") {
-        modelToUse = "gemini-3.1-flash-lite";
-      }
-    }
     const promptText = prompt || payload.promptText || "";
 
     const groqKey = allEnv['GROQ_API_KEY'];
@@ -658,7 +652,7 @@ app.post("/api/gemini", async (req, res) => {
           const keysToTry = step.keys || [];
           const keysInOrder = keysToTry.length === 1 ? keysToTry : [...keysToTry].sort(() => Math.random() - 0.5);
 
-          const candidateModels = ["gemini-3.1-flash-lite"];
+          const candidateModels = [modelToUse, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"].filter((v, idx, a) => a.indexOf(v) === idx);
 
           for (let i = 0; i < keysInOrder.length; i++) {
             if (success) break;
@@ -714,7 +708,7 @@ app.post("/api/gemini", async (req, res) => {
                 let currentResult = "";
 
                 if (action === 'generateImage') {
-                  const imageModels = ["gemini-3.1-flash-lite"];
+                  const imageModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
                   let imageSuccess = false;
                   for (const imgModel of imageModels) {
                     try {
@@ -795,7 +789,7 @@ app.post("/api/gemini", async (req, res) => {
           for (const apiKey of keys) {
             if (success) break;
             const ai = new GoogleGenerativeAI(apiKey);
-            const models = ["gemini-3.1-flash-lite"];
+            const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
             
             for (const currentModelName of models) {
               try {

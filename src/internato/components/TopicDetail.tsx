@@ -2115,7 +2115,7 @@ DIRETRIZES OBRIGATÓRIAS:
 1. Crie expressões médicas acadêmicas consagradas em inglês (ex para Dissecção de Aorta: "aortic dissection", "aortic dissection CT", "acute aortic dissection", "aorta dissection").
 2. Mantenha cada termo curto (máximo 3 palavras por termo). NUNCA gere frases longas de 5+ palavras.
 3. Retorne APENAS os termos em inglês separados por vírgula.`;
-          const aiResponse = await generateWithAI(aiPrompt, "gemini-3.1-flash-lite", 1);
+          const aiResponse = await generateWithAI(aiPrompt, "gemini-2.5-flash", 1);
           if (aiResponse) {
             const aiTerms = aiResponse.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
             queryTermsToSearch.unshift(...aiTerms);
@@ -2506,7 +2506,7 @@ ${candidatesToVerify.join('\n')}
 
 Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todos forem válidos ou se na dúvida, inclua o índice.`;
 
-          const aiFilterResponse = await generateWithAI(filterPrompt, "gemini-3.1-flash-lite", 1);
+          const aiFilterResponse = await generateWithAI(filterPrompt, "gemini-2.5-flash", 1);
           if (aiFilterResponse) {
             const validIndices = aiFilterResponse.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n >= 0 && n < results.length);
             if (validIndices.length > 0) {

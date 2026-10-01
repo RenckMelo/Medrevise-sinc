@@ -2852,7 +2852,7 @@ export default function FlashcardModule({
                   <Loader2 className="w-5 h-5 text-amber-600 animate-spin shrink-0" />
                   <div className="space-y-0.5">
                     <p className="text-xs font-black text-amber-950 uppercase tracking-wider">
-                      {generationProgressMessage || 'Gerando flashcards com IA (gemini-3.1-flash-lite)...'}
+                      {generationProgressMessage || 'Gerando flashcards com IA (gemini-2.5-flash)...'}
                     </p>
                     <p className="text-[11px] font-medium text-amber-800">
                       Atualizando seu deck em tempo real à medida que novos cards são criados!

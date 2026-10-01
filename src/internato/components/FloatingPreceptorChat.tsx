@@ -327,7 +327,7 @@ REGRAS DE FORMATAÇÃO E REPRESENTAÇÃO VISUAL DE EXAMES MÉDICOS:
 
 Dúvida do aluno: "${userMsgText}"`;
 
-      const responseText = await generateWithAI(prompt, 'gemini-3.1-flash-lite', 2);
+      const responseText = await generateWithAI(prompt, 'gemini-2.5-flash', 2);
 
       const preceptorMsg: Message = {
         sender: 'preceptor',

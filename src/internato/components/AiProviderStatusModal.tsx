@@ -466,13 +466,13 @@ export default function AiProviderStatusModal({ isOpen, onClose, userEmail }: Ai
                   <span className="text-xs font-black flex items-center gap-1 text-amber-900 dark:text-amber-100">
                     🔑 Gemini - Chave 1
                     <span className="text-[9px] bg-amber-400 text-slate-950 font-black px-1.5 py-0.2 rounded-md uppercase">
-                      gemini-3.1-flash-lite
+                      gemini-2.5-flash
                     </span>
                   </span>
                   {preferredEngine === 'gemini_key1' && <Check className="w-4 h-4 text-amber-300" />}
                 </div>
                 <p className={`text-[10px] leading-snug ${preferredEngine === 'gemini_key1' ? 'text-amber-200' : 'text-amber-900/80 font-medium'}`}>
-                  Chave principal em modo Pay-As-You-Go operando com o modelo <strong>gemini-3.1-flash-lite</strong>.
+                  Chave principal em modo Pay-As-You-Go operando com o modelo <strong>gemini-2.5-flash</strong>.
                 </p>
               </button>
 
@@ -489,13 +489,13 @@ export default function AiProviderStatusModal({ isOpen, onClose, userEmail }: Ai
                   <span className="text-xs font-black flex items-center gap-1.5">
                     💎 Gemini - Chave 2
                     <span className="text-[9px] bg-purple-200 text-purple-950 font-black px-1.5 py-0.2 rounded-md uppercase">
-                      gemini-3.1-flash-lite
+                      gemini-2.5-flash
                     </span>
                   </span>
                   {preferredEngine === 'gemini_key2' && <Check className="w-4 h-4 text-purple-300" />}
                 </div>
                 <p className={`text-[10px] leading-snug ${preferredEngine === 'gemini_key2' ? 'text-purple-200' : 'text-[#6E6A62]'}`}>
-                  Chave dedicada VIP para chamadas diretas do modelo <strong>gemini-3.1-flash-lite</strong>.
+                  Chave dedicada VIP para chamadas diretas do modelo <strong>gemini-2.5-flash</strong>.
                 </p>
               </button>
 
@@ -512,13 +512,13 @@ export default function AiProviderStatusModal({ isOpen, onClose, userEmail }: Ai
                   <span className="text-xs font-black flex items-center gap-1.5">
                     🛡️ Gemini - Chave 3
                     <span className="text-[9px] bg-blue-200 text-blue-950 font-black px-1.5 py-0.2 rounded-md uppercase">
-                      gemini-3.1-flash-lite
+                      gemini-2.5-flash
                     </span>
                   </span>
                   {preferredEngine === 'gemini_key3' && <Check className="w-4 h-4 text-blue-300" />}
                 </div>
                 <p className={`text-[10px] leading-snug ${preferredEngine === 'gemini_key3' ? 'text-blue-200' : 'text-[#6E6A62]'}`}>
-                  Chave reserva VIP com o modelo <strong>gemini-3.1-flash-lite</strong> ativado.
+                  Chave reserva VIP com o modelo <strong>gemini-2.5-flash</strong> ativado.
                 </p>
               </button>
 
@@ -908,7 +908,7 @@ export default function AiProviderStatusModal({ isOpen, onClose, userEmail }: Ai
                 </div>
 
                 <p className="text-[11px] text-amber-900/80 font-medium mb-2">
-                  Modelo Ativo: <strong className="font-bold">gemini-3.1-flash-lite</strong>
+                  Modelo Ativo: <strong className="font-bold">gemini-2.5-flash</strong>
                 </p>
 
                 <div className="space-y-1.5 text-[11px] text-[#4A4741] border-t border-amber-100 pt-2 mb-3">

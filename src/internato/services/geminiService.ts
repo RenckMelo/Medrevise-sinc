@@ -5,6 +5,7 @@ import { cleanAndFixMarkdownTables } from '../utils/markdownUtils';
 import { logSystemError } from './errorLogger';
 
 export const AI_LIMIT_PER_DAY = 3000; // Shared admin pool is 3000, other plans have custom limits
+export const SITE_AI_MODEL = 'gemini-3.1-flash-lite';
 
 // Sanitiza e valida o título do tópico para prevenir erros 'undefined' em análises e resumos
 export function sanitizeTopicTitle(title: any, fallback: string = 'Tópico de Estudo'): string {
@@ -1842,17 +1843,8 @@ CRIE UM COMENTÁRIO DENSE, EXAUSTIVO, DIDÁTICO E DE ALTO RENDIMENTO EM MARKDOWN
 ## 2. ❌ ANÁLISE DAS ALTERNATIVAS INCORRETAS
 ${options.map((_, i) => i === correctIndex ? '' : `- **Alternativa ${String.fromCharCode(65 + i)} (Incorreta)**: Explique o erro específico, a pegadinha ou em qual situação clínica essa alternativa seria a conduta indicada.`).filter(Boolean).join('\n')}
 
-## 3. 🔄 ALGORITMO & FLUXOGRAMA DE DECISÃO CLÍNICA
-Inclua obrigatoriamente um **FLUXOGRAMA DE DECISÃO COMPLETO** em sintaxe Mermaid válida para o raciocínio ou conduta desta questão:
-\`\`\`mermaid
-graph TD
-  A["1. Quadro Clínico / Suspeita"] -->|Estável / Resposta| B["2. Conduta Inicial / Exame"]
-  A -->|Instável / Emergência| C["3. Medida de Emergência / 2ª Linha"]
-  B -->|Confirmação| D["4. Tratamento Definitivo & Doses"]
-\`\`\`
-REGRAS OBRIGATÓRIAS DO FLUXOGRAMA:
-- Abra todos os ramos de decisão para cada variante (Sim/Não, Estável/Instável, Positivo/Negativo, Sucesso/Falha).
-- Escreva a conduta completa com doses e nomes de exames dentro das caixas sem frases cortadas.
+## 3. 🔄 ALGORITMO & CONDUTA CLÍNICA
+- Apresente a sequência diagnóstica, terapêutica e os pontos de decisão desta questão em formato escrito de texto (passos numerados, tópicos e setas em texto ➔, sem blocos de código gráficos ou sintaxe de fluxogramas).
 
 ## 4. 💡 PÉROLA DE PROVA & PEGADINHA DA BANCA
 > [!IMPORTANT]

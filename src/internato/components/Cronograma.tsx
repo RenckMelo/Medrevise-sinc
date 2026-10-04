@@ -5826,6 +5826,7 @@ export default function Cronograma({
 
               {schedules.length < 2 ? (
                 <button
+                  data-tour="internato-new-cronograma-btn"
                   onClick={() => setShowPlannerWizard(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-stone-900 to-[#141414] hover:from-black hover:to-stone-900 text-amber-300 text-[11px] font-bold rounded-lg border border-amber-500/30 shadow-xs transition-all cursor-pointer"
                 >

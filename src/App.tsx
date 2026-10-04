@@ -46,6 +46,9 @@ import OnboardingTour from './components/OnboardingTour';
 import SubjectLinkerInterface from './components/SubjectLinkerInterface';
 import FaqModal from './components/FaqModal';
 import SuggestionsBox from './internato/components/SuggestionsBox';
+import HowToUseView from './components/HowToUseView';
+import ActionGuidedTour from './components/ActionGuidedTour';
+import { Compass } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useStudyData } from './hooks/useStudyData';
 
@@ -103,22 +106,13 @@ export default function App() {
   const totalCombinedQuestions = globalStats.questions + (mockExams || []).reduce((acc, e) => acc + (e.totalQuestions || 0), 0);
   const totalCombinedTime = globalStats.time + (mockExams || []).reduce((acc, e) => acc + (e.timeSpentMinutes || 0), 0);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'subjects' | 'calendar' | 'profile' | 'schedule' | 'stats' | 'weekly' | 'exams' | 'admin' | 'terms' | 'linker'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'subjects' | 'calendar' | 'profile' | 'schedule' | 'stats' | 'weekly' | 'exams' | 'admin' | 'terms' | 'linker' | 'howToUse' | 'errors'>('dashboard');
+  const [activeActionTourId, setActiveActionTourId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [isFaqModalOpen, setIsFaqModalOpen] = useState(false);
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-
-  // Auto-launch tour on first load if not completed
-  useEffect(() => {
-    if (user && !loading) {
-      const tourCompleted = localStorage.getItem('medrevise_tour_completed');
-      if (!tourCompleted) {
-        setIsTourOpen(true);
-      }
-    }
-  }, [user, loading]);
 
   // Redirect to Profile page and select plan if clicked from Landing Page
   useEffect(() => {
@@ -369,12 +363,14 @@ export default function App() {
             icon={<LayoutDashboard size={18} />}
             label="DASHBOARD"
           />
-          <NavButton 
-            active={activeTab === 'subjects'} 
-            onClick={() => { setActiveTab('subjects'); setIsSidebarOpen(false); }}
-            icon={<BookOpen size={18} />}
-            label="MATÉRIAS"
-          />
+          <div data-tour="revise-subjects-tab" className="w-full">
+            <NavButton 
+              active={activeTab === 'subjects'} 
+              onClick={() => { setActiveTab('subjects'); setIsSidebarOpen(false); }}
+              icon={<BookOpen size={18} />}
+              label="MATÉRIAS"
+            />
+          </div>
           <NavButton 
             active={activeTab === 'linker'} 
             onClick={() => { setActiveTab('linker'); setIsSidebarOpen(false); }}
@@ -439,13 +435,12 @@ export default function App() {
             icon={<Scale size={18} />}
             label="AVISOS LEGAIS"
           />
-          <button
-            onClick={() => { setIsFaqModalOpen(true); setIsSidebarOpen(false); }}
-            className="w-full flex items-center gap-3 p-3 text-[11px] font-mono transition-all border border-dashed border-[#D44E3D]/50 bg-rose-50/50 hover:bg-rose-100/80 text-[#D44E3D] font-bold cursor-pointer rounded-lg mt-2"
-          >
-            <HelpCircle size={18} className="text-[#D44E3D] shrink-0" />
-            <span className="tracking-widest">COMO USAR & DÚVIDAS</span>
-          </button>
+          <NavButton 
+            active={activeTab === 'howToUse'} 
+            onClick={() => { setActiveTab('howToUse'); setIsSidebarOpen(false); }}
+            icon={<Compass size={18} className="text-[#D44E3D]" />}
+            label="COMO USAR"
+          />
 
           <button
             onClick={() => { setIsSuggestionsOpen(true); setIsSidebarOpen(false); }}
@@ -570,6 +565,26 @@ export default function App() {
               {activeTab === 'errors' && isLucas && <ErrorLogsManager />}
               {activeTab === 'terms' && <LegalTerms />}
               {activeTab === 'linker' && <SubjectLinkerInterface onSwitchMode={setAppMode} />}
+              {activeTab === 'howToUse' && (
+                <HowToUseView 
+                  onStartActionTour={(tourId, module) => {
+                    localStorage.setItem('active_action_tour_id', tourId);
+                    if (module === 'medinternato') {
+                      setAppMode('internato');
+                      setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('start-internato-action-tour', { detail: tourId }));
+                      }, 100);
+                    } else {
+                      setAppMode('revise');
+                      setActiveTab('subjects');
+                      setActiveActionTourId(tourId);
+                    }
+                  }}
+                  onNavigateToProfile={() => setActiveTab('profile')}
+                  userProfile={profile}
+                  isAdmin={isAdmin}
+                />
+              )}
             </motion.div>
           </AnimatePresence>
 
@@ -599,6 +614,17 @@ export default function App() {
           </footer>
         </div>
       </main>
+
+      <ActionGuidedTour 
+        tourId={activeActionTourId} 
+        currentView={activeTab}
+        onClose={() => {
+          localStorage.removeItem('active_action_tour_id');
+          setActiveActionTourId(null);
+        }}
+        onNavigateView={(view) => setActiveTab(view as any)} 
+        onSwitchTour={(id) => setActiveActionTourId(id)}
+      />
 
       <OnboardingTour 
         isOpen={isTourOpen} 

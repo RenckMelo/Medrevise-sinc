@@ -483,6 +483,7 @@ export default function SubjectList({
           {/* Quick Topic Creator form */}
           <div className="flex items-center gap-2 max-w-sm w-full">
             <Input
+              data-tour="internato-add-topic-btn"
               type="text"
               placeholder="Novo Tópico (Ex: Apendicite)..."
               value={newTopicTitle}
@@ -544,7 +545,9 @@ export default function SubjectList({
               return (
                 <Card 
                   key={`topic-card-${topic.id}-${tIdx}`}
-                  className="bg-white border-[#E2E0D9] shadow-xs rounded-2xl overflow-hidden hover:border-amber-500 hover:shadow-md transition-all duration-200 flex flex-col justify-between"
+                  data-tour={tIdx === 0 ? "internato-topic-card" : undefined}
+                  onClick={() => onSelectTopic && onSelectTopic(topic)}
+                  className="bg-white border-[#E2E0D9] shadow-xs rounded-2xl overflow-hidden hover:border-amber-500 hover:shadow-md transition-all duration-200 flex flex-col justify-between cursor-pointer"
                 >
                   <div className="p-5 sm:p-6 space-y-4">
                     <div className="flex items-start justify-between gap-3">
@@ -677,6 +680,7 @@ export default function SubjectList({
           <div className="flex flex-wrap items-center gap-2">
             {onAddSubject && (
               <Button
+                data-tour="internato-new-subject-btn"
                 onClick={() => setIsAddingSubject(!isAddingSubject)}
                 className="bg-[#1A1A1A] hover:bg-black text-white text-[11px] uppercase tracking-wider font-bold rounded-xl h-10 px-3.5 sm:px-4 flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
@@ -879,6 +883,7 @@ export default function SubjectList({
                 <div className="space-y-2">
                   <label className="text-[10px] uppercase tracking-widest font-bold text-[#8E8A82]">Nome da Matéria</label>
                   <Input
+                    data-tour="internato-subject-input"
                     placeholder="Ex: Pediatria"
                     value={newSubjectName}
                     onChange={e => setNewSubjectName(e.target.value)}
@@ -912,6 +917,7 @@ export default function SubjectList({
                   Cancelar
                 </Button>
                 <Button
+                  data-tour="internato-save-subject-btn"
                   disabled={isSaving || !newSubjectName.trim() || !selectedSemesterId}
                   onClick={async () => {
                     if (!newSubjectName.trim() || !selectedSemesterId) return;
@@ -969,6 +975,7 @@ export default function SubjectList({
           return (
             <Card 
               key={`subject-card-${subject.id}-${subIdx}`} 
+              data-tour={subIdx === 0 ? "internato-subject-card-0" : undefined}
               className="group cursor-pointer border-[#E2E0D9] shadow-xs hover:border-stone-800 hover:shadow-md active:scale-[0.99] transition-all duration-200 rounded-2xl overflow-hidden bg-white relative flex flex-col justify-between"
               onClick={() => onSelect(subject)}
             >

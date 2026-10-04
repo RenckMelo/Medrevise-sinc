@@ -438,6 +438,7 @@ export default function SchedulePlannerWizard({
                 <div className="grid grid-cols-1 gap-3.5">
                   {/* OPTION 1: COLLEGE ONLY */}
                   <button
+                    data-tour="internato-cronograma-mode-btn"
                     type="button"
                     onClick={() => setPlanType('college_only')}
                     className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden flex items-start gap-4 ${
@@ -1216,6 +1217,7 @@ CIRURGIA
           <div className="flex items-center gap-2">
             {step < 5 ? (
               <Button
+                data-tour="internato-cronograma-next-step"
                 onClick={() => setStep(step + 1)}
                 disabled={step === 2 && planType === 'college_only' && parsedCollegeTopics.length === 0}
                 className="bg-[#141414] hover:bg-stone-800 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-xs"
@@ -1225,6 +1227,7 @@ CIRURGIA
               </Button>
             ) : (
               <Button
+                data-tour="internato-cronograma-confirm-btn"
                 onClick={handleFinalConfirm}
                 disabled={isGenerating}
                 className="bg-[#D44E3D] hover:bg-[#D44E3D]/90 text-white font-bold text-xs h-11 px-6 rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"

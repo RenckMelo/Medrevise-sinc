@@ -20,9 +20,11 @@ export default defineConfig(({mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
     },
     build: {
+      minify: false,
       sourcemap: false,
       chunkSizeWarningLimit: 3000,
       rollupOptions: {
+        maxParallelFileOps: 2,
         output: {
           manualChunks: {
             vendor: ['react', 'react-dom'],

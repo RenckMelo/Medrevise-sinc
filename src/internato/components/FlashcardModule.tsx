@@ -2009,6 +2009,7 @@ export default function FlashcardModule({
         {/* TABS SELECTOR */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 bg-[#F5F4F0] p-1.5 rounded-2xl">
           <button
+            data-tour="internato-flashcards-tab-srs"
             onClick={() => {
               setActiveTab('srs');
               setSelectedTopicIds([]);
@@ -2017,7 +2018,7 @@ export default function FlashcardModule({
               fetchFlashcards('srs', [], []);
             }}
             className={cn(
-              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer',
               activeTab === 'srs'
                 ? 'bg-white text-primary shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
@@ -2028,12 +2029,13 @@ export default function FlashcardModule({
           </button>
 
           <button
+            data-tour="internato-flashcards-tab-subject"
             onClick={() => {
               setActiveTab('deck');
               setIsSelecting(true);
             }}
             className={cn(
-              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer',
               activeTab === 'deck'
                 ? 'bg-white text-primary shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
@@ -2044,12 +2046,13 @@ export default function FlashcardModule({
           </button>
 
           <button
+            data-tour="internato-flashcards-tab-diagnostic"
             onClick={() => {
               setActiveTab('diagnostic');
               setIsSelecting(true);
             }}
             className={cn(
-              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer',
               activeTab === 'diagnostic'
                 ? 'bg-white text-emerald-700 shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
@@ -2060,12 +2063,13 @@ export default function FlashcardModule({
           </button>
 
           <button
+            data-tour="internato-flashcards-tab-history"
             onClick={() => {
               setActiveTab('history');
               fetchSessionHistory();
             }}
             className={cn(
-              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer',
               activeTab === 'history'
                 ? 'bg-white text-amber-700 shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
@@ -2076,12 +2080,13 @@ export default function FlashcardModule({
           </button>
 
           <button
+            data-tour="internato-flashcards-tab-deepdives"
             onClick={() => {
               setActiveTab('deepdives');
               fetchDeepDives();
             }}
             className={cn(
-              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer',
               activeTab === 'deepdives'
                 ? 'bg-white text-purple-700 shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
@@ -2092,9 +2097,10 @@ export default function FlashcardModule({
           </button>
 
           <button
+            data-tour="internato-flashcards-tab-create"
             onClick={() => setActiveTab('create')}
             className={cn(
-              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
+              'flex items-center justify-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer',
               activeTab === 'create'
                 ? 'bg-white text-indigo-700 shadow-xs font-black'
                 : 'text-[#8E8A82] hover:text-[#1A1A1A]'
@@ -2899,6 +2905,7 @@ export default function FlashcardModule({
                   })()}
 
                   <Button
+                    data-tour="internato-gen-flashcards-btn"
                     onClick={handleGenerate}
                     disabled={isGenerating}
                     variant="outline"

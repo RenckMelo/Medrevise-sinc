@@ -978,6 +978,7 @@ export default function SubjectList({ onSwitchMode }: SubjectListProps = {}) {
           <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest">Suas Matérias</h3>
           <div className="flex items-center gap-2">
             <button 
+              data-tour="revise-new-semester-btn"
               onClick={() => setIsAddingSemester(!isAddingSemester)}
               className="px-2 py-1 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all border border-[#141414] font-mono text-[9px] uppercase font-bold"
               title="Criar Semestre"
@@ -985,6 +986,7 @@ export default function SubjectList({ onSwitchMode }: SubjectListProps = {}) {
               + SEMESTRE
             </button>
             <button 
+              data-tour="revise-new-subject-btn"
               onClick={() => setShowAddSubject(!showAddSubject)}
               className="p-1 hover:bg-[#141414] hover:text-[#E4E3E0] transition-all border border-[#141414]"
               title="Adicionar Matéria"
@@ -1373,12 +1375,14 @@ export default function SubjectList({ onSwitchMode }: SubjectListProps = {}) {
                           <History size={14} />
                         </button>
                         <button 
+                          data-tour="revise-study-btn"
                           onClick={() => setShowSessionForm(topic)}
                           className="flex-1 sm:flex-none border border-[#141414] text-[#141414] px-3 sm:px-4 py-2 font-mono text-[9px] sm:text-[10px] uppercase hover:bg-[#141414]/5"
                         >
                           ESTUDAR
                         </button>
                         <button 
+                          data-tour="revise-review-btn"
                           onClick={() => quickReview(topic)}
                           className="flex-1 sm:flex-none bg-[#141414] text-[#E4E3E0] px-3 sm:px-4 py-2 font-mono text-[9px] sm:text-[10px] uppercase hover:bg-[#141414]/90"
                         >

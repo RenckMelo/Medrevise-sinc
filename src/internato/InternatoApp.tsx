@@ -32,6 +32,8 @@ import AiProviderStatusModal from './components/AiProviderStatusModal';
 import FloatingPreceptorChat from './components/FloatingPreceptorChat';
 import SuggestionsBox from './components/SuggestionsBox';
 import FaqModal from '../components/FaqModal';
+import HowToUseView from '../components/HowToUseView';
+import ActionGuidedTour from '../components/ActionGuidedTour';
 
 import { 
   LayoutDashboard, 
@@ -46,7 +48,8 @@ import {
   Award,
   Cpu,
   Lightbulb,
-  Moon
+  Moon,
+  Compass
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -58,7 +61,43 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
   const { user } = useAuth();
   const userId = user?.uid || 'guest';
 
-  const [currentView, setCurrentView] = useState<'dashboard' | 'cronograma' | 'subjects' | 'topicDetail' | 'questions' | 'flashcards' | 'admin' | 'review'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'cronograma' | 'subjects' | 'topicDetail' | 'questions' | 'flashcards' | 'admin' | 'review' | 'howToUse'>('dashboard');
+  const [activeActionTourId, setActiveActionTourId] = useState<string | null>(null);
+
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+
+  useEffect(() => {
+    const checkAndStartTour = (tourId?: string) => {
+      const targetId = tourId || localStorage.getItem('active_action_tour_id');
+      if (targetId) {
+        setActiveActionTourId(targetId);
+        setSelectedSubject(null);
+        setSelectedTopic(null);
+        if (targetId === 'internato-resumos' || targetId === 'internato-materias') {
+          setCurrentView('subjects');
+        } else if (targetId === 'internato-cronograma') {
+          setCurrentView('cronograma');
+        } else if (targetId === 'internato-questoes') {
+          setCurrentView('questions');
+        } else if (targetId === 'internato-flashcards') {
+          setCurrentView('flashcards');
+        }
+      }
+    };
+
+    checkAndStartTour();
+
+    const handleActionTour = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      if (customEvent.detail) {
+        checkAndStartTour(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('start-internato-action-tour', handleActionTour);
+    return () => window.removeEventListener('start-internato-action-tour', handleActionTour);
+  }, []);
 
   const [isSamsungDark, setIsSamsungDark] = useState<boolean>(() => {
     return localStorage.getItem('samsung_dark_mode') === 'true';
@@ -79,8 +118,6 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
   const toggleSamsungDarkMode = () => {
     setIsSamsungDark(prev => !prev);
   };
-  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
-  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [selectedQuestionAttempt, setSelectedQuestionAttempt] = useState<any>(null);
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -418,9 +455,10 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           </div>
         </div>
 
-        {/* Navigation Tabs for Desktop (2xl+) */}
-        <nav className="hidden 2xl:flex items-center gap-1 bg-[#F4F3EF] p-1 rounded-xl border border-[#E2E0D9] shrink-0">
+        {/* Navigation Tabs for Desktop (lg+) */}
+        <nav className="hidden lg:flex items-center gap-1 bg-[#F4F3EF] p-1 rounded-xl border border-[#E2E0D9] shrink-0">
           <button
+            data-tour="internato-cronograma-tab"
             onClick={() => setCurrentView('cronograma')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
               currentView === 'cronograma' 
@@ -445,6 +483,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           </button>
 
           <button
+            data-tour="internato-subjects-tab"
             onClick={() => setCurrentView('subjects')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
               currentView === 'subjects' || currentView === 'topicDetail'
@@ -457,6 +496,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           </button>
 
           <button
+            data-tour="internato-questions-tab"
             onClick={() => {
               setCronogramaFilterTopics([]);
               setCronogramaMode('study');
@@ -473,15 +513,29 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           </button>
 
           <button
+            data-tour="internato-flashcards-tab"
             onClick={() => setCurrentView('flashcards')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
               currentView === 'flashcards' 
-                ? 'bg-white text-[#D44E3D] shadow-sm' 
+                ? 'bg-[#D44E3D] text-white shadow-sm' 
                 : 'text-[#6E6A62] hover:text-[#1A1A1A]'
             }`}
           >
             <Brain className="w-3.5 h-3.5" />
             <span>Flashcards</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentView('howToUse')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+              currentView === 'howToUse'
+                ? 'bg-white text-[#D44E3D] shadow-sm'
+                : 'bg-rose-50 hover:bg-rose-100 text-[#D44E3D] border border-rose-200'
+            }`}
+            title="Abrir Central de Ajuda e Como Usar"
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>Como Usar</span>
           </button>
 
           {isSpecialUser && (
@@ -692,6 +746,32 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           />
         )}
 
+        {currentView === 'howToUse' && (
+          <HowToUseView 
+            onStartActionTour={(tourId, module) => {
+              if (module === 'medinternato') {
+                setActiveActionTourId(tourId);
+                if (tourId === 'internato-resumos' || tourId === 'internato-materias') {
+                  setCurrentView('subjects');
+                } else if (tourId === 'internato-cronograma') {
+                  setCurrentView('cronograma');
+                } else if (tourId === 'internato-questoes') {
+                  setCurrentView('questions');
+                } else if (tourId === 'internato-flashcards') {
+                  setCurrentView('flashcards');
+                }
+              } else if (onToggleAppMode) {
+                onToggleAppMode();
+              }
+            }}
+            onNavigateToProfile={() => {
+              if (onToggleAppMode) onToggleAppMode();
+            }}
+            userProfile={user}
+            isAdmin={isSpecialUser}
+          />
+        )}
+
         {/* Bottom Footer Section */}
         <footer className="pt-8 pb-12 mt-12 border-t-2 border-[#141414]/15 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
           <div className="flex items-center gap-2 text-[#6E6A62] font-mono text-[11px]">
@@ -700,11 +780,11 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
 
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={() => setShowFaqModal(true)}
+              onClick={() => setCurrentView('howToUse')}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-[#D44E3D] border border-rose-200/90 rounded-xl font-mono text-[11px] font-bold cursor-pointer transition-all shadow-xs"
             >
               <HelpCircle className="w-3.5 h-3.5" />
-              <span>Como Usar & Dúvidas</span>
+              <span>Como Usar</span>
             </button>
 
             <button
@@ -717,6 +797,18 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
           </div>
         </footer>
       </main>
+
+      {/* Action Guided Tour */}
+      <ActionGuidedTour
+        tourId={activeActionTourId}
+        currentView={currentView}
+        onClose={() => {
+          localStorage.removeItem('active_action_tour_id');
+          setActiveActionTourId(null);
+        }}
+        onNavigateView={(view) => setCurrentView(view as any)}
+        onSwitchTour={(id) => setActiveActionTourId(id)}
+      />
 
       {/* Onboarding Tour */}
       {showTour && (

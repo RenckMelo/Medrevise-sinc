@@ -1453,7 +1453,7 @@ export default function QuestionModule({
         
         // Auto-generate fallback if no questions exist in Firestore for selected topics
         if (fetched.length === 0 && selectedTopicIds.length > 0) {
-          const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
+          const preset = (simuladoMode as string) === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
           const targetExam = preset ? preset.name : undefined;
           for (const tid of selectedTopicIds) {
             const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
@@ -2588,7 +2588,7 @@ export default function QuestionModule({
     if (initialSelection.length < countToUse) {
       const missingCount = countToUse - initialSelection.length;
       const uniqueTids = Array.from(new Set(selectedTopicIds)).filter(Boolean);
-      const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
+      const preset = (simuladoMode as string) === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
       const targetExam = preset ? preset.name : undefined;
 
       if (uniqueTids.length > 0) {
@@ -2610,7 +2610,7 @@ export default function QuestionModule({
     try {
       const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
       const existing = topicStatsMap[tid]?.questions?.map(q => q.text) || [];
-      const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
+      const preset = (simuladoMode as string) === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
       const targetExam = preset ? preset.name : undefined;
 
       const newQuestions = await generateQuestions(topicTitle, subjectName, countToGen, existing, userId, targetExam);
@@ -2714,7 +2714,7 @@ export default function QuestionModule({
     }
     
     setIsGeneratingMore(true);
-    const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
+    const preset = (simuladoMode as string) === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
     const targetExam = preset ? preset.name : undefined;
     const allAdded: Question[] = [];
     
@@ -3443,6 +3443,7 @@ export default function QuestionModule({
               
               {/* 1. Custom / Personalizado */}
               <button
+                data-tour="internato-questoes-mode-custom"
                 type="button"
                 onClick={() => setSimuladoMode('custom')}
                 className={cn(
@@ -3572,6 +3573,7 @@ export default function QuestionModule({
                       const isSubjectSelected = selectedSubjectIds.includes(s.id);
                       return (
                         <Button
+                          data-tour="internato-questoes-subject-btn"
                           key={`qmod-s-${s.id}-${sIdx}`}
                           variant="outline"
                           size="sm"
@@ -3607,6 +3609,7 @@ export default function QuestionModule({
                       const isTopicSelected = selectedTopicIds.includes(t.id);
                       return (
                         <Button
+                          data-tour="internato-questoes-topic-btn"
                           key={`qmod-t-${t.id}-${tIdx}`}
                           variant="outline"
                           size="sm"
@@ -4499,7 +4502,7 @@ export default function QuestionModule({
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-[#E2E0D9]">
+          <div data-tour="internato-question-filters" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-[#E2E0D9]">
             <div className="flex flex-wrap gap-6">
               <label className="flex items-center gap-3 cursor-pointer group">
                 <div 
@@ -4534,7 +4537,7 @@ export default function QuestionModule({
               </label>
             </div>
 
-            <Button onClick={() => setIsSimuladoModalOpen(true)} className="bg-[#1A1A1A] text-white text-[11px] uppercase tracking-widest font-black px-10 h-12 rounded-xl gap-3 hover:bg-stone-800 shadow-md">
+            <Button data-tour="internato-start-questions-btn" onClick={() => setIsSimuladoModalOpen(true)} className="bg-[#1A1A1A] text-white text-[11px] uppercase tracking-widest font-black px-10 h-12 rounded-xl gap-3 hover:bg-stone-800 shadow-md">
               {simuladoMode === 'banca-year' && totalBancaYearSelectedCount > 0
                 ? `Iniciar Simulado (${totalBancaYearSelectedCount} q.)`
                 : 'Iniciar Simulado'}

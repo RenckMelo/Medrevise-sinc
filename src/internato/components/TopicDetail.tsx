@@ -5441,6 +5441,7 @@ th { background: #F8F7F4; font-weight: bold; }
             </div>
             <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
               <Button 
+                data-tour="internato-open-wizard-btn"
                 onClick={() => setShowSummaryWizard(true)}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-xs tracking-widest px-6 py-3.5 rounded-xl shadow-lg shadow-indigo-200 min-h-12 flex items-center justify-center gap-2 cursor-pointer"
               >
@@ -8616,7 +8617,7 @@ th { background: #F8F7F4; font-weight: bold; }
 
           {/* Summary Generation Wizard Modal */}
           {showSummaryWizard && (
-            <div className="fixed inset-0 z-[9999] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+            <div data-tour="internato-summary-form" className="fixed inset-0 z-[9999] bg-stone-950/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
               <SummaryGenerationWizard
                 topicTitle={topic?.title || (topic as any)?.name || (topic as any)?.titulo || (topic as any)?.topicTitle || 'Tópico de Estudo'}
                 initialDepth={depth}

@@ -57,7 +57,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'welcome',
       tab: 'dashboard',
-      title: 'Bem-vindo ao MedRevise! 🚀',
+      title: 'Bem-vindo ao MedRevise!',
       subtitle: 'Seu Ecossistema Científico de Memorização e Aprovação Médica',
       description: 'O MedRevise foi concebido com base na neurociência da aprendizagem e na medicina baseada em evidências. Combinamos o Sistema de Repetição Espaçada (SRS) de Hermann Ebbinghaus com algoritmos ativos que calibram seus ciclos de revisão de acordo com sua taxa real de acertos.',
       accent: 'border-amber-500/30 bg-amber-500/5 text-amber-950',
@@ -76,7 +76,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'dashboard',
       tab: 'dashboard',
-      title: '1. Painel Consolidado de Estudos (Dashboard) 📊',
+      title: '1. Painel Consolidado de Estudos (Dashboard)',
       subtitle: 'Sua Central Diária de Comando e Métricas em Tempo Real',
       description: 'No Dashboard, você monitora em tempo real suas revisões pendentes do dia, o cumprimento das suas metas diárias em minutos e questões, além de contar com um cronômetro flutuante integrado.',
       accent: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-950',
@@ -95,7 +95,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'subjects',
       tab: 'subjects',
-      title: '2. Gerenciando Matérias e Tópicos 📚',
+      title: '2. Gerenciando Matérias e Tópicos',
       subtitle: 'Organização Acadêmica Estruturada por Especialidades',
       description: 'Estruture todo o conteúdo das grandes áreas médicas (Ginecologia, Obstetrícia, Pediatria, Cirurgia, Clínica Médica e Preventiva) divididos em tópicos específicos.',
       accent: 'border-blue-500/30 bg-blue-500/5 text-blue-950',
@@ -114,7 +114,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'studyVsReview',
       tab: 'subjects',
-      title: '3. Estudar vs. Revisar: A Regra de Ouro 🎯',
+      title: '3. Estudar vs. Revisar: A Regra de Ouro',
       subtitle: 'Entendendo a Diferença Crítica para Máxima Retenção',
       description: 'O sistema possui dois botões com propósitos inteiramente distintos: "ESTUDAR" é voltado para a teoria inicial passiva; "REVISAR" ativa a Recordação Ativa (Active Recall), que consolida a memória de longo prazo.',
       accent: 'border-rose-500/30 bg-rose-500/5 text-rose-950',
@@ -133,7 +133,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'forgettingIndex',
       tab: 'subjects',
-      title: '4. O Risco de Esquecimento / Índice de Perda 🧠📉',
+      title: '4. O Risco de Esquecimento / Índice de Perda',
       subtitle: 'A Ciência Exata da Curva de Ebbinghaus no seu Estudo',
       description: 'O Risco de Esquecimento (expresso em %) estima matematicamente a probabilidade de você esquecer um assunto no dia de hoje, usando a fórmula de Ebbinghaus: R = e^(-t/S).',
       accent: 'border-purple-500/30 bg-purple-500/5 text-purple-950',
@@ -142,9 +142,9 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
       icon: <Brain className="text-purple-600 animate-pulse" size={28} />,
       keyBenefit: 'Identificação cirúrgica das matérias em estado crítico de apagão antes que você erre no simulado.',
       howItWorks: [
-        '🟢 Verde (<30%): Retenção sólida e consolidada no córtex de longo prazo.',
-        '🟡 Amarelo (30%-70%): Atenção, a associação sináptica começou a decair suavemente.',
-        '🔴 Vermelho (>70% - Alerta): Curva crítica de esquecimento iminente; requer revisão urgente.',
+        'Verde (<30%): Retenção sólida e consolidada no córtex de longo prazo.',
+        'Amarelo (30%-70%): Atenção, a associação sináptica começou a decair suavemente.',
+        'Vermelho (>70% - Alerta): Curva crítica de esquecimento iminente; requer revisão urgente.',
         'Ao clicar em "Revisar" e registrar acertos, a força de retenção (S) aumenta e o risco despenca.'
       ],
       goldenTip: 'Priorize sempre as matérias com risco no vermelho (>70%) antes de iniciar novos conteúdos teóricos!'
@@ -152,7 +152,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'calendar',
       tab: 'calendar',
-      title: '5. Calendário Científico de Distribuição 📅',
+      title: '5. Calendário Científico de Distribuição',
       subtitle: 'Previsão de Carga de Trabalho e Agendamentos Futuros',
       description: 'O Calendário proporciona uma visão panorâmica e limpa dos seus compromissos futuros, mostrando exatamente em quais dias do mês cada revisão cairá.',
       accent: 'border-sky-500/30 bg-sky-500/5 text-sky-950',
@@ -171,7 +171,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'weekly',
       tab: 'weekly',
-      title: '6. Planejador de Grade Semanal Vertical ⏰',
+      title: '6. Planejador de Grade Semanal Vertical',
       subtitle: 'Visão Tática dos Próximos 7 Dias de Estudos',
       description: 'O planejador semanal exibe verticalmente sua rotina para os próximos 7 dias, distribuindo visualmente a carga de estudo com barras de intensidade.',
       accent: 'border-teal-500/30 bg-teal-500/5 text-teal-950',
@@ -190,7 +190,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'exams',
       tab: 'exams',
-      title: '7. Módulo de Simulados & Histórico 🏆',
+      title: '7. Módulo de Simulados & Histórico',
       subtitle: 'Registro do Treino em Condições Reais de Prova',
       description: 'Faça o acompanhamento longitudinal do seu rendimento em simulados completos ou provas na íntegra das principais bancas de residência.',
       accent: 'border-cyan-500/30 bg-cyan-500/5 text-cyan-950',
@@ -209,7 +209,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'schedule',
       tab: 'schedule',
-      title: '8. Estêntil da Grade Acadêmica & Plantões 🏫',
+      title: '8. Estêntil da Grade Acadêmica & Plantões',
       subtitle: 'Gestão da Sua Agenda Fixa do Internato e Faculdade',
       description: 'Cadastre seus horários fixos de aulas teóricas, rodízios de enfermaria, ambulatoriais, estágios e plantões semanais sem poluir a matriz do SRS.',
       accent: 'border-indigo-500/30 bg-indigo-500/5 text-indigo-950',
@@ -228,7 +228,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'stats',
       tab: 'stats',
-      title: '9. Analytics & Métricas de Desempenho 📈',
+      title: '9. Analytics & Métricas de Desempenho',
       subtitle: 'Transformando seu Esforço em Dados Transparentes',
       description: 'Gráficos detalhados exibem de forma transparente o seu tempo investido por matéria, eficácia de acertos nas questões e constância diária.',
       accent: 'border-violet-500/30 bg-violet-500/5 text-violet-950',
@@ -247,7 +247,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'crossApp',
       tab: 'subjects',
-      title: '10. Integração Nativa com o MedInternato 🔄',
+      title: '10. Integração Nativa com o MedInternato',
       subtitle: 'A Sinergia Perfeita entre Teoria Profunda e Revisão Espaçada',
       description: 'O MedRevise e o MedInternato funcionam como um ecossistema unificado. Você pode transitar entre a teoria detalhada do internato e a curva do MedRevise em 1 clique.',
       accent: 'border-amber-500/30 bg-amber-500/5 text-amber-950',
@@ -266,7 +266,7 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'profile',
       tab: 'profile',
-      title: '11. Perfil, Metas e MedRevise Pro 👤💎',
+      title: '11. Perfil, Metas e MedRevise Pro',
       subtitle: 'Personalização do Seu Perfil e Desbloqueio de Recursos',
       description: 'Na tela de perfil, você ajusta sua meta diária de estudos em minutos, gerencia suas preferências de conta e tem acesso à ativação do plano Pro.',
       accent: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-950',
@@ -328,217 +328,196 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
   );
 
   return (
-    <div className="fixed inset-0 bg-[#141414]/80 backdrop-blur-md flex items-center justify-center z-[200] p-3 sm:p-6 animate-fade-in overflow-y-auto">
-      <div className="bg-[#FAF9F5] border-2 border-[#141414] shadow-[12px_12px_0px_0px_rgba(20,20,20,1)] w-full max-w-3xl relative flex flex-col rounded-2xl overflow-hidden my-auto max-h-[92vh]">
-        
-        {/* Header bar */}
-        <div className="bg-[#141414] text-white px-5 py-4 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-[#D44E3D] rounded-xl text-white font-black text-xs">
-              <GraduationCap size={20} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-[#D44E3D] bg-white/10 px-2 py-0.5 rounded-full">
-                  GUIA OFICIAL
-                </span>
-                <span className="text-xs font-bold text-stone-300">MedRevise & MedInternato</span>
+    <>
+      {/* View Mode 1: Non-blocking Floating Widget in Step-By-Step Mode */}
+      {viewMode === 'stepByStep' && (
+        <div className="fixed inset-x-0 bottom-0 top-auto z-[200] p-3 sm:p-5 pointer-events-none flex justify-end items-end animate-fade-in">
+          <div className="pointer-events-auto bg-[#FAF9F5] border-2 border-[#141414] shadow-[10px_10px_0px_0px_rgba(20,20,20,1)] w-full max-w-xl relative flex flex-col rounded-2xl overflow-hidden transition-all duration-300 max-h-[85vh]">
+            
+            {/* Header bar */}
+            <div className="bg-[#141414] text-white px-4 py-3 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 bg-[#D44E3D] rounded-lg text-white font-black shrink-0">
+                  <GraduationCap size={16} />
+                </div>
+                <div className="truncate">
+                  <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-amber-300">
+                    PASSO {currentStep + 1} DE {steps.length}
+                  </span>
+                  <h3 className="text-xs sm:text-sm font-serif italic font-bold text-white truncate">
+                    {currentStepData.title}
+                  </h3>
+                </div>
               </div>
-              <h2 className="text-base sm:text-lg font-serif italic font-bold text-white">
-                Manual de Funcionalidades e Passo a Passo
-              </h2>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <div className="flex bg-white/10 p-1 rounded-xl border border-white/15 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setViewMode('stepByStep')}
-                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${viewMode === 'stepByStep' ? 'bg-[#D44E3D] text-white shadow-xs' : 'text-stone-300 hover:text-white'}`}
-              >
-                🎯 Passo a Passo
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('fullManual')}
-                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${viewMode === 'fullManual' ? 'bg-[#D44E3D] text-white shadow-xs' : 'text-stone-300 hover:text-white'}`}
-              >
-                📖 Manual Completo
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('fullManual')}
+                  className="px-2 py-1 bg-white/10 hover:bg-white/20 text-stone-200 hover:text-white rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer border border-white/15"
+                  title="Expandir Manual Completo"
+                >
+                  Manual
+                </button>
+                <button 
+                  type="button"
+                  onClick={handleComplete}
+                  title="Fechar / Pular Tutorial"
+                  className="p-1 text-stone-400 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
-            <button 
-              type="button"
-              onClick={handleComplete}
-              title="Fechar Guia"
-              className="p-1.5 text-stone-400 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-
-        {/* View Mode 1: Step By Step Modal */}
-        {viewMode === 'stepByStep' && (
-          <div className="flex flex-col flex-1 overflow-y-auto">
             {/* Step navigation pills */}
-            <div className="px-5 py-3 bg-[#E2E0D9]/50 border-b border-[#E2E0D9] flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+            <div className="px-3 py-1.5 bg-[#E2E0D9]/60 border-b border-[#E2E0D9] flex items-center gap-1 overflow-x-auto scrollbar-none shrink-0">
               {steps.map((st, idx) => (
                 <button
                   key={st.id}
                   type="button"
                   onClick={() => setCurrentStep(idx)}
-                  className={`px-2.5 py-1 text-[11px] font-bold font-mono rounded-lg transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
+                  className={`px-2 py-0.5 text-[10px] font-bold font-mono rounded-md transition-all shrink-0 cursor-pointer ${
                     idx === currentStep 
-                      ? 'bg-[#141414] text-white shadow-xs' 
+                      ? 'bg-[#141414] text-white' 
                       : 'bg-white text-stone-600 hover:bg-stone-200 border border-[#E2E0D9]'
                   }`}
                 >
-                  <span>{idx === 0 ? '🚀' : `#${idx}`}</span>
-                  <span className="hidden sm:inline truncate max-w-[100px]">{st.title.split('.')[1] || st.title.split('!')[0]}</span>
+                  #{idx + 1}
                 </button>
               ))}
             </div>
 
-            {/* Main content body */}
-            <div className="p-5 sm:p-7 space-y-6 flex-1 overflow-y-auto">
-              
-              {/* Badge & Title */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-white border border-[#E2E0D9] rounded-2xl shadow-xs shrink-0">
-                    {currentStepData.icon}
-                  </div>
-                  <div>
-                    <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${currentStepData.badgeBg}`}>
-                      {currentStepData.badge}
-                    </span>
-                    <h3 className="text-xl sm:text-2xl font-serif italic font-black text-stone-900 mt-1 leading-tight">
-                      {currentStepData.title}
-                    </h3>
-                  </div>
-                </div>
-
-                <div className="text-xs font-mono text-stone-500 font-bold bg-white px-3 py-1.5 rounded-xl border border-[#E2E0D9] shrink-0 self-start sm:self-auto">
-                  Passo {currentStep + 1} de {steps.length}
-                </div>
-              </div>
-
-              {/* Subtitle & Description */}
-              <div className="space-y-2 bg-white p-4 sm:p-5 rounded-2xl border border-[#E2E0D9] shadow-xs">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[#D44E3D] font-mono">
+            {/* Main Content Body */}
+            <div className="p-4 sm:p-5 space-y-3 flex-1 overflow-y-auto">
+              <div>
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-[#D44E3D] font-mono">
                   {currentStepData.subtitle}
                 </h4>
-                <p className="text-sm sm:text-base text-stone-800 leading-relaxed font-sans">
+                <p className="text-xs text-stone-800 leading-relaxed font-sans mt-1">
                   {currentStepData.description}
                 </p>
               </div>
 
-              {/* Grid: How It Works & Key Benefit */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* How it works */}
-                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E2E0D9] space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-stone-900 font-mono">
-                    <ListFilter size={16} className="text-[#D44E3D]" />
-                    Como Usar na Prática:
-                  </div>
-                  <ul className="space-y-2 text-xs text-stone-700">
-                    {currentStepData.howItWorks.map((item, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <span className="w-5 h-5 rounded-full bg-stone-100 border border-stone-300 text-stone-800 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
-                          {idx + 1}
-                        </span>
-                        <span className="leading-snug">{item}</span>
-                      </li>
-                    ))}
-                  </ul>
+              {/* How it works */}
+              <div className="bg-white p-3 rounded-xl border border-[#E2E0D9] space-y-1.5">
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-stone-900 font-mono">
+                  <ListFilter size={14} className="text-[#D44E3D]" />
+                  Instruções de Uso na Tela:
                 </div>
-
-                {/* Benefit & Golden Tip */}
-                <div className="space-y-4 flex flex-col">
-                  <div className={`p-4 rounded-2xl border ${currentStepData.accent} space-y-1.5 flex-1`}>
-                    <div className="flex items-center gap-1.5 font-bold text-xs font-mono uppercase tracking-wider">
-                      <Target size={15} />
-                      Diferencial / Benefício
-                    </div>
-                    <p className="text-xs leading-relaxed font-medium">
-                      {currentStepData.keyBenefit}
-                    </p>
-                  </div>
-
-                  <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl text-amber-950 space-y-1">
-                    <div className="flex items-center gap-1.5 font-extrabold text-[11px] font-mono uppercase tracking-wider text-amber-900">
-                      💡 Dica de Ouro
-                    </div>
-                    <p className="text-xs leading-relaxed font-medium text-amber-900">
-                      {currentStepData.goldenTip}
-                    </p>
-                  </div>
-                </div>
+                <ul className="space-y-1 text-xs text-stone-700">
+                  {currentStepData.howItWorks.map((item, idx) => (
+                    <li key={idx} className="flex items-start gap-2">
+                      <span className="w-4 h-4 rounded-full bg-stone-100 border border-stone-300 text-stone-800 font-bold text-[9px] flex items-center justify-center shrink-0 mt-0.5">
+                        {idx + 1}
+                      </span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
 
+              {/* Golden Tip */}
+              <div className="bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 text-xs text-amber-950 flex items-start gap-2">
+                <Sparkles size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold font-mono text-[10px] uppercase block text-amber-900">Dica Prática:</span>
+                  <p className="text-[11px] font-medium leading-snug">{currentStepData.goldenTip}</p>
+                </div>
+              </div>
             </div>
 
-            {/* Footer controls */}
-            <div className="px-5 py-4 bg-white border-t border-[#E2E0D9] flex items-center justify-between gap-3 shrink-0">
-              <div>
-                {!isFirstStep ? (
-                  <button
-                    type="button"
-                    onClick={handlePrev}
-                    className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition-all cursor-pointer border border-stone-200"
-                  >
-                    <ArrowLeft size={16} />
-                    Anterior
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleComplete}
-                    className="text-stone-400 hover:text-stone-600 transition-colors uppercase tracking-wider text-[11px] font-mono font-bold cursor-pointer"
-                  >
-                    Pular Guia
-                  </button>
-                )}
-              </div>
+            {/* Footer Navigation Bar */}
+            <div className="p-3 bg-[#E2E0D9]/40 border-t border-[#E2E0D9] flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrev}
+                  disabled={isFirstStep}
+                  className={`px-3 py-1.5 font-bold text-xs rounded-lg transition-all flex items-center gap-1 ${
+                    isFirstStep
+                      ? 'opacity-30 cursor-not-allowed bg-stone-200 text-stone-500'
+                      : 'bg-white hover:bg-stone-100 text-stone-800 border border-stone-300 cursor-pointer'
+                  }`}
+                >
+                  <ArrowLeft size={14} />
+                  <span>Anterior</span>
+                </button>
 
-              {/* Progress dots */}
-              <div className="hidden sm:flex items-center gap-1">
-                {steps.map((_, idx) => (
-                  <span
-                    key={idx}
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      idx === currentStep ? 'w-6 bg-[#D44E3D]' : 'w-2 bg-stone-300'
-                    }`}
-                  />
-                ))}
+                <button
+                  type="button"
+                  onClick={handleComplete}
+                  className="text-[10px] font-mono font-bold text-stone-500 hover:text-stone-900 underline cursor-pointer"
+                >
+                  Pular Tutorial
+                </button>
               </div>
 
               <button
                 type="button"
                 onClick={handleNext}
-                className="px-6 py-3 bg-[#141414] hover:bg-[#D44E3D] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                className="px-4 py-2 bg-[#141414] hover:bg-[#D44E3D] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
                 {isLastStep ? (
                   <>
-                    <span>Concluir Tutorial</span>
-                    <CheckCircle2 size={16} />
+                    <span>Concluir</span>
+                    <CheckCircle2 size={14} />
                   </>
                 ) : (
                   <>
                     <span>Próximo Passo</span>
-                    <ArrowRight size={16} />
+                    <ArrowRight size={14} />
                   </>
                 )}
               </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* View Mode 2: Full Detailed Manual */}
-        {viewMode === 'fullManual' && (
-          <div className="flex flex-col flex-1 overflow-y-auto p-5 sm:p-7 space-y-6">
+      {/* View Mode 2: Full Detailed Manual (Centered Modal) */}
+      {viewMode === 'fullManual' && (
+        <div className="fixed inset-0 bg-[#141414]/75 backdrop-blur-xs flex items-center justify-center z-[200] p-3 sm:p-6 animate-fade-in overflow-y-auto">
+          <div className="bg-[#FAF9F5] border-2 border-[#141414] shadow-[12px_12px_0px_0px_rgba(20,20,20,1)] w-full max-w-3xl relative flex flex-col rounded-2xl overflow-hidden my-auto max-h-[92vh]">
+            
+            {/* Header bar */}
+            <div className="bg-[#141414] text-white px-5 py-4 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-[#D44E3D] rounded-xl text-white font-black text-xs">
+                  <GraduationCap size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-[#D44E3D] bg-white/10 px-2 py-0.5 rounded-full">
+                      GUIA OFICIAL
+                    </span>
+                    <span className="text-xs font-bold text-stone-300">MedRevise & MedInternato</span>
+                  </div>
+                  <h2 className="text-base sm:text-lg font-serif italic font-bold text-white">
+                    Manual Completo de Funcionalidades
+                  </h2>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('stepByStep')}
+                  className="px-3 py-1 bg-[#D44E3D] text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
+                >
+                  Voltar ao Passo a Passo Guiado
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={handleComplete}
+                  title="Fechar Guia"
+                  className="p-1.5 text-stone-400 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
             
             {/* Search Bar */}
             <div className="relative">
@@ -629,9 +608,8 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
             </div>
 
           </div>
-        )}
-
-      </div>
-    </div>
+        </div>
+      )}
+    </>
   );
 }

@@ -2015,7 +2015,27 @@ export default function Cronograma({
       return;
     }
 
-    setLoading(true);
+    let hasCache = false;
+    try {
+      const cached = localStorage.getItem(`cache_medrevise_schedules_${user.uid}`);
+      if (cached) {
+        const fetchedSchedules = JSON.parse(cached) as StudySchedule[];
+        setSchedules(fetchedSchedules);
+        if (fetchedSchedules.length > 0) {
+          const savedActiveId = localStorage.getItem('active_schedule_id');
+          const found = fetchedSchedules.find(s => s.id === savedActiveId) || fetchedSchedules[0];
+          setSchedule(found || null);
+          if (found && (found as any).startDate) {
+            setSyncStartDate((found as any).startDate);
+          }
+        }
+        hasCache = true;
+      }
+    } catch (e) {
+      console.warn("Erro ao carregar cache de cronogramas:", e);
+    }
+
+    setLoading(!hasCache);
     const q = query(
       collection(db, 'users', user.uid, 'schedules')
     );
@@ -2033,6 +2053,9 @@ export default function Cronograma({
         });
 
         setSchedules(fetchedSchedules);
+        try {
+          localStorage.setItem(`cache_medrevise_schedules_${user.uid}`, JSON.stringify(fetchedSchedules));
+        } catch {}
 
         if (fetchedSchedules.length > 0) {
           const savedActiveId = localStorage.getItem('active_schedule_id');
@@ -5160,7 +5183,7 @@ export default function Cronograma({
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
         <RotateCw className="w-8 h-8 text-[#D44E3D] animate-spin" />
-        <p className="text-xs text-[#8E8A82] font-mono">Processando matrizes de incidência...</p>
+        <p className="text-xs text-[#8E8A82] font-mono">Sincronizando cronograma de estudos...</p>
       </div>
     );
   }

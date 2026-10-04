@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { CheckCircle2, XCircle, ChevronRight, ChevronLeft, ArrowLeft, HelpCircle, Trophy, RefreshCcw, Sparkles, Loader2, Clock, Filter, Layers, Brain, BookCheck, RotateCcw, List, Bookmark, Trash2, SlidersHorizontal, AlertCircle, Building2, Calendar, Eye, Search, Plus, Check, Pause, Play, PauseCircle, Zap, Coins } from 'lucide-react';
+import { CheckCircle2, XCircle, ChevronRight, ChevronLeft, ArrowLeft, HelpCircle, Trophy, RefreshCcw, Sparkles, Loader2, Clock, Filter, Layers, Brain, BookCheck, RotateCcw, List, Bookmark, Trash2, SlidersHorizontal, AlertCircle, Building2, Calendar, Eye, Search, Plus, Check, Pause, Play, PauseCircle, Zap, Coins, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { db, collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove, addDoc, setDoc, getDoc, increment, orderBy, limit, deleteDoc } from '../firebase';
@@ -5754,6 +5754,118 @@ export default function QuestionModule({
               </div>
             </div>
           )}
+
+          {/* Detailed Question Review Sheet */}
+          <div className="space-y-6 pt-6 border-t border-[#E2E0D9]">
+            <h3 className="text-sm font-black uppercase tracking-widest text-[#1A1A1A]">Gabarito Detalhado e Respostas Marcadas</h3>
+            <div className="space-y-4">
+              {(currentQuizResults.length > 0 ? currentQuizResults : []).map((result, qIdx) => {
+                const isCorrect = result.isCorrect;
+                return (
+                  <div 
+                    key={`review-q-${result.questionId}-${qIdx}`}
+                    className="border border-[#E2E0D9] rounded-2xl overflow-hidden bg-white shadow-xs"
+                  >
+                    {/* Header */}
+                    <div className={cn(
+                      "p-4 flex items-center justify-between gap-4 transition-colors",
+                      isCorrect ? "bg-emerald-500/5" : "bg-rose-500/5"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <span className={cn(
+                          "w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shadow-2xs",
+                          isCorrect ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+                        )}>
+                          {qIdx + 1}
+                        </span>
+                        <div>
+                          <p className="text-xs font-black text-[#1A1A1A] line-clamp-1">
+                            {result.content.replace(/[#*`_-]/g, '')}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[9px] uppercase tracking-widest font-bold text-stone-500">
+                              Sua resposta: <strong className={isCorrect ? "text-emerald-700 font-extrabold" : "text-rose-700 font-black"}>{result.selectedOption}</strong>
+                            </span>
+                            <span className="text-[9px] text-stone-300">•</span>
+                            <span className="text-[9px] uppercase tracking-widest font-bold text-stone-500">
+                              Correta: <strong className="text-emerald-700 font-black">{result.correctOption}</strong>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        {isCorrect ? (
+                          <span className="text-[9px] uppercase tracking-widest font-black text-emerald-700 bg-emerald-100 px-2 py-1 rounded-md">
+                            Acertou
+                          </span>
+                        ) : (
+                          <span className="text-[9px] uppercase tracking-widest font-black text-rose-700 bg-rose-100 px-2 py-1 rounded-md">
+                            Errou
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Question Details */}
+                    <div className="p-6 border-t border-[#E2E0D9]/50 bg-stone-50/20 space-y-4">
+                      {/* Enunciado */}
+                      <div className="text-xs text-stone-900 leading-relaxed font-medium">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+                          {result.content}
+                        </ReactMarkdown>
+                      </div>
+
+                      {/* Alternatives */}
+                      <div className="space-y-2 pt-2">
+                        {['A', 'B', 'C', 'D'].map((letter) => {
+                          const optionText = result.options[letter];
+                          if (!optionText) return null;
+                          const isThisCorrect = result.correctOption === letter;
+                          const wasThisChosen = result.selectedOption === letter;
+
+                          return (
+                            <div 
+                              key={letter}
+                              className={cn(
+                                "p-3 rounded-xl text-xs border flex items-center gap-3 transition-all",
+                                isThisCorrect ? "bg-emerald-500/10 border-emerald-500 text-emerald-950 font-bold" :
+                                wasThisChosen && !isThisCorrect ? "bg-rose-500/10 border-rose-500 text-rose-950 font-bold" :
+                                "bg-white border-[#E2E0D9] text-stone-700"
+                              )}
+                            >
+                              <span className={cn(
+                                "w-5 h-5 rounded-md flex items-center justify-center text-[9px] font-black shrink-0",
+                                isThisCorrect ? "bg-emerald-600 text-white" :
+                                wasThisChosen ? "bg-rose-600 text-white" :
+                                "bg-stone-200 text-stone-600"
+                              )}>
+                                {letter}
+                              </span>
+                              <div className="flex-1 text-[11px]">
+                                {optionText}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Comments / Reasoning */}
+                      {result.explanation && (
+                        <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-1">
+                          <div className="text-[9px] uppercase tracking-widest font-black text-blue-800 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5" /> Comentário Clínico do Gabarito
+                          </div>
+                          <p className="text-[11px] leading-relaxed text-blue-900 font-medium">
+                            {result.explanation}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </CardContent>
 
         <CardFooter className="p-12 pt-0 flex flex-col sm:flex-row gap-4">

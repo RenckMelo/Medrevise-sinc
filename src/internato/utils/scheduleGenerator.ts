@@ -1,5 +1,5 @@
 // Mathematical schedule generator for residency plans
-import { MEDICAL_EXAMS_DB, GLOBAL_RESIDENCY_TOPICS } from '../data/medicalExams';
+import { MEDICAL_EXAMS_DB, GLOBAL_RESIDENCY_TOPICS, MedicalExam } from '../data/medicalExams';
 
 export interface StudyPlanTopic {
   topicId?: string;
@@ -142,7 +142,11 @@ export function generatePlan(
   startDate?: string,
   onlyCurrentSemester?: boolean
 ): StudyPlanWeek[] {
-  const exam = MEDICAL_EXAMS_DB.find(e => e.id === examId) || MEDICAL_EXAMS_DB[0];
+  const examIds = (examId || '').split(',').map(id => id.trim()).filter(Boolean);
+  const selectedExams = examIds.map(id => MEDICAL_EXAMS_DB.find(e => e.id === id)).filter(Boolean) as MedicalExam[];
+  if (selectedExams.length === 0) {
+    selectedExams.push(MEDICAL_EXAMS_DB[0]);
+  }
 
   // Reorder studyDays so that day 1 of week 1 starts on the day of week of startDate (e.g. Friday if startDate is Friday)
   const MAP_DAY_INDEX_TO_ABBR = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -213,9 +217,37 @@ export function generatePlan(
     });
   });
 
-  // Dynamic prioritization based on target exam
-  const examStats = exam.stats || {};
-  const examSuggested = exam.suggestedTopics || [];
+  // Dynamic prioritization based on multiple target exams (composite profile pooling)
+  const examStats: { [subjectName: string]: { weight: number } } = {};
+  const examSuggested: { title: string; incidence: number; priority: boolean }[] = [];
+
+  selectedExams.forEach(ex => {
+    Object.entries(ex.stats || {}).forEach(([subjectName, stat]) => {
+      if (!examStats[subjectName]) {
+        examStats[subjectName] = { weight: 0 };
+      }
+      examStats[subjectName].weight += (stat as any).weight;
+    });
+
+    (ex.suggestedTopics || []).forEach(st => {
+      const existing = examSuggested.find(item => item.title.toLowerCase().trim() === st.title.toLowerCase().trim());
+      if (existing) {
+        existing.incidence = Math.max(existing.incidence, st.incidence);
+        if (st.priority) existing.priority = true;
+      } else {
+        examSuggested.push({
+          title: st.title,
+          incidence: st.incidence,
+          priority: st.priority
+        });
+      }
+    });
+  });
+
+  // Calculate final average weight
+  Object.keys(examStats).forEach(subjectName => {
+    examStats[subjectName].weight = examStats[subjectName].weight / selectedExams.length;
+  });
 
   // Map flat topics to weighted topics with dynamic weights
   interface WeightedTopic extends FlatTopic {
@@ -468,9 +500,13 @@ export function generatePlan(
 export function calculateCoverage(weeks: StudyPlanWeek[], examIdOrName: string): number {
   if (!weeks || weeks.length === 0) return 0;
   
-  // Find exam by ID or name
-  const exam = MEDICAL_EXAMS_DB.find(e => e.id === examIdOrName || e.name === examIdOrName) || MEDICAL_EXAMS_DB[0];
-  const examSubjects = Object.keys(exam.stats || {});
+  // Find exams by ID or name (supports comma-separated list)
+  const examIds = (examIdOrName || '').split(',').map(s => s.trim()).filter(Boolean);
+  const selectedExams = examIds.map(id => MEDICAL_EXAMS_DB.find(e => e.id === id || e.name === id)).filter(Boolean);
+  if (selectedExams.length === 0) {
+    selectedExams.push(MEDICAL_EXAMS_DB[0]);
+  }
+  const examSubjects = Array.from(new Set(selectedExams.flatMap(ex => Object.keys(ex.stats || {}))));
   
   const uniqueTopicTitles = new Set<string>();
   weeks.forEach(w => {

@@ -198,7 +198,8 @@ export default function SchedulePlannerWizard({
 
   // Step 2: College Content or Exam Selection
   const [collegeRawText, setCollegeRawText] = useState<string>('');
-  const [selectedExamId, setSelectedExamId] = useState<string>('ebserh');
+  const [selectedExamIds, setSelectedExamIds] = useState<string[]>(['ebserh']);
+  const [examSearchText, setExamSearchText] = useState<string>('');
   const [selectedRegionFilter, setSelectedRegionFilter] = useState<string>('todos');
   const [currentSemesterSubjects, setCurrentSemesterSubjects] = useState<string[]>(['Clínica Médica']);
   const [onlyCurrentSemester, setOnlyCurrentSemester] = useState<boolean>(false);
@@ -334,7 +335,7 @@ export default function SchedulePlannerWizard({
     await onGenerateSchedule({
       planType,
       collegeCustomTopics: parsedCollegeTopics,
-      selectedExamId,
+      selectedExamId: selectedExamIds.join(','),
       modality,
       studyDays,
       hoursPerDay,
@@ -650,34 +651,128 @@ CIRURGIA
                     <div className="space-y-1">
                       <h3 className="text-sm font-mono font-extrabold text-[#141414] uppercase tracking-wider flex items-center gap-2">
                         <Award className="w-4.5 h-4.5 text-blue-600" />
-                        2. Selecione a Prova/Banca Alvo
+                        2. Selecione as Provas/Bancas Alvo para Foco Integrado
                       </h3>
                       <p className="text-xs text-stone-600">
-                        O cronograma calibrará a prioridade das matérias com base nos dados estatísticos do exame.
+                        O algoritmo combinará as recorrências estatísticas de todas as bancas selecionadas de forma unificada e inteligente.
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2 max-h-[280px] overflow-y-auto pr-1">
-                      {MEDICAL_EXAMS_DB.map((exam) => (
-                        <button
-                          key={exam.id}
-                          type="button"
-                          onClick={() => setSelectedExamId(exam.id)}
-                          className={`w-full p-3.5 rounded-xl border text-left transition-all flex justify-between items-start gap-3 ${
-                            selectedExamId === exam.id
-                              ? 'border-blue-600 bg-blue-50/50 shadow-xs'
-                              : 'border-[#E2E0D9] bg-white hover:bg-stone-50'
-                          }`}
-                        >
-                          <div>
-                            <span className="text-xs font-bold text-[#141414] block">{exam.name}</span>
-                            <span className="text-[10px] text-stone-500 block">{exam.description}</span>
-                          </div>
-                          <Badge className="bg-stone-100 text-stone-700 text-[9px] font-mono">
-                            {exam.region}
-                          </Badge>
-                        </button>
-                      ))}
+                    {/* SEARCH AND FILTERS ROW */}
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      {/* Search Input */}
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                        <input
+                          type="text"
+                          placeholder="Buscar por banca, hospital ou estado..."
+                          value={examSearchText}
+                          onChange={(e) => setExamSearchText(e.target.value)}
+                          className="w-full h-10 pl-9 pr-4 text-xs font-medium text-stone-900 bg-white border border-[#E2E0D9] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                        />
+                      </div>
+
+                      {/* Region Filters */}
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 max-w-full shrink-0">
+                        {['todos', 'Nacional', 'Sudeste', 'Sul', 'Centro-Oeste', 'Nordeste'].map((region) => (
+                          <button
+                            key={region}
+                            type="button"
+                            onClick={() => setSelectedRegionFilter(region)}
+                            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all shrink-0 cursor-pointer ${
+                              selectedRegionFilter === region
+                                ? 'bg-stone-950 border-stone-950 text-white'
+                                : 'bg-white border-[#E2E0D9] text-stone-600 hover:bg-stone-50'
+                            }`}
+                          >
+                            {region === 'todos' ? 'Todas Regiões' : region}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* DYNAMICALLY FILTERED EXAMS LIST */}
+                    <div className="grid grid-cols-1 gap-2 max-h-[260px] overflow-y-auto pr-1">
+                      {(() => {
+                        const filtered = MEDICAL_EXAMS_DB.filter((exam) => {
+                          const matchesRegion = selectedRegionFilter === 'todos' || exam.region === selectedRegionFilter;
+                          const matchesSearch = !examSearchText.trim() || 
+                            exam.name.toLowerCase().includes(examSearchText.toLowerCase()) ||
+                            exam.description.toLowerCase().includes(examSearchText.toLowerCase()) ||
+                            exam.region.toLowerCase().includes(examSearchText.toLowerCase());
+                          return matchesRegion && matchesSearch;
+                        });
+
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="text-center py-8 bg-white border border-dashed border-[#E2E0D9] rounded-2xl">
+                              <AlertCircle className="w-6 h-6 text-stone-400 mx-auto mb-1.5" />
+                              <p className="text-xs text-stone-500 font-medium">Nenhuma banca encontrada para os filtros aplicados.</p>
+                            </div>
+                          );
+                        }
+
+                        return filtered.map((exam) => {
+                          const isSelected = selectedExamIds.includes(exam.id);
+                          return (
+                            <button
+                              key={exam.id}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  if (selectedExamIds.length > 1) {
+                                    setSelectedExamIds(selectedExamIds.filter(id => id !== exam.id));
+                                  }
+                                } else {
+                                  setSelectedExamIds([...selectedExamIds, exam.id]);
+                                }
+                              }}
+                              className={`w-full p-4 rounded-2xl border text-left transition-all flex justify-between items-center gap-4 group ${
+                                isSelected
+                                  ? 'border-blue-600 bg-blue-50/40 shadow-xs'
+                                  : 'border-[#E2E0D9] bg-white hover:border-stone-400 hover:bg-stone-50/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                {/* Visual Checkbox Indicator */}
+                                <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-all shrink-0 ${
+                                  isSelected 
+                                    ? 'bg-blue-600 border-blue-600 text-white' 
+                                    : 'border-stone-300 bg-white group-hover:border-stone-400'
+                                }`}>
+                                  {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                </div>
+
+                                <div className="space-y-0.5">
+                                  <span className="text-xs font-black text-[#141414] block group-hover:text-blue-900 transition-colors">
+                                    {exam.name}
+                                  </span>
+                                  <span className="text-[10px] text-stone-500 block leading-tight">
+                                    {exam.description}
+                                  </span>
+                                </div>
+                              </div>
+                              <Badge className="bg-stone-100 text-stone-700 text-[9px] font-mono shrink-0">
+                                {exam.region}
+                              </Badge>
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+
+                    {/* FOOTER SUMMARY FOR CHOSEN COMBINATIONS */}
+                    <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl space-y-1 shadow-2xs">
+                      <div className="text-[10px] uppercase tracking-wider font-black text-blue-800 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                        Seu Perfil de Foco Integrado ({selectedExamIds.length} bancas selecionadas)
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-blue-900 font-medium">
+                        Seu cronograma será otimizado de forma personalizada cruzando os pesos de:{" "}
+                        <strong className="font-extrabold">
+                          {selectedExamIds.map(id => MEDICAL_EXAMS_DB.find(e => e.id === id)?.name.replace(/🌵\s*|📚\s*/g, '') || id).join(' + ')}
+                        </strong>.
+                      </p>
                     </div>
                   </div>
                 )}

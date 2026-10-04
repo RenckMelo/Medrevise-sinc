@@ -904,6 +904,10 @@ export default function TopicDetail({
   const [isCachedOffline, setIsCachedOffline] = useState<boolean>(false);
   const [offlineToastMessage, setOfflineToastMessage] = useState<string | null>(null);
   const [showSummaryWizard, setShowSummaryWizard] = useState<boolean>(() => {
+    // If the topics list has already flagged this topic as having a summary, do not show the wizard initially
+    if ((initialTopic as any).hasSummary) {
+      return false;
+    }
     // Only open the wizard initially if no real summary has been created yet (getAvailableDepths is empty)
     const hasAnySummary = getAvailableDepths(initialTopic).length > 0;
     return !hasAnySummary;
@@ -938,6 +942,41 @@ export default function TopicDetail({
     }
     return null;
   });
+
+  const [loadingFullTopic, setLoadingFullTopic] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const loadFullTopic = async () => {
+      if (!initialTopic?.id) return;
+      try {
+        setLoadingFullTopic(true);
+        const docRef = getTopicDocRef(initialTopic.id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists() && active) {
+          const fullData = docSnap.data() as Topic;
+          setLocalTopic(prev => ({
+            ...prev,
+            ...fullData
+          }));
+          const d = detectRealDepth(fullData);
+          if (d !== 'none') {
+            setDepth(d);
+          }
+          const hasAnySummary = getAvailableDepths(fullData).length > 0;
+          setShowSummaryWizard(!hasAnySummary);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar o resumo completo do tópico:", err);
+      } finally {
+        if (active) setLoadingFullTopic(false);
+      }
+    };
+
+    loadFullTopic();
+    return () => { active = false; };
+  }, [initialTopic.id]);
+
   const [editedChapters, setEditedChapters] = useState<string[]>([]);
   const [newChapterName, setNewChapterName] = useState('');
 
@@ -6207,7 +6246,17 @@ th { background: #F8F7F4; font-weight: bold; }
                   />
 
                   <div className="markdown-body prose prose-slate max-w-none">
-                    {renderedNormalMarkdown}
+                    {loadingFullTopic ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 bg-stone-50/50 border-2 border-dashed border-stone-200/80 rounded-2xl p-6">
+                        <div className="w-10 h-10 border-4 border-stone-300 border-t-[#D44E3D] rounded-full animate-spin" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-extrabold text-[#141414] font-mono tracking-wide uppercase">Baixando Resumo Clínico...</p>
+                          <p className="text-xs text-stone-500 max-w-xs leading-relaxed">Apenas os metadados foram carregados inicialmente para economizar sua internet. Estamos baixando o resumo completo agora!</p>
+                        </div>
+                      </div>
+                    ) : (
+                      renderedNormalMarkdown
+                    )}
                   </div>
 
                   {showResumeOption && (

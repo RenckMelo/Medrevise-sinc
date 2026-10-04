@@ -251,8 +251,7 @@ export default function SubjectList({ onSwitchMode }: SubjectListProps = {}) {
     (topics || []).forEach((t: any) => {
       if (!t.subjectId) return;
       const isClinical = !!(
-        t.content || t.content_standard || t.content_deep || t.content_elite ||
-        t.content_master || t.content_monograph || t.importedPdfData ||
+        t.hasSummary || t.importedPdfData ||
         t.treatment || t.diagnosis || t.conduct
       );
       if (isClinical) {

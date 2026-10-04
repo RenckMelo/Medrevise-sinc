@@ -28,35 +28,47 @@ export function useStudyData() {
       return;
     }
 
+    let hasCache = false;
     // Try to load user-isolated cache instantly
     try {
       const cachedSubs = localStorage.getItem(`cache_medrevise_subjects_${user.uid}`);
-      if (cachedSubs) {
+      const cachedTopics = localStorage.getItem(`cache_medrevise_topics_${user.uid}`);
+      
+      if (cachedSubs && cachedTopics) {
         setSubjects(JSON.parse(cachedSubs));
+        setTopics(JSON.parse(cachedTopics));
+        
+        const cachedSessions = localStorage.getItem(`cache_medrevise_sessions_${user.uid}`);
+        if (cachedSessions) setSessions(JSON.parse(cachedSessions));
+
+        const cachedEvents = localStorage.getItem(`cache_medrevise_events_${user.uid}`);
+        if (cachedEvents) setEvents(JSON.parse(cachedEvents));
+
+        const cachedCollege = localStorage.getItem(`cache_medrevise_college_${user.uid}`);
+        if (cachedCollege) setCollegeSchedule(JSON.parse(cachedCollege));
+
+        const cachedExams = localStorage.getItem(`cache_medrevise_exams_${user.uid}`);
+        if (cachedExams) setMockExams(JSON.parse(cachedExams));
+        
+        hasCache = true;
       } else {
         setSubjects([]);
-      }
-      
-      const cachedTopics = localStorage.getItem(`cache_medrevise_topics_${user.uid}`);
-      if (cachedTopics) {
-        setTopics(JSON.parse(cachedTopics));
-      } else {
         setTopics([]);
-      }
-
-      const cachedSessions = localStorage.getItem(`cache_medrevise_sessions_${user.uid}`);
-      if (cachedSessions) {
-        setSessions(JSON.parse(cachedSessions));
-      } else {
         setSessions([]);
+        setEvents([]);
+        setCollegeSchedule([]);
+        setMockExams([]);
       }
     } catch {
       setSubjects([]);
       setTopics([]);
       setSessions([]);
+      setEvents([]);
+      setCollegeSchedule([]);
+      setMockExams([]);
     }
 
-    setLoading(true);
+    setLoading(!hasCache);
 
     const subQuery = query(collection(db, 'users', user.uid, 'subjects'));
     const topicQuery = query(collection(db, 'users', user.uid, 'topics'));
@@ -76,9 +88,28 @@ export function useStudyData() {
     const unsubTopics = onSnapshot(topicQuery, (snap) => {
       const list = snap.docs.map(d => {
         const data = d.data() as any;
+        const hasSummary = !!(
+          data.content || data.content_standard || data.content_deep || data.content_elite ||
+          data.content_master || data.content_monograph || data.content_custom_analyzed ||
+          data.content_resumo_expansao || data.content_resumo_lacunas
+        );
+        // Strip heavy content fields to avoid massive initial payload size
+        const {
+          content,
+          content_standard,
+          content_deep,
+          content_elite,
+          content_master,
+          content_monograph,
+          content_custom_analyzed,
+          content_resumo_expansao,
+          content_resumo_lacunas,
+          ...metadata
+        } = data;
         return { 
           id: d.id, 
-          ...data,
+          ...metadata,
+          hasSummary,
           name: data.name || data.title || '',
           title: data.title || data.name || ''
         } as Topic;
@@ -195,20 +226,26 @@ export function useStudyData() {
     }, () => {});
 
     const unsubEvents = onSnapshot(eventQuery, (snap) => {
-      setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent)));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent));
+      setEvents(list);
+      try { localStorage.setItem(`cache_medrevise_events_${user.uid}`, JSON.stringify(list)); } catch {}
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/calendarEvents`);
     });
 
     const unsubCollege = onSnapshot(collegeQuery, (snap) => {
-      setCollegeSchedule(snap.docs.map(d => ({ id: d.id, ...d.data() } as CollegeClass)));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as CollegeClass));
+      setCollegeSchedule(list);
+      try { localStorage.setItem(`cache_medrevise_college_${user.uid}`, JSON.stringify(list)); } catch {}
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/collegeSchedule`);
     });
 
     const unsubExams = onSnapshot(examQuery, (snap) => {
-      setMockExams(snap.docs.map(d => ({ id: d.id, ...d.data() } as MockExam)));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as MockExam));
+      setMockExams(list);
       setLoading(false);
+      try { localStorage.setItem(`cache_medrevise_exams_${user.uid}`, JSON.stringify(list)); } catch {}
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/mockExams`);
       setLoading(false);

@@ -594,11 +594,6 @@ export default function SubjectList({
                               Inteligente (Especial)
                             </span>
                           )}
-                          {depth === 'none' && (
-                            <span className="bg-stone-50 text-stone-500 border border-stone-200 text-[9px] font-bold px-2 py-0.5 rounded-md">
-                              Sem conteúdo (Clique para gerar)
-                            </span>
-                          )}
 
                           {isCompleted && (
                             <span className="bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[9px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1">

@@ -215,69 +215,93 @@ export default function Dashboard() {
     localStorage.setItem('consolidateExams', String(val));
   };
 
-  const now = new Date();
-  const weekStart = startOfWeek(now);
-  const monthStart = startOfMonth(now);
+  const dashboardStats = React.useMemo(() => {
+    const now = new Date();
+    const weekStart = startOfWeek(now);
+    const monthStart = startOfMonth(now);
 
-  const stats = {
-    week: sessions.filter(s => isAfter(parseISO(s.date), weekStart)),
-    month: sessions.filter(s => isAfter(parseISO(s.date), monthStart)),
-    total: sessions
-  };
+    const stats = {
+      week: sessions.filter(s => isAfter(parseISO(s.date), weekStart)),
+      month: sessions.filter(s => isAfter(parseISO(s.date), monthStart)),
+      total: sessions
+    };
 
-  const examStats = {
-    week: mockExams.filter(e => isAfter(parseISO(e.date), weekStart)),
-    month: mockExams.filter(e => isAfter(parseISO(e.date), monthStart)),
-    total: mockExams
-  };
+    const examStats = {
+      week: mockExams.filter(e => isAfter(parseISO(e.date), weekStart)),
+      month: mockExams.filter(e => isAfter(parseISO(e.date), monthStart)),
+      total: mockExams
+    };
 
-  const calculateTotals = (sessionData: StudySession[], examData: MockExam[]) => {
-    const sQuestions = sessionData.reduce((acc, s) => acc + (Number(s.questionsCount) || 0), 0);
-    const eQuestions = consolidateExams ? examData.reduce((acc, e) => acc + (e.totalQuestions || 0), 0) : 0;
-    const totalQuestions = sQuestions + eQuestions;
+    const calculateTotals = (sessionData: StudySession[], examData: MockExam[]) => {
+      const sQuestions = sessionData.reduce((acc, s) => acc + (Number(s.questionsCount) || 0), 0);
+      const eQuestions = consolidateExams ? examData.reduce((acc, e) => acc + (e.totalQuestions || 0), 0) : 0;
+      const totalQuestions = sQuestions + eQuestions;
 
-    const sCorrect = sessionData.reduce((acc, s) => acc + (Number(s.correctCount) || 0), 0);
-    const eCorrect = consolidateExams ? examData.reduce((acc, e) => acc + (e.correctAnswers || 0), 0) : 0;
-    const totalCorrect = sCorrect + eCorrect;
+      const sCorrect = sessionData.reduce((acc, s) => acc + (Number(s.correctCount) || 0), 0);
+      const eCorrect = consolidateExams ? examData.reduce((acc, e) => acc + (e.correctAnswers || 0), 0) : 0;
+      const totalCorrect = sCorrect + eCorrect;
 
-    const sTime = sessionData.reduce((acc, s) => acc + (Number(s.studyTimeMinutes) || 0), 0);
-    const eTime = consolidateExams ? examData.reduce((acc, e) => acc + (e.timeSpentMinutes || 0), 0) : 0;
-    const totalTime = sTime + eTime;
+      const sTime = sessionData.reduce((acc, s) => acc + (Number(s.studyTimeMinutes) || 0), 0);
+      const eTime = consolidateExams ? examData.reduce((acc, e) => acc + (e.timeSpentMinutes || 0), 0) : 0;
+      const totalTime = sTime + eTime;
+
+      return {
+        questions: totalQuestions,
+        correct: totalCorrect,
+        time: totalTime,
+        accuracy: totalQuestions > 0 ? (totalCorrect / totalQuestions * 100).toFixed(1) : 0
+      };
+    };
+
+    const weekTotals = calculateTotals(stats.week, examStats.week);
+    const monthTotals = calculateTotals(stats.month, examStats.month);
+    const totalTotals = calculateTotals(stats.total, examStats.total);
+
+    // Simulated exam stats calculations
+    const totalSimuladosCount = mockExams.length;
+    const totalSimuladoQuestions = mockExams.reduce((acc, exam) => acc + (exam.totalQuestions || 0), 0);
+    const totalSimuladoCorrect = mockExams.reduce((acc, exam) => acc + (exam.correctAnswers || 0), 0);
+    const avgSimuladoAccuracy = totalSimuladoQuestions > 0 
+      ? ((totalSimuladoCorrect / totalSimuladoQuestions) * 100).toFixed(1)
+      : 0;
+
+    // Chart data for last 30 days
+    const last30Days = eachDayOfInterval({
+      start: subDays(now, 29),
+      end: now
+    }).map(date => {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const daySessions = sessions.filter(s => s.date.startsWith(dateStr));
+      const dayExams = consolidateExams ? mockExams.filter(e => e.date.startsWith(dateStr)) : [];
+      return {
+        name: format(date, 'dd/MM'),
+        questions: daySessions.reduce((acc, s) => acc + s.questionsCount, 0) + dayExams.reduce((acc, e) => acc + (e.totalQuestions || 0), 0),
+        time: daySessions.reduce((acc, s) => acc + s.studyTimeMinutes, 0) + dayExams.reduce((acc, e) => acc + (e.timeSpentMinutes || 0), 0),
+      };
+    });
 
     return {
-      questions: totalQuestions,
-      correct: totalCorrect,
-      time: totalTime,
-      accuracy: totalQuestions > 0 ? (totalCorrect / totalQuestions * 100).toFixed(1) : 0
+      weekTotals,
+      monthTotals,
+      totalTotals,
+      totalSimuladosCount,
+      totalSimuladoQuestions,
+      totalSimuladoCorrect,
+      avgSimuladoAccuracy,
+      last30Days
     };
-  };
+  }, [sessions, mockExams, consolidateExams]);
 
-  const weekTotals = calculateTotals(stats.week, examStats.week);
-  const monthTotals = calculateTotals(stats.month, examStats.month);
-  const totalTotals = calculateTotals(stats.total, examStats.total);
-
-  // Simulated exam stats calculations
-  const totalSimuladosCount = mockExams.length;
-  const totalSimuladoQuestions = mockExams.reduce((acc, exam) => acc + (exam.totalQuestions || 0), 0);
-  const totalSimuladoCorrect = mockExams.reduce((acc, exam) => acc + (exam.correctAnswers || 0), 0);
-  const avgSimuladoAccuracy = totalSimuladoQuestions > 0 
-    ? ((totalSimuladoCorrect / totalSimuladoQuestions) * 105 / 105 * 100).toFixed(1) // Keep accuracy math correct
-    : 0;
-
-  // Chart data for last 30 days
-  const last30Days = eachDayOfInterval({
-    start: subDays(now, 29),
-    end: now
-  }).map(date => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    const daySessions = sessions.filter(s => s.date.startsWith(dateStr));
-    const dayExams = consolidateExams ? mockExams.filter(e => e.date.startsWith(dateStr)) : [];
-    return {
-      name: format(date, 'dd/MM'),
-      questions: daySessions.reduce((acc, s) => acc + s.questionsCount, 0) + dayExams.reduce((acc, e) => acc + (e.totalQuestions || 0), 0),
-      time: daySessions.reduce((acc, s) => acc + s.studyTimeMinutes, 0) + dayExams.reduce((acc, e) => acc + (e.timeSpentMinutes || 0), 0),
-    };
-  });
+  const {
+    weekTotals,
+    monthTotals,
+    totalTotals,
+    totalSimuladosCount,
+    totalSimuladoQuestions,
+    totalSimuladoCorrect,
+    avgSimuladoAccuracy,
+    last30Days
+  } = dashboardStats;
 
   if (loading) return <div className="font-mono text-xs opacity-50">PROCESSANDO DADOS...</div>;
 

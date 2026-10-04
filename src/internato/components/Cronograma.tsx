@@ -160,6 +160,8 @@ interface CronogramaProps {
   setAvailableCredits: React.Dispatch<React.SetStateAction<number>>;
   setSubjects?: React.Dispatch<React.SetStateAction<any[]>>;
   setTopics?: React.Dispatch<React.SetStateAction<any[]>>;
+  semesters?: any[];
+  setSemesters?: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
 interface StudySchedule {
@@ -430,7 +432,9 @@ export default function Cronograma({
   availableCredits,
   setAvailableCredits,
   setSubjects,
-  setTopics
+  setTopics,
+  semesters = [],
+  setSemesters
 }: CronogramaProps) {
   const { profile } = useAuth();
   const { sessions } = useStudyData();

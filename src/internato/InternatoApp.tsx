@@ -632,6 +632,8 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             setAvailableCredits={setAvailableCredits}
             setSubjects={setSubjects}
             setTopics={setTopics}
+            semesters={semesters}
+            setSemesters={setSemesters}
           />
         )}
 

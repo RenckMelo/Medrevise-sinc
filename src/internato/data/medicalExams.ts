@@ -549,6 +549,169 @@ export const MEDICAL_EXAMS_DB: MedicalExam[] = [
       { title: 'Princípios do SUS, Diretrizes e Financiamento', subject: 'Saúde Coletiva', incidence: 30, priority: true },
       { title: 'Colecistite Aguda e Colelitíase', subject: 'Cirurgia Geral', incidence: 23, priority: true }
     ]
+  },
+  {
+    id: 'psu-go',
+    name: 'PSU-GO (Processo Seletivo Unificado de Goiás)',
+    region: 'Centro-Oeste',
+    description: 'Unifica as principais instituições de saúde e hospitais de Goiás (incluindo o CERM-GO). Foco robusto em saúde da família, clínica de base, ATLS e puericultura.',
+    color: 'border-emerald-500 bg-emerald-50/10 text-emerald-900',
+    stats: {
+      'Saúde Coletiva': { weight: 0.22, description: 'Alta ênfase em vigilância em saúde, notificação compulsória e PSF.' },
+      'Clínica Médica': { weight: 0.20, description: 'Cardiologia, diabetes e asma na urgência.' },
+      'Pediatria': { weight: 0.20, description: 'Diarreia e TRO, crescimento e vacinas.' },
+      'Ginecologia e Obstetrícia': { weight: 0.19, description: 'Pré-natal, corrimentos e rastreamento.' },
+      'Cirurgia Geral': { weight: 0.19, description: 'ATLS, apendicite aguda e hérnias.' }
+    },
+    suggestedTopics: [
+      { title: 'Princípios do SUS, Diretrizes e Financiamento', subject: 'Saúde Coletiva', incidence: 30, priority: true },
+      { title: 'Apendicite Aguda e Complicações', subject: 'Cirurgia Geral', incidence: 25, priority: true }
+    ]
+  },
+  {
+    id: 'unifesp',
+    name: 'UNIFESP (Universidade Federal de São Paulo)',
+    region: 'Sudeste',
+    description: 'Tradicional concurso da Escola Paulista de Medicina. Altamente acadêmica, com forte ênfase em condutas baseadas em guias de prática clínica internacionais.',
+    color: 'border-[#141414] bg-stone-50 text-stone-900',
+    stats: {
+      'Clínica Médica': { weight: 0.23, description: 'Questões conceituais avançadas de nefrologia, cardiologia e infectologia.' },
+      'Cirurgia Geral': { weight: 0.21, description: 'ATLS, procedimentos cirúrgicos e cirurgia de parede abdominal.' },
+      'Saúde Coletiva': { weight: 0.20, description: 'Epidemiologia avançada, taxas de risco e bioestatística de ensaios.' },
+      'Ginecologia e Obstetrícia': { weight: 0.18, description: 'Ginecologia oncológica, pré-natal e climatério.' },
+      'Pediatria': { weight: 0.18, description: 'Neonatologia complexa, marcos do desenvolvimento e imunização.' }
+    },
+    suggestedTopics: [
+      { title: 'Sepse, Choque Séptico e Disfunção de Órgãos', subject: 'Clínica Médica', incidence: 26, priority: true },
+      { title: 'Atendimento Inicial ao Politraumatizado (ATLS)', subject: 'Cirurgia Geral', incidence: 28, priority: true }
+    ]
+  },
+  {
+    id: 'scmsp',
+    name: 'SCMSCSP (Santa Casa de Misericórdia de São Paulo)',
+    region: 'Sudeste',
+    description: 'Prova de alto rendimento prático de São Paulo, focada em condutas imediatas de pronto-socorro e medicina de emergência.',
+    color: 'border-slate-500 bg-slate-50/10 text-slate-900',
+    stats: {
+      'Clínica Médica': { weight: 0.22, description: 'Emergências cardiovasculares, neurológicas e metabólicas.' },
+      'Cirurgia Geral': { weight: 0.22, description: 'Abdome agudo inflamatório e obstrutivo, ATLS.' },
+      'Saúde Coletiva': { weight: 0.18, description: 'Ética médica, SUS e epidemiologia descritiva.' },
+      'Pediatria': { weight: 0.19, description: 'Marcos de desenvolvimento e asma aguda infantil.' },
+      'Ginecologia e Obstetrícia': { weight: 0.19, description: 'Sangramentos obstétricos e DST/ISTs.' }
+    },
+    suggestedTopics: [
+      { title: 'Atendimento Inicial ao Politraumatizado (ATLS)', subject: 'Cirurgia Geral', incidence: 28, priority: true },
+      { title: 'Apendicite Aguda e Complicações', subject: 'Cirurgia Geral', incidence: 25, priority: true }
+    ]
+  },
+  {
+    id: 'iamspe',
+    name: 'IAMSPE (Servidor Público Estadual - SP)',
+    region: 'Sudeste',
+    description: 'Concurso paulista muito visado, com enunciados longos e detalhados. Foco em cardiologia, geriatria de base e ginecologia preventiva.',
+    color: 'border-zinc-400 bg-zinc-50 text-zinc-900',
+    stats: {
+      'Clínica Médica': { weight: 0.22, description: 'Doenças degenerativas, cardiologia clássica (HAS, IAM, ICC) e neurologia.' },
+      'Cirurgia Geral': { weight: 0.20, description: 'Colecistite aguda, hérnias da parede abdominal e risco cirúrgico.' },
+      'Saúde Coletiva': { weight: 0.20, description: 'Vigilância epidemiológica e legislação do SUS.' },
+      'Ginecologia e Obstetrícia': { weight: 0.19, description: 'Climatério, rastreamento de colo/mama e pré-natal.' },
+      'Pediatria': { weight: 0.19, description: 'Imunização, diarreia e marcos puericulturais.' }
+    },
+    suggestedTopics: [
+      { title: 'Colecistite Aguda e Colelitíase', subject: 'Cirurgia Geral', incidence: 23, priority: true },
+      { title: 'Princípios do SUS, Diretrizes e Financiamento', subject: 'Saúde Coletiva', incidence: 30, priority: true }
+    ]
+  },
+  {
+    id: 'uerj',
+    name: 'UERJ (Universidade do Estado do Rio de Janeiro)',
+    region: 'Sudeste',
+    description: 'Prova tradicional do Rio de Janeiro, com enunciados baseados em casos clínicos práticos da atenção primária e secundária.',
+    color: 'border-orange-400 bg-orange-50/10 text-orange-950',
+    stats: {
+      'Saúde Coletiva': { weight: 0.22, description: 'SUS, bioestatística, atenção básica.' },
+      'Clínica Médica': { weight: 0.20, description: 'Pneumonias, diabetes, hipertensão.' },
+      'Pediatria': { weight: 0.20, description: 'Puericultura e vacinas.' },
+      'Ginecologia e Obstetrícia': { weight: 0.19, description: 'Ginecologia preventiva e pré-natal.' },
+      'Cirurgia Geral': { weight: 0.19, description: 'ATLS e abdome agudo.' }
+    },
+    suggestedTopics: [
+      { title: 'Princípios do SUS, Diretrizes e Financiamento', subject: 'Saúde Coletiva', incidence: 30, priority: true },
+      { title: 'Estudos Epidemiológicos: Coorte, Caso-Controle, Ensaios', subject: 'Saúde Coletiva', incidence: 28, priority: true }
+    ]
+  },
+  {
+    id: 'einstein',
+    name: 'ALBERT EINSTEIN (Hospital Israelita Albert Einstein)',
+    region: 'Sudeste',
+    description: 'Foco em protocolos assistenciais institucionais de alta fidelidade, segurança do paciente e diretrizes médicas internacionais mais modernas.',
+    color: 'border-emerald-600 bg-emerald-50 text-emerald-955',
+    stats: {
+      'Clínica Médica': { weight: 0.24, description: 'Sepse, diretrizes de IAM/AVC e infectologia de ponta.' },
+      'Cirurgia Geral': { weight: 0.22, description: 'ATLS, cirurgia robótica conceitual e complicações de pós-operatório.' },
+      'Saúde Coletiva': { weight: 0.18, description: 'Segurança do paciente, ética médica e medicina baseada em evidências.' },
+      'Pediatria': { weight: 0.18, description: 'Reanimação neonatal, asma aguda e vacinação de ponta.' },
+      'Ginecologia e Obstetrícia': { weight: 0.18, description: 'Assistência obstétrica humanizada e ginecologia preventiva.' }
+    },
+    suggestedTopics: [
+      { title: 'Sepse, Choque Séptico e Disfunção de Órgãos', subject: 'Clínica Médica', incidence: 26, priority: true },
+      { title: 'Atendimento Inicial ao Politraumatizado (ATLS)', subject: 'Cirurgia Geral', incidence: 28, priority: true }
+    ]
+  },
+  {
+    id: 'sirio-libanes',
+    name: 'SÍRIO-LIBANÊS (Hospital Sírio-Libanês)',
+    region: 'Sudeste',
+    description: 'Questões voltadas à excelência clínica assistencial, oncologia clínica, cuidados perioperatórios e medicina preventiva baseada em evidências.',
+    color: 'border-yellow-600 bg-yellow-50 text-yellow-955',
+    stats: {
+      'Clínica Médica': { weight: 0.24, description: 'Princípios oncológicos, sepse e manejo cardiovascular agudo.' },
+      'Cirurgia Geral': { weight: 0.22, description: 'Risco cirúrgico, complicações de cirurgias gastrointestinais e anestesiologia.' },
+      'Saúde Coletiva': { weight: 0.18, description: 'Epidemiologia crítica, ética, bioestatística e qualidade assistencial.' },
+      'Pediatria': { weight: 0.18, description: 'Puericultura moderna, imunizações especiais e neonatologia.' },
+      'Ginecologia e Obstetrícia': { weight: 0.18, description: 'Câncer de colo e mama, anticoncepção e climatério.' }
+    },
+    suggestedTopics: [
+      { title: 'Sepse, Choque Séptico e Disfunção de Órgãos', subject: 'Clínica Médica', incidence: 26, priority: true },
+      { title: 'Rastreamento de Câncer de Colo Uterino e Lesões Precursoras', subject: 'Ginecologia e Obstetrícia', incidence: 24, priority: true }
+    ]
+  },
+  {
+    id: 'amp',
+    name: 'AMP (Associação Médica do Paraná)',
+    region: 'Sul',
+    description: 'Prova clássica unificada do Paraná. Questões diretas e abrangentes focadas na prática médica e diretrizes do Ministério da Saúde.',
+    color: 'border-blue-600 bg-blue-50/10 text-blue-955',
+    stats: {
+      'Clínica Médica': { weight: 0.20, description: 'Diabetes, asma, hipertensão e pneumonias.' },
+      'Cirurgia Geral': { weight: 0.20, description: 'Trauma, abdome agudo, hérnias.' },
+      'Pediatria': { weight: 0.20, description: 'Crescimento, aleitamento, vacinação.' },
+      'Ginecologia e Obstetrícia': { weight: 0.20, description: 'Pré-natal, climatério, anticoncepção.' },
+      'Saúde Coletiva': { weight: 0.20, description: 'Atenção primária, princípios do SUS.' }
+    },
+    suggestedTopics: [
+      { title: 'Crescimento, Marcos do Desenvolvimento e Puericultura', subject: 'Pediatria', incidence: 25, priority: true },
+      { title: 'Apendicite Aguda e Complicações', subject: 'Cirurgia Geral', incidence: 25, priority: true }
+    ]
+  },
+  {
+    id: 'revalida-inep',
+    name: 'REVALIDA INEP (Exame de Revalidação de Diplomas)',
+    region: 'Nacional',
+    description: 'O exame nacional oficial para revalidação de diplomas médicos. Altamente enfocado em medicina de família, diretrizes completas da atenção básica do SUS e condutas de urgência clássicas.',
+    color: 'border-green-600 bg-green-50/20 text-green-955 font-bold',
+    stats: {
+      'Saúde Coletiva': { weight: 0.25, description: 'Atenção primária (APS), vigilância de agravos, notificação compulsória e ética.' },
+      'Pediatria': { weight: 0.20, description: 'Desidratação/TRO, crescimento, aleitamento e vacinação (PNI).' },
+      'Ginecologia e Obstetrícia': { weight: 0.20, description: 'Pré-natal, trabalho de parto habitual e ISTs.' },
+      'Clínica Médica': { weight: 0.18, description: 'Diabetes, hipertensão, pneumonias comunitárias e tuberculose.' },
+      'Cirurgia Geral': { weight: 0.17, description: 'ATLS, urgências abdominais não traumáticas e queimaduras.' }
+    },
+    suggestedTopics: [
+      { title: 'Atenção Primária à Saúde (APS) e Saúde da Família (ESF)', subject: 'Saúde Coletiva', incidence: 26, priority: true },
+      { title: 'Diarreia Aguda, Desidratação e TRO', subject: 'Pediatria', incidence: 21, priority: true },
+      { title: 'Princípios do SUS, Diretrizes e Financiamento', subject: 'Saúde Coletiva', incidence: 30, priority: true }
+    ]
   }
 ];
 

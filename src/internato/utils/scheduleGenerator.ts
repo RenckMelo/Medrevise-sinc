@@ -318,6 +318,7 @@ export function generatePlan(
 
   const weeks: StudyPlanWeek[] = [];
   const scheduledTopicsLog: FlatTopic[] = [];
+  const revisionCountsMap = new Map<string, number>();
 
   const totalSlots = totalWeeks * studyDays.length;
   const slotsCount = Math.max(1, totalSlots);
@@ -377,22 +378,47 @@ export function generatePlan(
 
       // 2. REVISION SESSION: Get a previously scheduled topic for Active spaced repetition (Custom Ebbinghaus loop)
       let revisionTopicData: FlatTopic | null = null;
+      let revisionTitle = '';
       if (scheduledTopicsLog.length > 0) {
-        // Calculate lookback with variation, avoiding topics already studied today
-        let lookbackOffset = 0;
         const dayCleanTitles = dayTopics.map(dt => dt.title.replace(/^⚡\s*\[[^\]]+\]\s*/, '').replace(/^🔄\s*\[[^\]]+\]\s*/, '').trim().toLowerCase());
-        let candidate = scheduledTopicsLog[Math.floor(w * 5 + dIdx * 23) % scheduledTopicsLog.length];
-        while (lookbackOffset < scheduledTopicsLog.length && dayCleanTitles.includes(candidate.title.trim().toLowerCase())) {
-          lookbackOffset++;
-          candidate = scheduledTopicsLog[(Math.floor(w * 5 + dIdx * 23) + lookbackOffset) % scheduledTopicsLog.length];
+        const candidates = scheduledTopicsLog.filter(t => !dayCleanTitles.includes(t.title.trim().toLowerCase()));
+
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => {
+            const countA = revisionCountsMap.get(a.title.trim().toLowerCase()) || 0;
+            const countB = revisionCountsMap.get(b.title.trim().toLowerCase()) || 0;
+            if (countA !== countB) {
+              return countA - countB;
+            }
+            return scheduledTopicsLog.indexOf(a) - scheduledTopicsLog.indexOf(b);
+          });
+
+          revisionTopicData = candidates[0];
+          const key = revisionTopicData.title.trim().toLowerCase();
+          const nextRevCount = (revisionCountsMap.get(key) || 0) + 1;
+          revisionCountsMap.set(key, nextRevCount);
+          revisionTitle = `🔄 [REVISÃO R${nextRevCount}] ${revisionTopicData.title}`;
+        } else {
+          // If all studied topics so far were studied today (e.g. Day 1), do not schedule a same-day revision.
+          // Instead, schedule a diagnostic/general practice session.
+          revisionTitle = `🔄 [REVISÃO] Simulado de Nivelamento (Questões Gerais de Prova)`;
+          revisionTopicData = {
+            title: 'Simulado de Nivelamento (Questões Gerais de Prova)',
+            subjectName: 'Saúde Coletiva',
+            incidence: 20
+          };
         }
-        revisionTopicData = candidate;
       } else {
-        revisionTopicData = masterTopicQueue[(w + dIdx) % masterTopicQueue.length];
+        revisionTitle = `🔄 [REVISÃO] Simulado de Nivelamento (Questões Gerais de Prova)`;
+        revisionTopicData = {
+          title: 'Simulado de Nivelamento (Questões Gerais de Prova)',
+          subjectName: 'Saúde Coletiva',
+          incidence: 20
+        };
       }
 
       const revisionTopic: StudyPlanTopic = {
-        title: revisionTopicData.title,
+        title: revisionTitle,
         subjectName: revisionTopicData.subjectName,
         historicalIncidence: revisionTopicData.incidence,
         isPriority: revisionTopicData.incidence >= 23 || prioritySubjectsList.includes(revisionTopicData.subjectName),

@@ -5359,7 +5359,12 @@ export default function QuestionModule({
                                 <div className="space-y-2.5 pt-2">
                                   {q.options.map((opt, optIdx) => {
                                     const isCorrect = q.correctOptionIndex === optIdx;
-                                    const wasChosen = attempt?.selectedOptionIndex === optIdx;
+                                    const selectedIdx = attempt?.selectedOptionIndex !== undefined 
+                                      ? attempt.selectedOptionIndex 
+                                      : (attempt?.selectedOption && typeof attempt.selectedOption === 'string' 
+                                          ? attempt.selectedOption.charCodeAt(0) - 65 
+                                          : -1);
+                                    const wasChosen = selectedIdx === optIdx;
 
                                     return (
                                       <div 
@@ -5467,7 +5472,12 @@ export default function QuestionModule({
 
                           <div className="space-y-3">
                             {q.options.map((opt, optIdx) => {
-                              const wasSelected = attempt.selectedOptionIndex === optIdx;
+                              const selectedIdx = attempt.selectedOptionIndex !== undefined 
+                                ? attempt.selectedOptionIndex 
+                                : (attempt.selectedOption && typeof attempt.selectedOption === 'string' 
+                                    ? attempt.selectedOption.charCodeAt(0) - 65 
+                                    : -1);
+                              const wasSelected = selectedIdx === optIdx;
                               const isCorrect = q.correctOptionIndex === optIdx;
                               
                               return (
@@ -6139,7 +6149,7 @@ export default function QuestionModule({
                     "px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border",
                     history.isCorrect ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-700"
                   )}>
-                    Seu Último Intento: Alternative {String.fromCharCode(65 + history.selectedOptionIndex)}
+                    Seu Último Intento: Alternativa {history.selectedOptionIndex !== undefined ? String.fromCharCode(65 + history.selectedOptionIndex) : (history.selectedOption || '')}
                   </div>
                 )}
                 <Button
@@ -6287,7 +6297,12 @@ export default function QuestionModule({
                     ? selectedOption === idx 
                     : examAnswers[currentQuestion.id] === idx;
                   const isCorrect = idx === currentQuestion.correctOptionIndex;
-                  const wasMarkedPreviously = history?.selectedOptionIndex === idx;
+                  const histIdx = history?.selectedOptionIndex !== undefined 
+                    ? history.selectedOptionIndex 
+                    : (history?.selectedOption && typeof history.selectedOption === 'string' 
+                        ? history.selectedOption.charCodeAt(0) - 65 
+                        : -1);
+                  const wasMarkedPreviously = histIdx === idx;
                   
                   return (
                     <button

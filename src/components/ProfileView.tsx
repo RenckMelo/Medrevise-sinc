@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, doc, updateDoc, collection, getDocs, deleteDoc, serverTimestamp, getDoc, query, where, addDoc, setDoc } from '../firebase';
-import { safeLocalStorageSet } from '../internato/utils/storageUtils';
+import { safeLocalStorageGet, safeLocalStorageSet } from '../internato/utils/storageUtils';
 import { 
   User, 
   Mail, 

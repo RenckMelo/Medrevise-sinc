@@ -51,6 +51,29 @@ const findTopicAndSubject = (tid: string, topicsList: Topic[], subjectsList: Sub
 };
 
 
+const deduplicateQuestions = (list: Question[]): Question[] => {
+  if (!list || !Array.isArray(list) || list.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenTexts = new Set<string>();
+  return list.filter(q => {
+    if (!q) return false;
+    const idKey = q.id || `${q.topicId}_${q.text?.slice(0, 30)}`;
+    const textKey = (q.text || '')
+      .toLowerCase()
+      .replace(/[^\w\s]/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 100);
+
+    if (seenIds.has(idKey)) return false;
+    if (textKey && textKey.length > 20 && seenTexts.has(textKey)) return false;
+
+    seenIds.add(idKey);
+    if (textKey && textKey.length > 20) seenTexts.add(textKey);
+    return true;
+  });
+};
+
 interface QuestionModuleProps {
   subjects: Subject[];
   topics: Topic[];
@@ -60,6 +83,7 @@ interface QuestionModuleProps {
   initialTopicIds?: string[];
   initialQuestionsCount?: number;
   initialMode?: 'study' | 'exam';
+  initialOriginMode?: 'ineditas' | 'feitas' | 'misturado';
   onProgressUpdate?: (updates: Partial<UserProgress>) => void;
   availableCredits?: number;
   setAvailableCredits?: React.Dispatch<React.SetStateAction<number>>;
@@ -74,6 +98,7 @@ export default function QuestionModule({
   initialTopicIds,
   initialQuestionsCount,
   initialMode,
+  initialOriginMode,
   onProgressUpdate,
   availableCredits,
   setAvailableCredits
@@ -87,6 +112,7 @@ export default function QuestionModule({
   const [showResults, setShowResults] = useState(false);
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
   const [isExplaining, setIsExplaining] = useState(false);
+  const [showPreviousAttempt, setShowPreviousAttempt] = useState<Record<string, boolean>>({});
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>(
     initialTopicIds && initialTopicIds.length > 0 
       ? initialTopicIds 
@@ -1711,8 +1737,9 @@ export default function QuestionModule({
         return;
       }
 
-      setQuestions(fetched);
-      setIsActive(fetched.length > 0);
+      const deduplicated = deduplicateQuestions(fetched);
+      setQuestions(deduplicated);
+      setIsActive(deduplicated.length > 0);
       setSeconds(0);
       setSecondsRemaining(countdownMinutes * 60);
       setExamAnswers({});
@@ -1754,6 +1781,9 @@ export default function QuestionModule({
         }
         if (initialMode) {
           setQuizMode(initialMode);
+        }
+        if (initialOriginMode) {
+          setSimuladoQuestionOriginMode(initialOriginMode);
         }
 
         setLoading(true);
@@ -2447,7 +2477,7 @@ export default function QuestionModule({
 
       if (allAddedBatch.length > 0) {
         accumulatedCount += allAddedBatch.length;
-        setQuestions(prev => [...prev, ...allAddedBatch]);
+        setQuestions(prev => deduplicateQuestions([...prev, ...allAddedBatch]));
         setSecondsRemaining(prev => prev + (allAddedBatch.length * 90));
         setBackgroundLoading({
           isRunning: true,
@@ -6318,6 +6348,26 @@ export default function QuestionModule({
                 </div>
               )}
 
+              {/* DISCREET TOGGLE FOR PREVIOUS ATTEMPT */}
+              {history && !isAnswered && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-amber-50/80 border border-amber-200/80 p-3 rounded-2xl mb-4">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
+                    <Clock className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>Você respondeu esta questão anteriormente ({history.isCorrect ? 'Acertou' : 'Errou'}).</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPreviousAttempt(prev => ({
+                      ...prev,
+                      [currentQuestion.id]: !prev[currentQuestion.id]
+                    }))}
+                    className="px-3 py-1 bg-white hover:bg-amber-100 border border-amber-300 rounded-xl text-[11px] font-black text-amber-900 transition-all cursor-pointer shrink-0 shadow-2xs"
+                  >
+                    {showPreviousAttempt[currentQuestion.id] ? '🙈 Ocultar resposta anterior' : '👁️ Mostrar minha última resposta'}
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-4">
                 {currentQuestion.options.map((option, idx) => {
                   const isSelected = quizMode === 'study' 
@@ -6330,6 +6380,7 @@ export default function QuestionModule({
                         ? history.selectedOption.charCodeAt(0) - 65 
                         : -1);
                   const wasMarkedPreviously = histIdx === idx;
+                  const isRevealedPrevious = showPreviousAttempt[currentQuestion.id] && wasMarkedPreviously;
                   
                   return (
                     <button
@@ -6344,7 +6395,9 @@ export default function QuestionModule({
                               : "border-[#E2E0D9]/70 opacity-40 bg-[#FAF9F5]"
                           : isSelected
                             ? "border-primary bg-primary/5 font-semibold"
-                            : "border-[#E2E0D9] hover:border-primary/40 hover:bg-[#FBFBFA]"
+                            : isRevealedPrevious
+                              ? "border-amber-400 bg-amber-50/50 font-semibold shadow-2xs"
+                              : "border-[#E2E0D9] hover:border-primary/40 hover:bg-[#FBFBFA]"
                       )}
                       onClick={() => {
                         if (quizMode === 'study') {
@@ -6360,16 +6413,17 @@ export default function QuestionModule({
                         isAnswered && quizMode === 'study' && isCorrect ? "bg-emerald-600 border-emerald-500 text-white shadow-sm" :
                         isAnswered && quizMode === 'study' && isSelected && !isCorrect ? "bg-rose-600 border-rose-500 text-white shadow-sm" :
                         isSelected ? "bg-primary border-primary text-white" : 
+                        isRevealedPrevious ? "bg-amber-500 border-amber-500 text-white" :
                         "border-[#E2E0D9] text-[#8E8A82]"
                       )}>
                         {String.fromCharCode(65 + idx)}
                       </span>
                       <span className="flex-1 text-lg font-medium leading-relaxed">{option}</span>
                       
-                      {wasMarkedPreviously && !isAnswered && (
-                        <div className="absolute right-4 top-4 flex items-center gap-1.5 bg-[#8E8A82]/10 px-2 py-1 rounded-full">
-                          <Clock className="w-3 h-3 text-[#8E8A82]" />
-                          <span className="text-[8px] font-black uppercase tracking-tighter text-[#8E8A82]">Visto Anteriormente</span>
+                      {isRevealedPrevious && !isAnswered && (
+                        <div className="absolute right-4 top-4 flex items-center gap-1.5 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-full shadow-2xs">
+                          <Eye className="w-3 h-3 text-amber-800" />
+                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-900">Última Resposta: Alternativa {String.fromCharCode(65 + idx)}</span>
                         </div>
                       )}
                     </button>

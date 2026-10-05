@@ -129,6 +129,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
   const [cronogramaFilterTopics, setCronogramaFilterTopics] = useState<string[]>([]);
   const [cronogramaQuestionsCount, setCronogramaQuestionsCount] = useState<number>(30);
   const [cronogramaMode, setCronogramaMode] = useState<'study' | 'exam'>('study');
+  const [cronogramaQuestionOrigin, setCronogramaQuestionOrigin] = useState<'ineditas' | 'feitas' | 'misturado'>('ineditas');
   const [availableCredits, setAvailableCredits] = useState<number>(100);
 
   // Summary Generation Wizard Preset state (e.g. from Flashcards error analysis)
@@ -628,6 +629,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             setCronogramaFilterTopics={setCronogramaFilterTopics}
             setCronogramaQuestionsCount={setCronogramaQuestionsCount}
             setCronogramaMode={setCronogramaMode}
+            setCronogramaQuestionOrigin={setCronogramaQuestionOrigin}
             availableCredits={availableCredits}
             setAvailableCredits={setAvailableCredits}
             setSubjects={setSubjects}
@@ -705,6 +707,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             initialTopicIds={cronogramaFilterTopics}
             initialQuestionsCount={cronogramaQuestionsCount}
             initialMode={cronogramaMode}
+            initialOriginMode={cronogramaQuestionOrigin}
             onProgressUpdate={loadUserProgress}
             availableCredits={availableCredits}
             setAvailableCredits={setAvailableCredits}

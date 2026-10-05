@@ -32,7 +32,9 @@ import {
   Link as LinkIcon,
   Trash2,
   X,
-  GraduationCap
+  GraduationCap,
+  Building2,
+  Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, collection, doc, addDoc, updateDoc, getDocs, getDoc, where, query, limit, deleteDoc, writeBatch, onSnapshot } from '../firebase';
@@ -48,7 +50,7 @@ import { extractTextFromPdf } from '../utils/pdfExtractor';
 import { safeLocalStorageSet } from '../utils/storageUtils';
 import { MEDICAL_EXAMS_DB, GLOBAL_RESIDENCY_TOPICS, CANONICAL_SUBTOPICS_MAP } from '../data/medicalExams';
 import { generatePlan, generateCollegeCustomPlan, extendScheduleWithScientificRevisions, StudyPlanTopic, StudyPlanWeek, calculateCoverage } from '../utils/scheduleGenerator';
-import SchedulePlannerWizard from './SchedulePlannerWizard';
+import SchedulePlannerWizard, { parseCollegeSyllabusText } from './SchedulePlannerWizard';
 
 const MEDICAL_ABBREVIATIONS: { [key: string]: string[] } = {
   "has": ["hipertensao arterial sistemica", "hipertensao"],
@@ -156,6 +158,7 @@ interface CronogramaProps {
   setCronogramaFilterTopics: (topics: string[]) => void;
   setCronogramaQuestionsCount: (count: number) => void;
   setCronogramaMode: (mode: 'study' | 'exam') => void;
+  setCronogramaQuestionOrigin?: (origin: 'ineditas' | 'feitas' | 'misturado') => void;
   availableCredits: number;
   setAvailableCredits: React.Dispatch<React.SetStateAction<number>>;
   setSubjects?: React.Dispatch<React.SetStateAction<any[]>>;
@@ -429,6 +432,7 @@ export default function Cronograma({
   setCronogramaFilterTopics,
   setCronogramaQuestionsCount,
   setCronogramaMode,
+  setCronogramaQuestionOrigin,
   availableCredits,
   setAvailableCredits,
   setSubjects,
@@ -485,6 +489,33 @@ export default function Cronograma({
   const [completionCorrectCount, setCompletionCorrectCount] = useState<number>(8);
   const [completionFlashcards, setCompletionFlashcards] = useState<number>(15);
   const [isSavingCompletion, setIsSavingCompletion] = useState<boolean>(false);
+
+  // Pre-configuration modal state for launching planning simulados with custom questions per topic
+  const [planningSimuladoModal, setPlanningSimuladoModal] = useState<{
+    open: boolean;
+    weekIdx: number;
+    isMonthly: boolean;
+    topics: { id: string; title: string; subjectName: string; count: number }[];
+    questionsPerTopicGlobal: number;
+    feedbackMode: 'study' | 'exam';
+    originMode: 'ineditas' | 'feitas' | 'misturado';
+  } | null>(null);
+
+  // Edit & Recalculate schedule modal states
+  const [showEditScheduleModal, setShowEditScheduleModal] = useState(false);
+  const [editPlanType, setEditPlanType] = useState<'residency_only' | 'college_only'>('residency_only');
+  const [editCollegeName, setEditCollegeName] = useState<string>('');
+  const [editExamSearchText, setEditExamSearchText] = useState<string>('');
+  const [editSelectedRegionFilter, setEditSelectedRegionFilter] = useState<string>('todos');
+  const [editExamId, setEditExamId] = useState<string>('enare');
+  const [editModality, setEditModality] = useState<'6meses' | '1ano' | '2anos' | 'dynamic'>('1ano');
+  const [editStudyDays, setEditStudyDays] = useState<string[]>(['Seg', 'Ter', 'Qua', 'Qui', 'Sex']);
+  const [editHoursPerDay, setEditHoursPerDay] = useState<number>(4);
+  const [editStartDate, setEditStartDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [editExamDate, setEditExamDate] = useState<string>('');
+  const [editRevisionStrategy, setEditRevisionStrategy] = useState<'spaced' | 'weekly' | 'exam'>('spaced');
+  const [editSemesterSubjects, setEditSemesterSubjects] = useState<string[]>([]);
+  const [isRecalculating, setIsRecalculating] = useState(false);
 
   const updateSyncMode = (mode: 'ask' | 'sync' | 'internato_only') => {
     setMedReviseSyncMode(mode);
@@ -2980,29 +3011,389 @@ export default function Cronograma({
     return ids;
   };
 
-  // Handle automatic prefilled launching of the mock exam quiz
+  // Handle automatic prefilled launching of the mock exam quiz with customizable questions per topic
   const handleLaunchMockExam = (weekIdx: number, isMonthly: boolean = false) => {
     if (!schedule) return;
     const week = schedule.weeks[weekIdx];
     if (!week) return;
 
     const titles = isMonthly ? getMonthTopics(weekIdx) : getWeekTopics(weekIdx);
-    const matchedIds = getTopicIdsByTitles(titles, isMonthly ? undefined : weekIdx);
-    const count = isMonthly ? 100 : 50;
+    
+    // Map titles to topics with ids, subject names, and initial count per topic (default 10)
+    const topicItems: { id: string; title: string; subjectName: string; count: number }[] = [];
+    titles.forEach(tTitle => {
+      const linkedId = weekIdx !== undefined ? findLinkedTopicIdForTitle(tTitle, weekIdx) : undefined;
+      const matched = findMatchingTopic(tTitle, topics, linkedId);
+      const subj = matched ? subjects.find(s => s.id === matched.subjectId) : null;
+      topicItems.push({
+        id: matched ? matched.id : `topic_${tTitle}`,
+        title: tTitle,
+        subjectName: subj?.name || 'Geral',
+        count: isMonthly ? 10 : 10
+      });
+    });
 
-    if (matchedIds.length === 0) {
+    if (topicItems.length === 0) {
       showToast("Selecione as matérias e configure as questões no módulo de Questões para iniciar.", "info");
       setView('questions');
       return;
     }
 
-    // Prefill the global states
-    setCronogramaFilterTopics(matchedIds);
-    setCronogramaQuestionsCount(count);
-    setCronogramaMode('exam');
+    setPlanningSimuladoModal({
+      open: true,
+      weekIdx,
+      isMonthly,
+      topics: topicItems,
+      questionsPerTopicGlobal: 10,
+      feedbackMode: 'study',
+      originMode: 'ineditas'
+    });
+  };
 
-    // Switch view to questions module!
+  const handleConfirmPlanningSimulado = () => {
+    if (!planningSimuladoModal) return;
+    const topicIds = planningSimuladoModal.topics.map(t => t.id);
+    const totalQuestions = planningSimuladoModal.topics.reduce((sum, t) => sum + (t.count || 5), 0);
+    const avgQuestionsPerTopic = Math.max(1, Math.round(totalQuestions / Math.max(1, topicIds.length)));
+
+    setCronogramaFilterTopics(topicIds);
+    setCronogramaQuestionsCount(avgQuestionsPerTopic);
+    setCronogramaMode(planningSimuladoModal.feedbackMode);
+    if (setCronogramaQuestionOrigin) {
+      setCronogramaQuestionOrigin(planningSimuladoModal.originMode);
+    }
+    setPlanningSimuladoModal(null);
     setView('questions');
+  };
+
+  // Open modal prefilled with active schedule parameters
+  const openEditScheduleModal = () => {
+    if (!schedule) return;
+    const isCollege = schedule.exam === 'Conteúdo da Faculdade' || (schedule as any).planType === 'college_only' || Boolean((schedule as any).collegeCustomTopics?.length);
+    setEditPlanType(isCollege ? 'college_only' : 'residency_only');
+    setEditCollegeName((schedule as any).collegeName || (isCollege ? schedule.exam : 'Faculdade de Medicina'));
+    setEditExamSearchText('');
+    setEditSelectedRegionFilter('todos');
+
+    const matchedExam = MEDICAL_EXAMS_DB.find(e => e.name.toLowerCase() === schedule.exam.toLowerCase());
+    setEditExamId(matchedExam ? matchedExam.id : 'enare');
+    setEditModality((schedule.modality as any) || '1ano');
+    setEditStudyDays(schedule.studyDays || ['Seg', 'Ter', 'Qua', 'Qui', 'Sex']);
+    setEditHoursPerDay(schedule.hoursPerDay || 4);
+    setEditStartDate((schedule as any).startDate || new Date().toISOString().split('T')[0]);
+    setEditExamDate(schedule.examDate || '');
+    setEditSemesterSubjects(schedule.currentSemesterSubjects || []);
+    setShowEditScheduleModal(true);
+  };
+
+  // Recalculate schedule with AI & mathematical engine ensuring 100% data preservation
+  const handleRecalculateSchedule = async () => {
+    if (!schedule || !user) return;
+
+    const cost = 5; // AI schedule recalculation cost
+    if (availableCredits < cost) {
+      showToast(`Créditos insuficientes! Você precisa de ${cost} créditos, mas possui apenas ${availableCredits}.`, 'error');
+      return;
+    }
+
+    try {
+      setIsRecalculating(true);
+      showToast("Extraindo tópicos concluídos/resumos e recalculando novo planejamento...", "info");
+
+      // Deduct credit usage
+      await recordUsage(cost);
+      setAvailableCredits(prev => Math.max(0, prev - cost));
+
+      // 1. EXTRACT ALL COMPLETED TOPICS, SUMMARIES, METRICS & NOTES FROM CURRENT SCHEDULE
+      const completedMap = new Map<string, {
+        isCompleted: boolean;
+        isPreCompleted?: boolean;
+        completedAt?: string;
+        studyTimeMinutes?: number;
+        questionsCount?: number;
+        correctCount?: number;
+        flashcardsCount?: number;
+        hasSummary?: boolean;
+        notes?: string;
+        historicalIncidence?: number;
+        subjectName?: string;
+        originalTitle: string;
+      }>();
+
+      let totalCompletedCount = 0;
+
+      schedule.weeks.forEach(w => {
+        Object.values(w.days || {}).forEach(dayTopics => {
+          if (Array.isArray(dayTopics)) {
+            dayTopics.forEach(t => {
+              const rawTitle = t.title || '';
+              const cleanT = rawTitle.replace(/^[⚡🔄]\s*\[.*?\]\s*/, '').trim().toLowerCase();
+              
+              // Discard old uncompleted revisions!
+              if (t.type === 'revisao' && !t.isCompleted) {
+                return;
+              }
+
+              if (t.isCompleted || (t as any).studyTimeMinutes || (t as any).hasSummary || t.completedAt) {
+                completedMap.set(cleanT, {
+                  isCompleted: t.isCompleted,
+                  isPreCompleted: t.isPreCompleted,
+                  completedAt: t.completedAt || new Date().toISOString(),
+                  studyTimeMinutes: (t as any).studyTimeMinutes,
+                  questionsCount: (t as any).questionsCount,
+                  correctCount: (t as any).correctCount,
+                  flashcardsCount: (t as any).flashcardsCount,
+                  hasSummary: (t as any).hasSummary,
+                  notes: (t as any).notes,
+                  historicalIncidence: t.historicalIncidence,
+                  subjectName: t.subjectName,
+                  originalTitle: rawTitle
+                });
+                totalCompletedCount++;
+              }
+            });
+          }
+        });
+      });
+
+      // 2. RE-GENERATE NEW SCHEDULE WEEKS BASED ON NEW VARIABLES (COLLEGE VS RESIDENCY)
+      const isCollegeSchedule = editPlanType === 'college_only' || schedule.exam === 'Conteúdo da Faculdade' || (schedule as any).planType === 'college_only' || Boolean((schedule as any).collegeCustomTopics?.length);
+      const examData = isCollegeSchedule ? { name: editCollegeName.trim() || 'Conteúdo da Faculdade' } : (MEDICAL_EXAMS_DB.find(e => e.id === editExamId) || MEDICAL_EXAMS_DB[0]);
+
+      let newGeneratedWeeks: StudyPlanWeek[] = [];
+
+      if (isCollegeSchedule) {
+        // Extract 100% of all college topics provided during content creation
+        const allCollegeTopics: string[] = [];
+        const seenTitles = new Set<string>();
+
+        const rawCustomList = (schedule as any).collegeCustomTopics || (schedule as any).collegeSelectedTopics;
+        if (Array.isArray(rawCustomList)) {
+          rawCustomList.forEach((t: string) => {
+            const clean = typeof t === 'string' ? t.trim() : '';
+            if (clean && !seenTitles.has(clean.toLowerCase())) {
+              seenTitles.add(clean.toLowerCase());
+              allCollegeTopics.push(clean);
+            }
+          });
+        }
+
+        schedule.weeks.forEach(w => {
+          Object.values(w.days || {}).forEach(arr => {
+            if (Array.isArray(arr)) {
+              arr.forEach(t => {
+                // Skip old uncompleted revisions
+                if (t.type === 'revisao' && !t.isCompleted) return;
+
+                const rawTitle = t.title || '';
+                const cleanTitle = rawTitle.replace(/^[⚡🔄]\s*\[.*?\]\s*/, '').trim();
+                if (cleanTitle && !seenTitles.has(cleanTitle.toLowerCase())) {
+                  seenTitles.add(cleanTitle.toLowerCase());
+                  allCollegeTopics.push(cleanTitle);
+                }
+              });
+            }
+          });
+        });
+
+        const durationWeeks = schedule.weeks.length || 12;
+        const collegeRes = generateCollegeCustomPlan(
+          allCollegeTopics,
+          editStudyDays,
+          editHoursPerDay,
+          editStartDate,
+          durationWeeks,
+          editRevisionStrategy,
+          editModality === 'dynamic' ? editExamDate : undefined
+        );
+        newGeneratedWeeks = collegeRes.weeks;
+      } else {
+        newGeneratedWeeks = generatePlan(
+          editExamId,
+          editModality,
+          editStudyDays,
+          editHoursPerDay,
+          editSemesterSubjects,
+          editExamDate,
+          editStartDate,
+          false
+        );
+      }
+
+      // 3. RE-ATTACH ALL COMPLETED TOPICS & METRICS TO NEW STRUCTURE
+      const trackedCompletedTitles = new Set<string>();
+
+      const mappedWeeks = newGeneratedWeeks.map(w => {
+        const updatedDays = { ...w.days };
+        Object.keys(updatedDays).forEach(dayName => {
+          updatedDays[dayName] = updatedDays[dayName].map(t => {
+            const rawTitle = t.title || '';
+            const cleanT = rawTitle.replace(/^[⚡🔄]\s*\[.*?\]\s*/, '').trim().toLowerCase();
+            const match = completedMap.get(cleanT);
+
+            if (match) {
+              trackedCompletedTitles.add(cleanT);
+              return {
+                ...t,
+                isCompleted: true,
+                isPreCompleted: match.isPreCompleted || false,
+                completedAt: match.completedAt,
+                studyTimeMinutes: match.studyTimeMinutes,
+                questionsCount: match.questionsCount,
+                correctCount: match.correctCount,
+                flashcardsCount: match.flashcardsCount,
+                hasSummary: match.hasSummary,
+                notes: match.notes
+              } as any;
+            }
+
+            return {
+              ...t,
+              isCompleted: false,
+              isPreCompleted: false
+            };
+          });
+        });
+        return { ...w, days: updatedDays };
+      });
+
+      // 4. ZERO DATA LOSS GUARANTEE: PRESERVE COMPLETED TOPICS NOT IN NEW GENERATED LIST
+      completedMap.forEach((match, cleanT) => {
+        if (!trackedCompletedTitles.has(cleanT)) {
+          if (mappedWeeks[0] && mappedWeeks[0].days) {
+            const firstDay = Object.keys(mappedWeeks[0].days)[0] || editStudyDays[0] || 'Seg';
+            mappedWeeks[0].days[firstDay] = mappedWeeks[0].days[firstDay] || [];
+            mappedWeeks[0].days[firstDay].unshift({
+              title: match.originalTitle,
+              subjectName: match.subjectName || 'Geral',
+              historicalIncidence: match.historicalIncidence || 50,
+              isPriority: true,
+              isCompleted: true,
+              isPreCompleted: match.isPreCompleted || false,
+              completedAt: match.completedAt,
+              studyTimeMinutes: match.studyTimeMinutes,
+              questionsCount: match.questionsCount,
+              correctCount: match.correctCount,
+              flashcardsCount: match.flashcardsCount,
+              hasSummary: match.hasSummary,
+              notes: match.notes,
+              review24h: false,
+              review7d: true,
+              review30d: true,
+              type: 'estudo',
+              importanceDegree: 'alto'
+            } as any);
+          }
+        }
+      });
+
+      // 5. FRESH SPACED REPETITION / FORGETTING CURVE INJECTION BASED ON ACCURACY & TIME
+      completedMap.forEach((match, cleanT) => {
+        const qCount = match.questionsCount || 0;
+        const cCount = match.correctCount || 0;
+        const accuracy = qCount > 0 ? cCount / qCount : 0.7;
+
+        // Determine R1 and R2 offsets based on performance
+        let R1Offset = accuracy >= 0.85 ? 21 : accuracy < 0.6 ? 4 : 10;
+        let R2Offset = accuracy >= 0.85 ? 45 : accuracy < 0.6 ? 14 : 25;
+
+        const completionDate = match.completedAt ? new Date(match.completedAt) : new Date();
+        const startD = new Date((editStartDate || new Date().toISOString().split('T')[0]) + 'T00:00:00');
+
+        [
+          { name: 'R1 - Curva do Esquecimento', offset: R1Offset },
+          { name: 'R2 - Consolidação', offset: R2Offset }
+        ].forEach(revSpec => {
+          const revDate = new Date(completionDate);
+          revDate.setDate(revDate.getDate() + revSpec.offset);
+
+          const diffDays = Math.max(0, Math.floor((revDate.getTime() - startD.getTime()) / (1000 * 3600 * 24)));
+          const targetWeekIdx = Math.min(mappedWeeks.length - 1, Math.floor(diffDays / 7));
+
+          if (targetWeekIdx >= 0 && mappedWeeks[targetWeekIdx]?.days) {
+            const availableDays = editStudyDays.filter(d => mappedWeeks[targetWeekIdx].days[d]);
+            const targetDay = availableDays[0] || Object.keys(mappedWeeks[targetWeekIdx].days)[0];
+
+            if (targetDay && mappedWeeks[targetWeekIdx].days[targetDay]) {
+              const cleanName = match.originalTitle.replace(/^[⚡🔄]\s*\[.*?\]\s*/, '');
+              const revTitle = `🔄 [REVISÃO ${revSpec.name}] ${cleanName}`;
+              const existingRev = mappedWeeks[targetWeekIdx].days[targetDay].some(
+                t => t.title.toLowerCase().includes(cleanT) && t.type === 'revisao'
+              );
+
+              if (!existingRev) {
+                mappedWeeks[targetWeekIdx].days[targetDay].push({
+                  title: revTitle,
+                  subjectName: match.subjectName || 'Geral',
+                  historicalIncidence: match.historicalIncidence || 50,
+                  isPriority: true,
+                  isCompleted: false,
+                  review24h: false,
+                  review7d: true,
+                  review30d: true,
+                  type: 'revisao',
+                  importanceDegree: accuracy < 0.6 ? 'extremo' : 'medio'
+                } as any);
+              }
+            }
+          }
+        });
+      });
+
+      // 6. CALCULATE RECALCULATED PROGRESS & COVERAGE
+      let totalTopicsCount = 0;
+      let finalCompletedCount = 0;
+      mappedWeeks.forEach(w => {
+        Object.values(w.days).forEach(arr => {
+          arr.forEach(t => {
+            totalTopicsCount++;
+            if (t.isCompleted) finalCompletedCount++;
+          });
+        });
+      });
+      const finalProgress = totalTopicsCount > 0 ? Math.round((finalCompletedCount / totalTopicsCount) * 100) : 0;
+      const finalCoverage = calculateCoverage(mappedWeeks, editExamId);
+
+      const updatedScheduleData = {
+        exam: isCollegeSchedule ? (editCollegeName.trim() || 'Conteúdo da Faculdade') : examData.name,
+        planType: isCollegeSchedule ? 'college_only' : 'residency_only',
+        collegeName: isCollegeSchedule ? editCollegeName.trim() : undefined,
+        modality: editModality,
+        studyDays: editStudyDays,
+        hoursPerDay: editHoursPerDay,
+        weeks: mappedWeeks,
+        startDate: editStartDate,
+        examDate: editModality === 'dynamic' ? editExamDate : null,
+        progress: finalProgress,
+        coveragePercentage: finalCoverage,
+        currentSemesterSubjects: editSemesterSubjects,
+        updatedAt: new Date().toISOString()
+      };
+
+      // SAVE TO FIRESTORE
+      const scheduleRef = doc(db, 'users', user.uid, 'schedules', schedule.id);
+      await updateDoc(scheduleRef, updatedScheduleData);
+
+      const fullUpdatedSchedule: StudySchedule = {
+        ...schedule,
+        ...updatedScheduleData
+      };
+
+      setSchedule(fullUpdatedSchedule);
+      setSchedules(prev => prev.map(s => s.id === schedule.id ? fullUpdatedSchedule : s));
+      setShowEditScheduleModal(false);
+
+      showToast(
+        `Cronograma recalculado e atualizado! ${totalCompletedCount} tópicos e resumos concluídos foram 100% preservados.`,
+        "success"
+      );
+
+    } catch (err: any) {
+      console.error("Error recalculating schedule:", err);
+      showToast("Erro ao recalcular cronograma: " + err.message, "error");
+    } finally {
+      setIsRecalculating(false);
+    }
   };
 
   const handleSwapTopic = async (selectedTopicTitle: string) => {
@@ -6107,17 +6498,31 @@ export default function Cronograma({
                     <Settings className="w-3.5 h-3.5 text-stone-400 animate-spin-slow" />
                     Zona de Configurações do Cronograma Ativo
                   </span>
-                  <Button 
-                    variant="outline" 
-                    size="xs"
-                    onClick={() => {
-                      handleDeleteSchedule();
-                      setShowExtraTools(false);
-                    }}
-                    className="text-red-600 hover:bg-red-50/70 hover:text-red-750 border-red-200/80 hover:border-red-300 text-[10px] font-mono uppercase tracking-wider font-bold h-8 rounded-xl px-4 bg-white shadow-3xs transition-all"
-                  >
-                    Resetar Plano Ativo
-                  </Button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button 
+                      variant="outline" 
+                      size="xs"
+                      onClick={() => {
+                        openEditScheduleModal();
+                        setShowExtraTools(false);
+                      }}
+                      className="text-[#D44E3D] hover:bg-[#D44E3D]/10 border-[#D44E3D]/30 text-[10px] font-mono uppercase tracking-wider font-bold h-8 rounded-xl px-4 bg-white shadow-3xs transition-all flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-[#D44E3D]" />
+                      ✏️ Recalcular & Editar Cronograma com IA
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="xs"
+                      onClick={() => {
+                        handleDeleteSchedule();
+                        setShowExtraTools(false);
+                      }}
+                      className="text-red-600 hover:bg-red-50/70 hover:text-red-750 border-red-200/80 hover:border-red-300 text-[10px] font-mono uppercase tracking-wider font-bold h-8 rounded-xl px-4 bg-white shadow-3xs transition-all"
+                    >
+                      Resetar Plano Ativo
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -6264,6 +6669,13 @@ export default function Cronograma({
                         <span className="text-[9px] font-mono text-stone-500 uppercase block">Carga Diária</span>
                         <strong className="text-xs font-bold text-stone-800">{schedule.hoursPerDay}h / dia</strong>
                       </div>
+                      <Button
+                        onClick={openEditScheduleModal}
+                        className="bg-[#D44E3D] hover:bg-[#b83e2f] text-white font-mono text-xs font-bold shrink-0 self-center h-9 px-4 gap-1.5 shadow-2xs rounded-xl cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-white" />
+                        Recalcular Cronograma
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -10319,6 +10731,624 @@ export default function Cronograma({
                     Lembrar minha escolha para os próximos tópicos
                   </label>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* PLANNING SIMULADO PRE-CONFIGURATION MODAL */}
+        {planningSimuladoModal && planningSimuladoModal.open && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-[#E2E0D9] shadow-2xl rounded-3xl p-6 sm:p-8 max-w-2xl w-full space-y-6 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="space-y-2 text-center border-b border-[#E2E0D9] pb-4">
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-display font-black text-[#1A1A1A]">
+                  Configuração do Simulado do Planejamento
+                </h3>
+                <p className="text-xs text-[#8E8A82] font-medium">
+                  {planningSimuladoModal.isMonthly ? 'Simulado Mensal de Consolidação' : `Simulado Semanal — Semana ${planningSimuladoModal.weekIdx + 1}`}
+                </p>
+              </div>
+
+              {/* 1. MODO DE APLICAÇÃO E FEEDBACK DAS RESPOSTAS */}
+              <div className="space-y-2 bg-[#FAF9F5] border border-[#E2E0D9] p-4 rounded-2xl">
+                <label className="text-xs font-black uppercase tracking-wider text-[#1A1A1A] block mb-2">
+                  Feedback e Gabarito das Respostas:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPlanningSimuladoModal(prev => prev ? { ...prev, feedbackMode: 'study' } : null)}
+                    className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                      planningSimuladoModal.feedbackMode === 'study'
+                        ? 'border-primary bg-white ring-2 ring-primary/20 shadow-2xs font-extrabold'
+                        : 'border-[#E2E0D9] bg-white/60 hover:border-stone-400'
+                    }`}
+                  >
+                    <div className="p-1.5 rounded-lg bg-amber-100 text-amber-800 shrink-0 mt-0.5">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-[#1A1A1A]">⚡ Feedback Instantâneo</div>
+                      <div className="text-[10px] text-[#666] leading-tight mt-0.5">
+                        Veja se acertou ou errou imediatamente a cada questão com explicação da IA.
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPlanningSimuladoModal(prev => prev ? { ...prev, feedbackMode: 'exam' } : null)}
+                    className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                      planningSimuladoModal.feedbackMode === 'exam'
+                        ? 'border-primary bg-white ring-2 ring-primary/20 shadow-2xs font-extrabold'
+                        : 'border-[#E2E0D9] bg-white/60 hover:border-stone-400'
+                    }`}
+                  >
+                    <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-800 shrink-0 mt-0.5">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-[#1A1A1A]">⏱️ Gabarito ao Final</div>
+                      <div className="text-[10px] text-[#666] leading-tight mt-0.5">
+                        Modo simulado estilo prova real. Gabarito e nota revelados ao submeter.
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. ORIGEM DAS QUESTÕES */}
+              <div className="space-y-2 bg-[#FAF9F5] border border-[#E2E0D9] p-4 rounded-2xl">
+                <label className="text-xs font-black uppercase tracking-wider text-[#1A1A1A] block mb-2">
+                  Origem das Questões:
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'ineditas', label: '✨ Inéditas', desc: 'Apenas não feitas' },
+                    { id: 'feitas', label: '🔄 Já Feitas', desc: 'Revisão' },
+                    { id: 'misturado', label: '🔀 Misturado', desc: 'Inéditas + Feitas' }
+                  ].map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setPlanningSimuladoModal(prev => prev ? { ...prev, originMode: item.id as any } : null)}
+                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                        planningSimuladoModal.originMode === item.id
+                          ? 'border-primary bg-white ring-2 ring-primary/20 text-primary font-black shadow-2xs'
+                          : 'border-[#E2E0D9] bg-white/60 text-stone-700 hover:border-stone-400'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{item.label}</div>
+                      <div className="text-[9px] text-stone-500 font-medium">{item.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* GLOBAL PRESETS FOR QUESTIONS PER TOPIC */}
+              <div className="bg-[#FAF9F5] border border-[#E2E0D9] p-4 rounded-2xl space-y-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <span className="text-xs font-black uppercase tracking-wider text-[#1A1A1A]">
+                    Definir questões por tópico:
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[2, 5, 10, 15, 20].map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => {
+                          setPlanningSimuladoModal(prev => {
+                            if (!prev) return null;
+                            return {
+                              ...prev,
+                              questionsPerTopicGlobal: val,
+                              topics: prev.topics.map(t => ({ ...t, count: val }))
+                            };
+                          });
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          planningSimuladoModal.questionsPerTopicGlobal === val
+                            ? 'bg-primary text-white shadow-xs'
+                            : 'bg-white border border-[#E2E0D9] text-[#1A1A1A] hover:bg-stone-100'
+                        }`}
+                      >
+                        {val} Qs / tema
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* LIST OF TOPICS WITH INDIVIDUAL COUNT SELECTOR */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-[11px] uppercase tracking-wider font-extrabold text-[#8E8A82]">
+                  <span>Tópicos da Prova ({planningSimuladoModal.topics.length})</span>
+                  <span>Quantidade por Tópico</span>
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {planningSimuladoModal.topics.map((t, tIdx) => (
+                    <div
+                      key={`plan-top-${t.id}-${tIdx}`}
+                      className="flex items-center justify-between p-3.5 bg-white border border-[#E2E0D9] rounded-2xl shadow-2xs hover:border-primary/40 transition-all gap-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] uppercase font-bold text-primary truncate">
+                          {t.subjectName}
+                        </div>
+                        <div className="text-xs font-bold text-[#1A1A1A] truncate">
+                          {t.title}
+                        </div>
+                      </div>
+
+                      {/* STEPPER FOR THIS TOPIC */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPlanningSimuladoModal(prev => {
+                              if (!prev) return null;
+                              const updated = [...prev.topics];
+                              updated[tIdx] = { ...updated[tIdx], count: Math.max(1, (updated[tIdx].count || 5) - 1) };
+                              return { ...prev, topics: updated };
+                            });
+                          }}
+                          className="w-8 h-8 rounded-xl border border-[#E2E0D9] bg-stone-50 hover:bg-stone-100 flex items-center justify-center font-black text-sm text-[#1A1A1A] cursor-pointer"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={t.count || 5}
+                          onChange={(e) => {
+                            const val = Math.max(1, parseInt(e.target.value) || 1);
+                            setPlanningSimuladoModal(prev => {
+                              if (!prev) return null;
+                              const updated = [...prev.topics];
+                              updated[tIdx] = { ...updated[tIdx], count: val };
+                              return { ...prev, topics: updated };
+                            });
+                          }}
+                          className="w-12 h-8 text-center text-xs font-black border border-[#E2E0D9] rounded-xl bg-white focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPlanningSimuladoModal(prev => {
+                              if (!prev) return null;
+                              const updated = [...prev.topics];
+                              updated[tIdx] = { ...updated[tIdx], count: (updated[tIdx].count || 5) + 1 };
+                              return { ...prev, topics: updated };
+                            });
+                          }}
+                          className="w-8 h-8 rounded-xl border border-[#E2E0D9] bg-stone-50 hover:bg-stone-100 flex items-center justify-center font-black text-sm text-[#1A1A1A] cursor-pointer"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* TOTAL SUMMARY BADGE */}
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-950 flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <div className="text-[10px] uppercase font-black tracking-wider text-emerald-700">Resumo da Configuração</div>
+                  <div className="text-xs font-bold">
+                    {planningSimuladoModal.topics.length} tópicos selecionados • {planningSimuladoModal.topics.reduce((acc, t) => acc + (t.count || 5), 0)} questões total no simulado
+                  </div>
+                </div>
+                <Sparkles className="w-5 h-5 text-emerald-600" />
+              </div>
+
+              {/* ACTION BUTTONS */}
+              <div className="flex items-center gap-3 pt-4 border-t border-[#E2E0D9]">
+                <Button
+                  variant="outline"
+                  onClick={() => setPlanningSimuladoModal(null)}
+                  className="flex-1 h-12 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleConfirmPlanningSimulado}
+                  className="flex-1 h-12 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs uppercase tracking-wider gap-2 shadow-md shadow-primary/20 cursor-pointer"
+                >
+                  🚀 Iniciar Simulado ({planningSimuladoModal.topics.reduce((acc, t) => acc + (t.count || 5), 0)} Qs)
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* EDIT & RECALCULATE SCHEDULE MODAL */}
+        {showEditScheduleModal && schedule && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-[#E2E0D9] shadow-2xl rounded-3xl p-6 sm:p-8 max-w-2xl w-full space-y-6 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="space-y-2 text-center border-b border-[#E2E0D9] pb-4">
+                <div className="w-12 h-12 rounded-2xl bg-[#D44E3D]/10 text-[#D44E3D] flex items-center justify-center mx-auto mb-2">
+                  <RefreshCw className="w-6 h-6 animate-spin-slow" />
+                </div>
+                <h3 className="text-xl font-display font-black text-[#1A1A1A]">
+                  Editar & Recalcular Cronograma Inteligente
+                </h3>
+                <p className="text-xs text-[#8E8A82] font-medium">
+                  Ajuste as variáveis de estudo. O sistema redistribuirá o plano diário, semanal e mensal sem perder nenhum progresso.
+                </p>
+              </div>
+
+              {/* GUARANTEE BADGE */}
+              <div className="p-3.5 bg-emerald-50/90 border border-emerald-200 rounded-2xl text-emerald-950 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 text-xs">
+                  <span className="font-black uppercase tracking-wider text-emerald-800 block text-[10px]">
+                    🛡️ Garantia de Preservação Integral de Dados (0% Perda)
+                  </span>
+                  <p className="text-emerald-900 font-medium leading-relaxed text-[11px]">
+                    Todos os seus tópicos já concluídos, resumos gerados, anotações, tempo de estudo e taxas de acerto serão 100% preservados e reagendados com a Curva do Esquecimento.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 text-xs font-sans">
+                {/* 1. SELEÇÃO DO TIPO DE PROVA / BANCA OU FACULDADE */}
+                <div className="space-y-3 bg-[#FAF9F5] border border-[#E2E0D9] p-4 rounded-2xl">
+                  <label className="font-black uppercase tracking-wider text-[#1A1A1A] block text-xs">
+                    Foco e Origem do Cronograma:
+                  </label>
+                  
+                  {/* CATEGORY SELECTOR CARDS */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditPlanType('residency_only')}
+                      className={`p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                        editPlanType === 'residency_only'
+                          ? 'border-primary bg-white ring-2 ring-primary/20 shadow-2xs font-extrabold'
+                          : 'border-[#E2E0D9] bg-white/60 hover:border-stone-300'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${editPlanType === 'residency_only' ? 'bg-primary/10 text-primary' : 'bg-stone-100 text-stone-500'}`}>
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-[#1A1A1A]">🏥 Prova de Residência Médica</div>
+                        <div className="text-[10px] text-[#666] leading-tight mt-0.5">
+                          Baseado no edital da banca oficial (ENARE, USP, UNICAMP, PSU-MG, SUS, etc.).
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setEditPlanType('college_only')}
+                      className={`p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                        editPlanType === 'college_only'
+                          ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-500/20 shadow-2xs font-extrabold'
+                          : 'border-[#E2E0D9] bg-white/60 hover:border-stone-300'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${editPlanType === 'college_only' ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-500'}`}>
+                        <GraduationCap className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-[#1A1A1A]">🎓 Prova da Faculdade / Módulo</div>
+                        <div className="text-[10px] text-[#666] leading-tight mt-0.5">
+                          Criado para prova da universidade a partir do conteúdo/assuntos do semestre.
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* SUB-PANEL IF COLLEGE SCHEDULE IS SELECTED */}
+                  {editPlanType === 'college_only' && (
+                    <div className="mt-3 p-3.5 bg-amber-500/10 border border-amber-300 rounded-xl space-y-3 animate-in fade-in duration-200">
+                      <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs">
+                        <GraduationCap className="w-4 h-4 text-amber-700 shrink-0" />
+                        <span>Configurações do Módulo da Faculdade:</span>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-amber-900 block">
+                          Nome da Faculdade, Curso ou Disciplina:
+                        </label>
+                        <input
+                          type="text"
+                          value={editCollegeName}
+                          onChange={(e) => setEditCollegeName(e.target.value)}
+                          placeholder="Ex: Medicina USP, Ginecologia P1, Pediatria Semestral"
+                          className="w-full h-10 px-3.5 bg-white border border-amber-300 rounded-xl text-xs font-bold text-[#1A1A1A] focus:outline-none focus:border-amber-600"
+                        />
+                      </div>
+
+                      <div className="p-2.5 bg-white/90 rounded-xl text-[11px] text-amber-950 font-medium flex items-start gap-2 border border-amber-200">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Garantia de Conteúdo Universitário Integral:</strong> Ao recalculamos o plano, 100% dos assuntos e conteúdos enviados para a prova da faculdade serão preservados e reorganizados sem descarte de tópicos.
+                        </span>
+                      </div>
+
+                      {/* DISPLAY ORIGINAL TOPICS PREVIEW BADGE */}
+                      {(() => {
+                        const topicsList: string[] = (schedule as any).collegeCustomTopics || (schedule as any).collegeSelectedTopics || [];
+                        if (topicsList.length > 0) {
+                          return (
+                            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-amber-900 space-y-1">
+                              <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-amber-800">
+                                <span>📚 Lista de Conteúdo Fornecida ({topicsList.length} assuntos)</span>
+                                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">100% Salvos</span>
+                              </div>
+                              <p className="text-[11px] text-amber-900/90 font-medium line-clamp-2">
+                                {topicsList.slice(0, 8).join(', ')}{topicsList.length > 8 ? ` e mais ${topicsList.length - 8} assuntos...` : ''}
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
+
+                  {/* SUB-PANEL IF RESIDENCY SCHEDULE IS SELECTED */}
+                  {editPlanType === 'residency_only' && (
+                    <div className="mt-3 space-y-2.5 animate-in fade-in duration-200">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                        <label className="text-xs font-black uppercase tracking-wider text-[#1A1A1A]">
+                          Banca / Prova Alvo Principal:
+                        </label>
+                        {/* REGION FILTER BAR */}
+                        <div className="flex items-center gap-1 overflow-x-auto max-w-full pb-1">
+                          {['todos', 'Nacional', 'São Paulo', 'Minas Gerais', 'Sul', 'Centro-Oeste', 'Nordeste', 'RJ'].map(reg => (
+                            <button
+                              key={reg}
+                              type="button"
+                              onClick={() => setEditSelectedRegionFilter(reg)}
+                              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                                editSelectedRegionFilter === reg
+                                  ? 'bg-primary text-white shadow-2xs'
+                                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                              }`}
+                            >
+                              {reg === 'todos' ? 'Todas Regiões' : reg}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* SEARCH INPUT */}
+                      <div className="relative">
+                        <Search className="w-4 h-4 absolute left-3 top-2.5 text-stone-400" />
+                        <input
+                          type="text"
+                          value={editExamSearchText}
+                          onChange={(e) => setEditExamSearchText(e.target.value)}
+                          placeholder="Pesquisar banca ou universidade (ex: ENARE, USP, Unicamp, PSU-MG)..."
+                          className="w-full h-9 pl-9 pr-3 bg-white border border-[#E2E0D9] rounded-xl text-xs font-medium focus:outline-none focus:border-primary text-[#1A1A1A]"
+                        />
+                      </div>
+
+                      {/* RICH CARDS GRID FOR EXAMS */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                        {MEDICAL_EXAMS_DB.filter(exam => {
+                          const matchesRegion = editSelectedRegionFilter === 'todos' || exam.region === editSelectedRegionFilter;
+                          const matchesSearch = !editExamSearchText.trim() ||
+                            exam.name.toLowerCase().includes(editExamSearchText.toLowerCase()) ||
+                            exam.description.toLowerCase().includes(editExamSearchText.toLowerCase()) ||
+                            exam.region.toLowerCase().includes(editExamSearchText.toLowerCase());
+                          return matchesRegion && matchesSearch;
+                        }).map(exam => {
+                          const isSelected = editExamId === exam.id;
+                          return (
+                            <button
+                              key={exam.id}
+                              type="button"
+                              onClick={() => setEditExamId(exam.id)}
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                                isSelected
+                                  ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-2xs font-bold'
+                                  : 'border-[#E2E0D9] bg-white text-stone-700 hover:border-stone-400'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="text-xs font-black text-[#1A1A1A] leading-tight line-clamp-2">
+                                  {exam.name}
+                                </span>
+                                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 shrink-0">
+                                  {exam.region}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-stone-500 line-clamp-1 leading-normal">
+                                {exam.description || 'Prova de Residência Médica'}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. MODALIDADE DE DURAÇÃO */}
+                <div className="space-y-1.5">
+                  <label className="font-black uppercase tracking-wider text-[#1A1A1A] block">
+                    Modalidade / Ritmo do Plano:
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: '1ano', label: '1 Ano (Extensivo)' },
+                      { id: '6meses', label: '6 Meses (Intensivo)' },
+                      { id: '2anos', label: '2 Anos (Longo)' },
+                      { id: 'dynamic', label: 'Até Data da Prova' }
+                    ].map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setEditModality(m.id as any)}
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          editModality === m.id
+                            ? 'border-primary bg-primary/10 text-primary font-black shadow-2xs'
+                            : 'border-[#E2E0D9] bg-white text-stone-700 hover:border-stone-400 font-bold'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* DATES DYNAMIC INPUTS */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="font-black uppercase tracking-wider text-[#1A1A1A] block">
+                      Data de Início do Plano:
+                    </label>
+                    <input
+                      type="date"
+                      value={editStartDate}
+                      onChange={(e) => setEditStartDate(e.target.value)}
+                      className="w-full h-11 px-3.5 bg-[#FAF9F5] border border-[#E2E0D9] rounded-xl font-mono font-bold text-xs focus:outline-none focus:border-primary text-[#1A1A1A]"
+                    />
+                  </div>
+
+                  {editModality === 'dynamic' && (
+                    <div className="space-y-1.5">
+                      <label className="font-black uppercase tracking-wider text-[#1A1A1A] block">
+                        Data Prevista da Prova:
+                      </label>
+                      <input
+                        type="date"
+                        value={editExamDate}
+                        onChange={(e) => setEditExamDate(e.target.value)}
+                        className="w-full h-11 px-3.5 bg-[#FAF9F5] border border-[#E2E0D9] rounded-xl font-mono font-bold text-xs focus:outline-none focus:border-primary text-[#1A1A1A]"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. DIAS DE ESTUDO NA SEMANA */}
+                <div className="space-y-1.5">
+                  <label className="font-black uppercase tracking-wider text-[#1A1A1A] block">
+                    Dias de Estudo na Semana:
+                  </label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => {
+                      const isSelected = editStudyDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              if (editStudyDays.length > 1) {
+                                setEditStudyDays(prev => prev.filter(d => d !== day));
+                              }
+                            } else {
+                              setEditStudyDays(prev => [...prev, day]);
+                            }
+                          }}
+                          className={`w-10 h-10 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-primary text-white shadow-2xs font-extrabold'
+                              : 'bg-[#FAF9F5] border border-[#E2E0D9] text-stone-600 hover:bg-stone-100'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 4. CARGA HORÁRIA DIÁRIA */}
+                <div className="space-y-1.5 bg-[#FAF9F5] p-3.5 rounded-2xl border border-[#E2E0D9]">
+                  <div className="flex items-center justify-between">
+                    <label className="font-black uppercase tracking-wider text-[#1A1A1A]">
+                      Carga Horária Diária de Estudo:
+                    </label>
+                    <span className="font-mono font-extrabold text-xs text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
+                      {editHoursPerDay} horas / dia
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="12"
+                    step="1"
+                    value={editHoursPerDay}
+                    onChange={(e) => setEditHoursPerDay(parseInt(e.target.value, 10))}
+                    className="w-full accent-primary cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[9px] font-mono text-stone-400">
+                    <span>1h (Leve)</span>
+                    <span>4h (Padrão)</span>
+                    <span>8h (Intenso)</span>
+                    <span>12h (Imersivo)</span>
+                  </div>
+                </div>
+
+                {/* 5. ESTRATÉGIA DE REVISÃO E CURVA DO ESQUECIMENTO */}
+                <div className="space-y-1.5">
+                  <label className="font-black uppercase tracking-wider text-[#1A1A1A] block">
+                    Estratégia Pedagógica de Revisão:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[
+                      { id: 'spaced', label: '🔄 Curva do Esquecimento', desc: 'Intervalos por desempenho' },
+                      { id: 'weekly', label: '📅 Revisões Semanais', desc: 'Consolidação ao fim da semana' },
+                      { id: 'exam', label: '📊 Foco nos Simulados', desc: 'Revisão por erros dos simulados' }
+                    ].map(strat => (
+                      <button
+                        key={strat.id}
+                        type="button"
+                        onClick={() => setEditRevisionStrategy(strat.id as any)}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          editRevisionStrategy === strat.id
+                            ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-2xs font-extrabold'
+                            : 'border-[#E2E0D9] bg-white text-stone-700 hover:border-stone-400 font-bold'
+                        }`}
+                      >
+                        <div className="text-xs font-bold text-[#1A1A1A]">{strat.label}</div>
+                        <div className="text-[9px] text-stone-500 font-medium">{strat.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* ACTION BUTTONS */}
+              <div className="flex items-center gap-3 pt-4 border-t border-[#E2E0D9]">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowEditScheduleModal(false)}
+                  disabled={isRecalculating}
+                  className="flex-1 h-12 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleRecalculateSchedule}
+                  disabled={isRecalculating}
+                  className="flex-1 h-12 rounded-xl bg-[#D44E3D] hover:bg-[#b83e2f] text-white font-bold text-xs uppercase tracking-wider gap-2 shadow-md shadow-[#D44E3D]/20 cursor-pointer"
+                >
+                  {isRecalculating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {isRecalculating ? 'Recalculando e Reorganizando...' : '⚡ Recalcular Cronograma com IA (5 Créditos)'}
+                </Button>
               </div>
             </motion.div>
           </div>

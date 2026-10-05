@@ -1942,7 +1942,16 @@ export default function QuestionModule({
         });
 
         // Sync tested/studied topics to MedRevise if automatic mode is enabled
-        if (questionsSyncMode === 'auto') {
+        let shouldSync = questionsSyncMode === 'auto';
+        if (questionsSyncMode === 'manual') {
+          const consent = window.confirm("Você concluiu a sua sequência de questões! Deseja salvar e sincronizar automaticamente o seu aproveitamento de cada tópico estudado no MedRevise para agendar as próximas repetições espaçadas?");
+          if (consent) {
+            shouldSync = true;
+            updateQuestionsSyncMode('auto');
+          }
+        }
+
+        if (shouldSync) {
           await syncQuizResultToMedRevise(questions, score, finalDuration, undefined, currentQuizResults);
         }
       } catch (err) {
@@ -2010,7 +2019,16 @@ export default function QuestionModule({
           studySessions: arrayUnion(studySessionEntry)
         });
 
-        if (questionsSyncMode === 'auto') {
+        let shouldSync = questionsSyncMode === 'auto';
+        if (questionsSyncMode === 'manual') {
+          const consent = window.confirm("Você finalizou o seu teste! Deseja salvar e sincronizar automaticamente o seu aproveitamento de cada tópico estudado no MedRevise para agendar as próximas repetições espaçadas?");
+          if (consent) {
+            shouldSync = true;
+            updateQuestionsSyncMode('auto');
+          }
+        }
+
+        if (shouldSync) {
           await syncQuizResultToMedRevise(questions.slice(0, totalAnsweredSoFar), score, finalDuration, undefined, currentQuizResults);
         }
       } catch (err) {
@@ -2137,7 +2155,16 @@ export default function QuestionModule({
         await updateDoc(progressRef, updates);
 
         // Sync tested/studied topics to MedRevise if automatic mode is enabled
-        if (questionsSyncMode === 'auto') {
+        let shouldSync = questionsSyncMode === 'auto';
+        if (questionsSyncMode === 'manual') {
+          const consent = window.confirm("Parabéns por concluir o simulado! Deseja salvar e sincronizar automaticamente o seu aproveitamento de cada tópico estudado no MedRevise para agendar as próximas repetições espaçadas?");
+          if (consent) {
+            shouldSync = true;
+            updateQuestionsSyncMode('auto');
+          }
+        }
+
+        if (shouldSync) {
           await syncQuizResultToMedRevise(questions, finalScore, finalExamDuration, undefined, quizResults);
         }
       } catch (err) {
@@ -4112,7 +4139,7 @@ export default function QuestionModule({
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={runBancaYearAudit}
+                      onClick={handleRunAvailabilityAudit}
                       className="h-10 text-xs font-bold border-[#E2E0D9] bg-stone-50 hover:bg-stone-100 text-[#1A1A1A] gap-1.5 justify-center"
                     >
                       <Search className="w-3.5 h-3.5 shrink-0" />

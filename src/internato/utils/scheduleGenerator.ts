@@ -634,6 +634,16 @@ export function generateCollegeCustomPlan(
     };
   }
 
+  let effectiveWeeksDuration = weeksDuration;
+  if (startDate && examDate) {
+    const startD = new Date(startDate + 'T00:00:00');
+    const examD = new Date(examDate + 'T00:00:00');
+    if (!isNaN(startD.getTime()) && !isNaN(examD.getTime()) && examD > startD) {
+      const diffDays = Math.ceil((examD.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24));
+      effectiveWeeksDuration = Math.max(1, Math.ceil(diffDays / 7));
+    }
+  }
+
   const MAP_DAY_INDEX_TO_ABBR = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   let orderedStudyDays = [...studyDays];
   if (orderedStudyDays.length === 0) {
@@ -657,7 +667,7 @@ export function generateCollegeCustomPlan(
   }
 
   // Calculate total study days available
-  const totalStudyDays = Math.max(1, weeksDuration * orderedStudyDays.length);
+  const totalStudyDays = Math.max(1, effectiveWeeksDuration * orderedStudyDays.length);
 
   // GUARANTEE 100% COVERAGE: Determine daily new topic quota needed to cover ALL cleanTopics
   const minRequiredNewTopicsPerDay = Math.ceil(cleanTopics.length / totalStudyDays);
@@ -729,7 +739,7 @@ export function generateCollegeCustomPlan(
       .toLowerCase();
   };
 
-  for (let w = 1; w <= weeksDuration; w++) {
+  for (let w = 1; w <= effectiveWeeksDuration; w++) {
     const daysMap: { [dayName: string]: StudyPlanTopic[] } = {};
     let weekTitle = '';
 

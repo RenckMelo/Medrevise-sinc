@@ -3196,7 +3196,16 @@ export default function Cronograma({
           });
         });
 
-        const durationWeeks = schedule.weeks.length || 12;
+        let durationWeeks = schedule.weeks.length || 12;
+        if (editStartDate && editExamDate) {
+          const startD = new Date(editStartDate + 'T00:00:00');
+          const examD = new Date(editExamDate + 'T00:00:00');
+          if (!isNaN(startD.getTime()) && !isNaN(examD.getTime()) && examD > startD) {
+            const diffDays = Math.ceil((examD.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24));
+            durationWeeks = Math.max(1, Math.ceil(diffDays / 7));
+          }
+        }
+
         const collegeRes = generateCollegeCustomPlan(
           allCollegeTopics,
           editStudyDays,
@@ -3204,7 +3213,7 @@ export default function Cronograma({
           editStartDate,
           durationWeeks,
           editRevisionStrategy,
-          editModality === 'dynamic' ? editExamDate : undefined
+          editExamDate
         );
         newGeneratedWeeks = collegeRes.weeks;
       } else {

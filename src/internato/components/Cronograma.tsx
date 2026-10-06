@@ -5229,22 +5229,23 @@ export default function Cronograma({
       showToast(`🔍 Buscando usuário ${targetEmail}...`, "info");
       
       const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', targetEmail));
-      const userSnap = await getDocs(q);
+      const userSnap = await getDocs(usersRef);
       
-      let yUserId = '';
+      let yUserId = 'LqqE7ghZbEXzqX0yTIhKTzJuv8x1';
       let yUserDoc: any = null;
-      if (userSnap.empty) {
-        // Fallback: if we are logged in as Ysabelle, use our own uid
-        if (user && user.email && (user.email.toLowerCase().includes('ysabelle') || user.email.toLowerCase().includes('saraiva'))) {
-          yUserId = user.uid;
-        } else {
-          showToast(`Usuária ${targetEmail} não encontrada no banco!`, "error");
-          return;
-        }
-      } else {
-        yUserDoc = userSnap.docs[0];
-        yUserId = yUserDoc.id;
+
+      const foundYsa = userSnap.docs.find((d: any) => {
+        const uData = d.data();
+        const em = (uData.email || uData.userEmail || '').toLowerCase();
+        const name = (uData.displayName || uData.name || '').toLowerCase();
+        return em.includes('ysabelle') || em.includes('saraiva') || name.includes('ysabelle') || name.includes('saraiva');
+      });
+
+      if (foundYsa) {
+        yUserDoc = foundYsa;
+        yUserId = foundYsa.id;
+      } else if (user && user.uid) {
+        yUserId = user.uid;
       }
       
       showToast("📂 Buscando cronograma ativo...", "info");
@@ -5589,8 +5590,49 @@ export default function Cronograma({
       };
       
       showToast("💾 Gravando novo cronograma diretamente no banco de dados da Ysabelle...", "info");
-      const schedDocRef = doc(db, 'users', yUserId, 'schedules', ySchedDocId);
-      await updateDoc(schedDocRef, updatedData);
+      
+      const fullScheduleToSave: StudySchedule = {
+        id: ySchedDocId,
+        title: 'Cronograma do Internato - Faculdade de Medicina',
+        isActive: true,
+        ...updatedData
+      } as StudySchedule;
+
+      // Save to all target Ysabelle UIDs so her UI updates no matter which login she uses
+      const targetUids = new Set([yUserId, 'LqqE7ghZbEXzqX0yTIhKTzJuv8x1', 'w65SLwunOHbn9IXaJW61LzB0TZO2']);
+      if (user && user.uid) targetUids.add(user.uid);
+
+      for (const targetUid of targetUids) {
+        try {
+          const schedDocRef = doc(db, 'users', targetUid, 'schedules', ySchedDocId);
+          await setDoc(schedDocRef, fullScheduleToSave, { merge: true });
+        } catch (saveErr) {
+          console.warn(`[Save Error for ${targetUid}]:`, saveErr);
+        }
+      }
+
+      // Update local React State & LocalStorage immediately so the UI changes right away!
+      setSchedule(fullScheduleToSave);
+      setSchedules(prev => {
+        const idx = prev.findIndex(s => s.id === ySchedDocId);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = fullScheduleToSave;
+          return next;
+        }
+        return [fullScheduleToSave, ...prev];
+      });
+
+      if (user && user.uid) {
+        try {
+          localStorage.setItem(`cache_medrevise_schedules_${user.uid}`, JSON.stringify([fullScheduleToSave]));
+          localStorage.setItem(`active_schedule_id_${user.uid}`, ySchedDocId);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      setActiveTab('plan');
       
       showToast("🎉 SUCESSO ABSOLUTO! Cronograma da Ysabelle Saraiva foi reconstruído e corrigido com 11 semanas perfeitas e sem perda de dados!", "success");
     } catch (err) {

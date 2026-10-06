@@ -8681,7 +8681,7 @@ th { background: #F8F7F4; font-weight: bold; }
                   if (res) {
                     setAnalysisResult(res);
                     if (res.chapters) setEditedChapters(res.chapters);
-                    if (setAvailableCredits) setAvailableCredits(prev => Math.max(0, prev - 2));
+                    if (setAvailableCredits) setAvailableCredits(Math.max(0, (availableCredits || 0) - 2));
                   }
                   return res;
                 }}

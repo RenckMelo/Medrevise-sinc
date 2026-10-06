@@ -18,6 +18,7 @@ import { getAuth as getRealAuth, signInAnonymously as realSignInAnonymously, sig
 
 import { generateTopicContent } from '../services/geminiService';
 import { safeLocalStorageSet } from '../utils/storageUtils';
+import { generateCollegeCustomPlan, calculateCoverage } from '../utils/scheduleGenerator';
 import { 
   SemesterManager, 
   SubjectManager, 
@@ -186,6 +187,281 @@ export default function AdminPanel({
     } catch (err: any) {
       console.error('Error updating premium plan:', err);
       alert(`Erro ao atualizar plano: ${err.message}`);
+    } finally {
+      setUpdatingUser(false);
+    }
+  };
+
+  const handleFixUserSchedule = async (targetUser: any) => {
+    if (!targetUser) return;
+    const confirmRepair = window.confirm(`Deseja realmente reconstruir e corrigir o cronograma de ${targetUser.email || targetUser.displayName || 'este usuário'}?`);
+    if (!confirmRepair) return;
+    
+    setUpdatingUser(true);
+    try {
+      const schedulesRef = collection(db, 'users', targetUser.id, 'schedules');
+      const sSnap = await getDocs(schedulesRef);
+      if (sSnap.empty) {
+        alert("Nenhum cronograma ativo encontrado para este usuário.");
+        return;
+      }
+      
+      const schedDoc = sSnap.docs[0];
+      const schedData = schedDoc.data();
+      
+      const completedMap = new Map<string, any>();
+      let totalCompletedCount = 0;
+      
+      if (Array.isArray(schedData.weeks)) {
+        schedData.weeks.forEach((w: any) => {
+          Object.values(w.days || {}).forEach((dayTopics: any) => {
+            if (Array.isArray(dayTopics)) {
+              dayTopics.forEach(t => {
+                const rawTitle = t.title || '';
+                const cleanT = rawTitle.replace(/^[⚡🔄]\s*\[.*?\]\s*/, '').trim().toLowerCase();
+                
+                const isRevision = t.type === 'revisao' || rawTitle.includes('[REVISÃO') || rawTitle.includes('Revisão');
+                if (t.isCompleted || t.studyTimeMinutes || t.hasSummary || t.completedAt) {
+                  const payload = {
+                    isCompleted: t.isCompleted,
+                    isPreCompleted: t.isPreCompleted || false,
+                    completedAt: t.completedAt || new Date().toISOString(),
+                    studyTimeMinutes: t.studyTimeMinutes,
+                    questionsCount: t.questionsCount,
+                    correctCount: t.correctCount,
+                    flashcardsCount: t.flashcardsCount,
+                    hasSummary: t.hasSummary,
+                    notes: t.notes,
+                    historicalIncidence: t.historicalIncidence,
+                    subjectName: t.subjectName,
+                    originalTitle: rawTitle
+                  };
+
+                  if (isRevision) {
+                    const matchName = /REVISÃO (R\d+|Curva do Esquecimento|Consolidação)/i.exec(rawTitle) || /REVISÃO\s+([^\]]+)/i.exec(rawTitle);
+                    const revSpecName = matchName ? matchName[1].trim().toLowerCase() : 'generic';
+                    const revKey = `revisao_${revSpecName}_${cleanT}`;
+                    completedMap.set(revKey, payload);
+                  } else {
+                    completedMap.set(cleanT, payload);
+                  }
+                  totalCompletedCount++;
+                }
+              });
+            }
+          });
+        });
+      }
+      
+      const allCollegeTopics: string[] = [];
+      const seenTitles = new Set<string>();
+      const rawCustomList = schedData.collegeCustomTopics || schedData.collegeSelectedTopics || [];
+      
+      if (Array.isArray(rawCustomList)) {
+        rawCustomList.forEach((t: string) => {
+          const clean = typeof t === 'string' ? t.trim() : '';
+          if (clean && !seenTitles.has(clean.toLowerCase())) {
+            seenTitles.add(clean.toLowerCase());
+            allCollegeTopics.push(clean);
+          }
+        });
+      }
+      
+      if (allCollegeTopics.length === 0 && Array.isArray(schedData.weeks)) {
+        schedData.weeks.forEach((w: any) => {
+          Object.values(w.days || {}).forEach((arr: any) => {
+            if (Array.isArray(arr)) {
+              arr.forEach(t => {
+                if (t.type === 'revisao' && !t.isCompleted) return;
+                const rawTitle = t.title || '';
+                const cleanTitle = rawTitle.replace(/^[⚡🔄]\s*\[.*?\]\s*/, '').trim();
+                if (cleanTitle && !seenTitles.has(cleanTitle.toLowerCase())) {
+                  seenTitles.add(cleanTitle.toLowerCase());
+                  allCollegeTopics.push(cleanTitle);
+                }
+              });
+            }
+          });
+        });
+      }
+      
+      if (allCollegeTopics.length === 0) {
+        alert("Nenhum assunto original encontrado para reconstrução.");
+        return;
+      }
+      
+      const startDStr = '2026-08-31';
+      const examDStr = '2026-11-16';
+      const durationWeeks = 11;
+      const studyDays = schedData.studyDays || ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
+      const hoursPerDay = schedData.hoursPerDay || 4;
+      
+      const collegeRes = generateCollegeCustomPlan(
+        allCollegeTopics,
+        studyDays,
+        hoursPerDay,
+        startDStr,
+        durationWeeks,
+        schedData.revisionStrategy || 'spaced',
+        examDStr
+      );
+      
+      const newGeneratedWeeks = collegeRes.weeks;
+      
+      const trackedCompletedTitles = new Set<string>();
+      const mappedWeeks = newGeneratedWeeks.map(w => {
+        const updatedDays = { ...w.days };
+        Object.keys(updatedDays).forEach(dayName => {
+          updatedDays[dayName] = updatedDays[dayName].map(t => {
+            const rawTitle = t.title || '';
+            const cleanT = rawTitle.replace(/^[⚡🔄]\s*\[.*?\]\s*/, '').trim().toLowerCase();
+            const isRevision = t.type === 'revisao' || rawTitle.includes('[REVISÃO') || rawTitle.includes('Revisão');
+            let match = null;
+            let lookupKey = cleanT;
+            if (isRevision) {
+              const matchName = /REVISÃO (R\d+|Curva do Esquecimento|Consolidação)/i.exec(rawTitle) || /REVISÃO\s+([^\]]+)/i.exec(rawTitle);
+              const revSpecName = matchName ? matchName[1].trim().toLowerCase() : 'generic';
+              lookupKey = `revisao_${revSpecName}_${cleanT}`;
+              match = completedMap.get(lookupKey);
+            } else {
+              match = completedMap.get(cleanT);
+            }
+            
+            if (match) {
+              trackedCompletedTitles.add(lookupKey);
+              return {
+                ...t,
+                isCompleted: true,
+                isPreCompleted: match.isPreCompleted || false,
+                completedAt: match.completedAt,
+                studyTimeMinutes: match.studyTimeMinutes,
+                questionsCount: match.questionsCount,
+                correctCount: match.correctCount,
+                flashcardsCount: match.flashcardsCount,
+                hasSummary: match.hasSummary,
+                notes: match.notes
+              } as any;
+            }
+            return { ...t, isCompleted: false, isPreCompleted: false };
+          });
+        });
+        return { ...w, days: updatedDays };
+      });
+      
+      completedMap.forEach((match, cleanT) => {
+        if (!trackedCompletedTitles.has(cleanT)) {
+          if (mappedWeeks[0] && mappedWeeks[0].days) {
+            const firstDay = Object.keys(mappedWeeks[0].days)[0] || studyDays[0] || 'Seg';
+            mappedWeeks[0].days[firstDay] = mappedWeeks[0].days[firstDay] || [];
+            mappedWeeks[0].days[firstDay].unshift({
+              title: match.originalTitle,
+              subjectName: match.subjectName || 'Geral',
+              historicalIncidence: match.historicalIncidence || 50,
+              isPriority: true,
+              isCompleted: true,
+              isPreCompleted: match.isPreCompleted || false,
+              completedAt: match.completedAt,
+              studyTimeMinutes: match.studyTimeMinutes,
+              questionsCount: match.questionsCount,
+              correctCount: match.correctCount,
+              flashcardsCount: match.flashcardsCount,
+              hasSummary: match.hasSummary,
+              notes: match.notes,
+              review24h: false,
+              review7d: true,
+              review30d: true,
+              type: 'estudo',
+              importanceDegree: 'alto'
+            } as any);
+          }
+        }
+      });
+      
+      completedMap.forEach((match, cleanT) => {
+        const qCount = match.questionsCount || 0;
+        const cCount = match.correctCount || 0;
+        const accuracy = qCount > 0 ? cCount / qCount : 0.7;
+        
+        let R1Offset = accuracy >= 0.85 ? 21 : accuracy < 0.6 ? 4 : 10;
+        let R2Offset = accuracy >= 0.85 ? 45 : accuracy < 0.6 ? 14 : 25;
+        
+        const completionDate = match.completedAt ? new Date(match.completedAt) : new Date();
+        const startD = new Date(startDStr + 'T00:00:00');
+        
+        [
+          { name: 'R1 - Curva do Esquecimento', offset: R1Offset },
+          { name: 'R2 - Consolidação', offset: R2Offset }
+        ].forEach(revSpec => {
+          const revDate = new Date(completionDate);
+          revDate.setDate(revDate.getDate() + revSpec.offset);
+          
+          const diffDays = Math.max(0, Math.floor((revDate.getTime() - startD.getTime()) / (1000 * 3600 * 24)));
+          const targetWeekIdx = Math.min(mappedWeeks.length - 1, Math.floor(diffDays / 7));
+          
+          if (targetWeekIdx >= 0 && mappedWeeks[targetWeekIdx]?.days) {
+            const availableDays = studyDays.filter(d => mappedWeeks[targetWeekIdx].days[d]);
+            const targetDay = availableDays[0] || Object.keys(mappedWeeks[targetWeekIdx].days)[0];
+            
+            if (targetDay && mappedWeeks[targetWeekIdx].days[targetDay]) {
+              const cleanName = match.originalTitle.replace(/^[⚡🔄]\s*\[.*?\]\s*/, '');
+              const revTitle = `🔄 [REVISÃO ${revSpec.name}] ${cleanName}`;
+              const existingRev = mappedWeeks[targetWeekIdx].days[targetDay].some(
+                t => t.title.toLowerCase().includes(cleanT) && t.type === 'revisao'
+              );
+              
+              if (!existingRev) {
+                mappedWeeks[targetWeekIdx].days[targetDay].push({
+                  title: revTitle,
+                  subjectName: match.subjectName || 'Geral',
+                  historicalIncidence: match.historicalIncidence || 50,
+                  isPriority: true,
+                  isCompleted: false,
+                  review24h: false,
+                  review7d: true,
+                  review30d: true,
+                  type: 'revisao',
+                  importanceDegree: accuracy < 0.6 ? 'extremo' : 'medio'
+                } as any);
+              }
+            }
+          }
+        });
+      });
+      
+      let totalTopicsCount = 0;
+      let finalCompletedCount = 0;
+      mappedWeeks.forEach(w => {
+        Object.values(w.days).forEach((arr: any) => {
+          arr.forEach(t => {
+            totalTopicsCount++;
+            if (t.isCompleted) finalCompletedCount++;
+          });
+        });
+      });
+      
+      const finalProgress = totalTopicsCount > 0 ? Math.round((finalCompletedCount / totalTopicsCount) * 100) : 0;
+      const finalCoverage = calculateCoverage(mappedWeeks, 'enare');
+      
+      const updatedData = {
+        exam: schedData.exam || 'Conteúdo da Faculdade',
+        planType: 'college_only',
+        collegeName: schedData.collegeName || 'Faculdade de Medicina',
+        modality: 'dynamic',
+        startDate: startDStr,
+        examDate: examDStr,
+        weeks: mappedWeeks,
+        progress: finalProgress,
+        coveragePercentage: finalCoverage,
+        updatedAt: new Date().toISOString()
+      };
+      
+      const userDocRef = doc(db, 'users', targetUser.id, 'schedules', schedDoc.id);
+      await updateDoc(userDocRef, updatedData);
+      
+      alert("🎉 Cronograma reparado e reconstruído com total sucesso diretamente no Firestore!");
+    } catch (err: any) {
+      console.error("Erro ao reparar cronograma do usuário:", err);
+      alert(`Erro ao reparar: ${err.message}`);
     } finally {
       setUpdatingUser(false);
     }
@@ -1003,6 +1279,7 @@ export default function AdminPanel({
                   handleToggleUserPremium={handleToggleUserPremium}
                   handleChangeUserPlan={handleChangeUserPlan}
                   recentUsers={recentUsers}
+                  handleFixUserSchedule={handleFixUserSchedule}
                 />
               </TabsContent>
               <TabsContent value="referrals" className="focus-visible:outline-none">

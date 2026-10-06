@@ -1921,7 +1921,7 @@ export default function CalendarView() {
                   <BookOpen size={18} className="text-[#141414]" />
                   <h3 className="font-serif italic text-xl font-bold">
                     {editingTopic ? (() => {
-                      const rawName = editingTopic.name || editingTopic.title || '';
+                      const rawName = editingTopic.name || (editingTopic as any).title || '';
                       let clean = rawName
                         .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
                         .replace(/^Revisão SRS[\s:\-\–\—]*/gi, '')
@@ -2622,7 +2622,7 @@ function DraggableReview({
           )}></div>
           <span className="truncate flex-1 font-medium">
             {(() => {
-              const rawName = topic.name || topic.title || '';
+              const rawName = topic.name || (topic as any).title || '';
               let clean = rawName
                 .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
                 .replace(/^Revisão SRS[\s:\-\–\—]*/gi, '')

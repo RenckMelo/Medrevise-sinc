@@ -33,20 +33,28 @@ if (typeof window !== 'undefined' && typeof Node !== 'undefined' && Node.prototy
 
 // Programmatically unlock screen orientation and listen for device rotation in mobile PWAs
 if (typeof window !== 'undefined') {
+  let isRechecking = false;
   const recheckViewportOrientation = () => {
-    if (window.screen && window.screen.orientation && typeof window.screen.orientation.unlock === 'function') {
-      try {
-        window.screen.orientation.unlock();
-      } catch {
-        // Ignore if not supported by browser policy
+    if (isRechecking) return;
+    isRechecking = true;
+    try {
+      if (window.screen && window.screen.orientation && typeof window.screen.orientation.unlock === 'function') {
+        try {
+          window.screen.orientation.unlock();
+        } catch {
+          // Ignore if not supported by browser policy
+        }
       }
+      window.dispatchEvent(new Event('resize'));
+    } catch (err) {
+      // Ignore dispatch errors
+    } finally {
+      isRechecking = false;
     }
-    window.dispatchEvent(new Event('resize'));
   };
 
   recheckViewportOrientation();
   window.addEventListener('orientationchange', recheckViewportOrientation);
-  window.addEventListener('resize', recheckViewportOrientation);
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -197,7 +197,7 @@ export default function Dashboard({
     });
 
     // Source B: userProgress.studySessions (Embedded local sessions)
-    (userProgress?.studySessions || []).forEach(s => {
+    (userProgress?.studySessions || []).forEach((s: any) => {
       if (!s.id || uniqueSessionsMap.has(s.id)) return;
       let mins = Number(s.studyTimeMinutes || 0);
       if (mins >= 180 && (s.description?.includes('via Cronograma Inteligente') || (s.questionsCount === 0 && mins >= 240))) {
@@ -253,7 +253,7 @@ export default function Dashboard({
     });
 
     // Question attempts list - strictly only real answered questions
-    const allAttemptsList = [...attempts.filter(a => a && (a.userOption !== undefined || a.isCorrect !== undefined || a.timestamp))];
+    const allAttemptsList = [...attempts.filter(a => a && ((a as any).userOption !== undefined || (a as any).isCorrect !== undefined || (a as any).timestamp))];
     mergedQuizAttempts.forEach(q => {
       if (Array.isArray(q.questions)) {
         q.questions.forEach((qa: any) => {

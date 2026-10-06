@@ -10,7 +10,7 @@ import {
   User, Shield, Mail, Check, X, ShieldCheck, ChevronRight,
   Zap, Award, Edit3, Eye, FileText, CheckCircle2, AlertTriangle,
   ListChecks, RefreshCw, Layers, CheckCircle, ArrowLeft,
-  BarChart3, TrendingUp, Users, BookOpen, Clock, Activity, Lock
+  BarChart3, TrendingUp, Users, BookOpen, Clock, Activity, Lock, Wrench
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -1331,6 +1331,7 @@ interface ModerationManagerProps {
   handleSearchUser: (e?: React.FormEvent) => void;
   handleToggleUserPremium: (targetUser: any) => void;
   handleChangeUserPlan: (targetUser: any, plan: string) => void;
+  handleFixUserSchedule: (targetUser: any) => void;
   recentUsers: any[];
 }
 
@@ -1344,6 +1345,7 @@ export function ModerationManager({
   handleSearchUser,
   handleToggleUserPremium,
   handleChangeUserPlan,
+  handleFixUserSchedule,
   recentUsers
 }: ModerationManagerProps) {
   // Simple quick counts
@@ -1490,6 +1492,18 @@ export function ModerationManager({
                     );
                   })}
                 </div>
+              </div>
+
+              <div className="space-y-1.5 col-span-1 sm:col-span-2 pt-3 border-t border-dashed border-[#E2E0D9]">
+                <span className="text-[9px] uppercase tracking-widest font-black text-[#8E8A82] block">Ações Especiais de Suporte</span>
+                <Button 
+                  onClick={() => handleFixUserSchedule(foundUser)}
+                  disabled={updatingUser}
+                  className="w-full h-10 text-xs font-black uppercase tracking-wider rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Wrench className="w-4 h-4" />
+                  Reparar e Reestruturar Cronograma (11 semanas / Sem Choques / Manter Progresso)
+                </Button>
               </div>
             </div>
           </div>

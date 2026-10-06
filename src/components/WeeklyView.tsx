@@ -421,7 +421,7 @@ export default function WeeklyView() {
                   <BookOpen size={18} className="text-[#141414]" />
                   <h3 className="font-serif italic text-xl font-bold">
                     {editingTopic ? (() => {
-                      const rawName = editingTopic.name || editingTopic.title || '';
+                      const rawName = editingTopic.name || (editingTopic as any).title || '';
                       let clean = rawName
                         .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
                         .replace(/^Revisão SRS[\s:\-\–\—]*/gi, '')

@@ -84,6 +84,7 @@ interface QuestionModuleProps {
   initialQuestionsCount?: number;
   initialMode?: 'study' | 'exam';
   initialOriginMode?: 'ineditas' | 'feitas' | 'misturado';
+  initialTopicCountsMap?: Record<string, number>;
   onProgressUpdate?: (updates: Partial<UserProgress>) => void;
   availableCredits?: number;
   setAvailableCredits?: React.Dispatch<React.SetStateAction<number>>;
@@ -99,6 +100,7 @@ export default function QuestionModule({
   initialQuestionsCount,
   initialMode,
   initialOriginMode,
+  initialTopicCountsMap,
   onProgressUpdate,
   availableCredits,
   setAvailableCredits
@@ -181,6 +183,9 @@ export default function QuestionModule({
   const [generationStatus, setGenerationStatus] = useState('');
   const [isGeneratingTopicQuestions, setIsGeneratingTopicQuestions] = useState(false);
   const [selectedCountFromExisting, setSelectedCountFromExisting] = useState(10);
+
+  // Progressive Block Release state
+  const [unlockedBlockIndex, setUnlockedBlockIndex] = useState(0);
 
   // Selected Topics Questions & Stats State
   const [topicStatsMap, setTopicStatsMap] = useState<Record<string, {
@@ -1831,15 +1836,109 @@ export default function QuestionModule({
           }
 
           fetched = cachedQuestions;
-          fetched = fetched.sort(() => Math.random() - 0.5);
 
-          // Redirect to custom topic preparation screen with the existing pool
-          setTopicPrepQuestions(fetched);
-          setIsTopicPreparing(true);
-          setFilterUnanswered(false);
-          setFilterOnlyErrors(false);
-          setSelectedCountFromExisting(Math.min(10, fetched.length > 0 ? fetched.length : 10));
-          setIsSelecting(true);
+          let poolQuestions: Question[] = [];
+
+          if (activeTids.length > 0) {
+            activeTids.forEach(tid => {
+              const requestedForThisTopic = (initialTopicCountsMap && initialTopicCountsMap[tid]) || 
+                Math.max(1, Math.round(initialQuestionsCount ? initialQuestionsCount / activeTids.length : 5));
+              
+              let topicQuestions = fetched.filter(q => q.topicId === tid);
+              if (topicQuestions.length === 0) {
+                const tObj = topics.find(t => t.id === tid);
+                if (tObj) {
+                  const cleanT = tObj.title.replace(/^[⚡🔄]\s*\[.*?\]\s*/, '').trim().toLowerCase();
+                  topicQuestions = fetched.filter(q => q.text && q.text.toLowerCase().includes(cleanT));
+                }
+              }
+
+              if (topicQuestions.length > 0) {
+                const shuffledTopicQs = [...topicQuestions].sort(() => Math.random() - 0.5);
+                let pickedTopicQs = shuffledTopicQs.slice(0, requestedForThisTopic);
+                
+                let fillIdx = 0;
+                while (pickedTopicQs.length < requestedForThisTopic && shuffledTopicQs.length > 0) {
+                  const pick = shuffledTopicQs[fillIdx % shuffledTopicQs.length];
+                  pickedTopicQs.push({ ...pick, id: `${pick.id}_fill_${pickedTopicQs.length}` });
+                  fillIdx++;
+                }
+
+                poolQuestions.push(...pickedTopicQs);
+              }
+            });
+          }
+
+          if (poolQuestions.length === 0 && fetched.length > 0) {
+            const targetTotalCount = initialQuestionsCount || 10;
+            poolQuestions = fetched.sort(() => Math.random() - 0.5).slice(0, targetTotalCount);
+          }
+
+          const targetTotalCount = initialQuestionsCount || poolQuestions.length || 10;
+
+          if (poolQuestions.length > 0) {
+            // Instant Launch with First Batch (3-5 questions) so student doesn't wait!
+            const firstBatchSize = Math.min(5, poolQuestions.length);
+            const firstBatch = poolQuestions.slice(0, firstBatchSize);
+            const remainingPool = poolQuestions.slice(firstBatchSize);
+
+            setQuestions(firstBatch);
+            setCurrentIndex(0);
+            setSelectedOption(null);
+            setIsAnswered(false);
+            setScore(0);
+            setShowResults(false);
+            setIsTopicPreparing(false);
+            setIsSelecting(false);
+
+            // Stream remaining questions in background
+            if (remainingPool.length > 0 || poolQuestions.length < targetTotalCount) {
+              setBackgroundLoading({
+                isRunning: true,
+                targetCount: targetTotalCount,
+                currentCount: firstBatch.length,
+                isFinished: false,
+                message: 'Iniciando prova... Carregando demais questões em segundo plano!'
+              });
+
+              setTimeout(async () => {
+                let currentTotal = firstBatch.length;
+                const batchChunkSize = 5;
+
+                for (let i = 0; i < remainingPool.length; i += batchChunkSize) {
+                  const chunk = remainingPool.slice(i, i + batchChunkSize);
+                  setQuestions(prev => [...prev, ...chunk]);
+                  currentTotal += chunk.length;
+                  setBackgroundLoading({
+                    isRunning: currentTotal < targetTotalCount,
+                    targetCount: targetTotalCount,
+                    currentCount: currentTotal,
+                    isFinished: currentTotal >= targetTotalCount,
+                    message: currentTotal < targetTotalCount ? 'Adicionando mais questões ao simulado em segundo plano...' : 'Todas as questões do simulado estão prontas!'
+                  });
+                  await new Promise(r => setTimeout(r, 300));
+                }
+
+                if (currentTotal < targetTotalCount) {
+                  const missingCount = targetTotalCount - currentTotal;
+                  await fetchRemainingQuestionsInBackground(targetTotalCount, currentTotal, missingCount, activeTids);
+                } else {
+                  setBackgroundLoading({
+                    isRunning: false,
+                    targetCount: targetTotalCount,
+                    currentCount: currentTotal,
+                    isFinished: true,
+                    message: 'Todas as questões do simulado foram carregadas!'
+                  });
+                }
+              }, 100);
+            }
+          } else {
+            // If no questions in local cache, launch generator directly in background
+            fetchRemainingQuestionsInBackground(targetTotalCount, 0, targetTotalCount, activeTids);
+            setIsSelecting(false);
+            setIsTopicPreparing(false);
+          }
         } catch (err) {
           console.error("Error loading mock study session:", err);
           setIsSelecting(true);
@@ -1918,6 +2017,22 @@ export default function QuestionModule({
       });
     } catch (e) {
       console.warn('Firestore write failed, saved in local-first cache:', e);
+    }
+
+    // Auto unlock next block if current topic block completed
+    if (currentQuestion && currentQuestion.topicId) {
+      const uniqueTids = Array.from(new Set(questions.map(q => q.topicId).filter(Boolean)));
+      const curBlockIdx = uniqueTids.indexOf(currentQuestion.topicId);
+      const topicQs = questions.filter(q => q.topicId === currentQuestion.topicId);
+      const currentQInTopicIdx = topicQs.findIndex(q => q.id === currentQuestion.id);
+
+      if (currentQInTopicIdx === topicQs.length - 1 && curBlockIdx >= unlockedBlockIndex && curBlockIdx < uniqueTids.length - 1) {
+        const nextBlockIdx = curBlockIdx + 1;
+        const nextTid = uniqueTids[nextBlockIdx];
+        const nextTObj = topics.find(t => t.id === nextTid);
+        setUnlockedBlockIndex(nextBlockIdx);
+        setFallbackNotice(`🎉 Bloco ${curBlockIdx + 1} Concluído! O Bloco ${nextBlockIdx + 1} (${nextTObj?.title || 'Próximo Tópico'}) foi liberado!`);
+      }
     }
   };
 
@@ -5952,6 +6067,15 @@ export default function QuestionModule({
   const history = userProgress?.attempts && currentQuestion ? userProgress.attempts[currentQuestion.id] : null;
   const isFlagged = userProgress?.flaggedQuestionIds?.includes(currentQuestion?.id);
 
+  // Topic Block Info
+  const currentTopicObj = topics.find(t => t.id === currentQuestion?.topicId);
+  const currentSubjectObj = subjects.find(s => s.id === currentTopicObj?.subjectId);
+  const uniqueTopicIdsInQuiz = Array.from(new Set(questions.map(q => q.topicId).filter(Boolean)));
+  const currentTopicBlockIdx = currentQuestion ? Math.max(1, uniqueTopicIdsInQuiz.indexOf(currentQuestion.topicId) + 1) : 1;
+  const totalTopicBlocks = Math.max(1, uniqueTopicIdsInQuiz.length);
+  const currentTopicQuestions = questions.filter(q => q.topicId === currentQuestion?.topicId);
+  const currentTopicQuestionNumber = questions.slice(0, currentIndex + 1).filter(q => q.topicId === currentQuestion?.topicId).length;
+
   const handleToggleFlag = async () => {
     if (!userId || !currentQuestion) return;
     const isCurrentlyFlagged = userProgress?.flaggedQuestionIds?.includes(currentQuestion.id) || false;
@@ -6010,7 +6134,7 @@ export default function QuestionModule({
           <div className="flex items-start gap-2.5">
             <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold block text-amber-950 mb-0.5">Aviso de Preferência de Banca</span>
+              <span className="font-bold block text-amber-950 mb-0.5">Aviso do Simulado</span>
               <span className="text-[11px] text-amber-900/90 leading-relaxed font-medium">{fallbackNotice}</span>
             </div>
           </div>
@@ -6023,6 +6147,31 @@ export default function QuestionModule({
           </button>
         </div>
       )}
+      {/* TOPIC BLOCK BAR */}
+      {currentQuestion && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900 text-white p-4 px-6 rounded-2xl shadow-sm">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-amber-400/20 text-amber-400 shrink-0">
+              <Layers className="w-5 h-5 text-amber-400" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] font-black uppercase tracking-widest text-amber-400 truncate">
+                📦 Bloco {currentTopicBlockIdx} de {totalTopicBlocks}: {currentSubjectObj?.name || 'Geral'}
+              </div>
+              <div className="text-sm font-black text-white truncate">
+                {currentTopicObj?.title || 'Tópico do Simulado'}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 text-xs font-bold text-slate-200 bg-slate-800/80 px-3.5 py-1.5 rounded-xl border border-slate-700">
+            <span>Questão {currentTopicQuestionNumber} de {currentTopicQuestions.length} do Bloco</span>
+            <span className="text-slate-500">•</span>
+            <span className="text-slate-400">({currentIndex + 1}/{questions.length} Total)</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row gap-6 items-center justify-between bg-white p-8 rounded-3xl shadow-sm border border-[#E2E0D9]">
         <div className="flex items-center gap-6">
           <div className="flex flex-col">

@@ -159,6 +159,7 @@ interface CronogramaProps {
   setCronogramaQuestionsCount: (count: number) => void;
   setCronogramaMode: (mode: 'study' | 'exam') => void;
   setCronogramaQuestionOrigin?: (origin: 'ineditas' | 'feitas' | 'misturado') => void;
+  setCronogramaTopicCountsMap?: (countsMap: Record<string, number>) => void;
   availableCredits: number;
   setAvailableCredits: React.Dispatch<React.SetStateAction<number>>;
   setSubjects?: React.Dispatch<React.SetStateAction<any[]>>;
@@ -433,6 +434,7 @@ export default function Cronograma({
   setCronogramaQuestionsCount,
   setCronogramaMode,
   setCronogramaQuestionOrigin,
+  setCronogramaTopicCountsMap,
   availableCredits,
   setAvailableCredits,
   setSubjects,
@@ -3054,13 +3056,20 @@ export default function Cronograma({
     if (!planningSimuladoModal) return;
     const topicIds = planningSimuladoModal.topics.map(t => t.id);
     const totalQuestions = planningSimuladoModal.topics.reduce((sum, t) => sum + (t.count || 5), 0);
-    const avgQuestionsPerTopic = Math.max(1, Math.round(totalQuestions / Math.max(1, topicIds.length)));
+
+    const countsMap: Record<string, number> = {};
+    planningSimuladoModal.topics.forEach(t => {
+      countsMap[t.id] = t.count || 5;
+    });
 
     setCronogramaFilterTopics(topicIds);
-    setCronogramaQuestionsCount(avgQuestionsPerTopic);
+    setCronogramaQuestionsCount(totalQuestions);
     setCronogramaMode(planningSimuladoModal.feedbackMode);
     if (setCronogramaQuestionOrigin) {
       setCronogramaQuestionOrigin(planningSimuladoModal.originMode);
+    }
+    if (setCronogramaTopicCountsMap) {
+      setCronogramaTopicCountsMap(countsMap);
     }
     setPlanningSimuladoModal(null);
     setView('questions');
@@ -11459,15 +11468,27 @@ export default function Cronograma({
                 </div>
               </div>
 
-              {/* TOTAL SUMMARY BADGE */}
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-950 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="text-[10px] uppercase font-black tracking-wider text-emerald-700">Resumo da Configuração</div>
-                  <div className="text-xs font-bold">
-                    {planningSimuladoModal.topics.length} tópicos selecionados • {planningSimuladoModal.topics.reduce((acc, t) => acc + (t.count || 5), 0)} questões total no simulado
+              {/* TOTAL SUMMARY & CREDIT COST BADGES */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-950 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-[10px] uppercase font-black tracking-wider text-emerald-700">Resumo da Configuração</div>
+                    <div className="text-xs font-bold">
+                      {planningSimuladoModal.topics.length} tópicos • {planningSimuladoModal.topics.reduce((acc, t) => acc + (t.count || 5), 0)} questões total
+                    </div>
                   </div>
+                  <Sparkles className="w-5 h-5 text-emerald-600 shrink-0" />
                 </div>
-                <Sparkles className="w-5 h-5 text-emerald-600" />
+
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-[10px] uppercase font-black tracking-wider text-amber-700">Informativo de Custo</div>
+                    <div className="text-xs font-bold text-amber-900">
+                      ⚡ Custo: <span className="text-emerald-700 font-black">0 Créditos</span> (Gratuito)
+                    </div>
+                  </div>
+                  <Zap className="w-5 h-5 text-amber-600 shrink-0" />
+                </div>
               </div>
 
               {/* ACTION BUTTONS */}

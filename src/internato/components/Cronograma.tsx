@@ -584,11 +584,11 @@ export default function Cronograma({
   const getCleanScheduleTopicTitle = (item: any): string => {
     const full = extractTopicTitleFromScheduleItem(item);
     const cleaned = full
-      .replace(/^Revisão Ativa \+ Flashcards: /, '')
-      .replace(/^⚡ \[QUESTÕES AVANÇADAS\] /, '')
-      .replace(/^🔄 \[REVISÃO DE REFORÇO\] /, '')
-      .replace(/^🔄 \[.*?\] /, '')
-      .replace(/^⚡ \[.*?\] /, '')
+      .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, '')
+      .replace(/^[⚡🔄📖💡📝🎯]\s*/gi, '')
+      .replace(/^\[[^\]]+\]\s*/gi, '')
+      .replace(/^[⚡🔄📖💡📝🎯]\s*/gi, '')
+      .replace(/^\[[^\]]+\]\s*/gi, '')
       .trim();
     return (cleaned && cleaned !== 'undefined' && cleaned !== 'null' && cleaned.toLowerCase() !== 'undefined') ? cleaned : 'Tópico de Estudo';
   };
@@ -610,6 +610,14 @@ export default function Cronograma({
 
     const rawTitle = extractTopicTitleFromScheduleItem(scheduleTopic);
     const cleanTitle = getCleanScheduleTopicTitle(scheduleTopic);
+    const traceId = `trace_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    console.log(`[MedRevise Trace ${traceId}] ETAPA A (Antes da resolução):`, {
+      rawTitle,
+      cleanTitle,
+      scheduleTopicId: scheduleTopic?.topicId || scheduleTopic?.id,
+      scheduleSubjectName: scheduleTopic?.subjectName
+    });
 
     setStudyingTopicTitle(cleanTitle);
 
@@ -620,20 +628,50 @@ export default function Cronograma({
       let targetSubject: any;
       let targetTopic: any;
 
-      // 1. Check in-memory topics list by exact ID first
-      let matchedInMemory: any = null;
-      if (topicIdToTry && typeof topicIdToTry === 'string' && topics && topics.length > 0) {
-        matchedInMemory = topics.find(t => t.id === topicIdToTry);
-      }
-
-      // 2. Check in-memory topics list by exact normalized title match
       const targetNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-      if (!matchedInMemory && targetNorm && topics && topics.length > 0) {
-        matchedInMemory = topics.find(t => {
-          const tNorm = (t.title || t.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-          return tNorm && tNorm === targetNorm;
-        });
+      const targetSubjNorm = (scheduleTopic?.subjectName || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+
+      // 1. Check in-memory topics list by exact ID first (only if title matches)
+      let matchedInMemory: any = null;
+      if (topicIdToTry && typeof topicIdToTry === 'string' && !topicIdToTry.startsWith('local_') && topics && topics.length > 0) {
+        const cand = topics.find(t => t.id === topicIdToTry);
+        if (cand) {
+          const candNorm = (cand.title || cand.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+          if (candNorm === targetNorm || !targetNorm) {
+            matchedInMemory = cand;
+          } else {
+            console.warn(`[MedRevise Trace ${traceId}] ETAPA B1 (In-Memory por ID REJEITADO): ID ${topicIdToTry} apontava para "${cand.title}", que não confere com "${cleanTitle}"`);
+          }
+        }
       }
+      console.log(`[MedRevise Trace ${traceId}] ETAPA B1 (In-Memory por ID):`, {
+        candidateId: topicIdToTry,
+        isAccepted: Boolean(matchedInMemory),
+        foundTitle: matchedInMemory?.title || null
+      });
+
+      // 2. Check in-memory topics list by exact clean title AND subject scope
+      if (!matchedInMemory && targetNorm && topics && topics.length > 0) {
+        if (targetSubjNorm) {
+          matchedInMemory = topics.find(t => {
+            const tNorm = (t.title || t.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+            const tSubjNorm = (t.subjectName || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+            return tNorm === targetNorm && (tSubjNorm === targetSubjNorm || t.subjectId === scheduleTopic?.subjectId);
+          });
+        }
+        if (!matchedInMemory && !targetSubjNorm) {
+          matchedInMemory = topics.find(t => {
+            const tNorm = (t.title || t.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+            return tNorm === targetNorm;
+          });
+        }
+      }
+      console.log(`[MedRevise Trace ${traceId}] ETAPA B2 (In-Memory por Título/Especialidade):`, {
+        cleanTitle,
+        subjectName: scheduleTopic?.subjectName,
+        isAccepted: Boolean(matchedInMemory),
+        foundTopic: matchedInMemory ? { id: matchedInMemory.id, title: matchedInMemory.title } : null
+      });
 
       // 3. Check matched cache if exact match is recorded
       if (!matchedInMemory) {
@@ -645,6 +683,10 @@ export default function Cronograma({
           }
         }
       }
+      console.log(`[MedRevise Trace ${traceId}] ETAPA B3 (Cache matchedTopicsMap):`, {
+        isAccepted: Boolean(matchedInMemory),
+        foundTopic: matchedInMemory ? { id: matchedInMemory.id, title: matchedInMemory.title } : null
+      });
 
       if (matchedInMemory) {
         targetTopic = { ...matchedInMemory, title: matchedInMemory.title || cleanTitle };
@@ -659,31 +701,57 @@ export default function Cronograma({
         // 4. Fast single-doc Firestore lookup before creating a new topic
         let foundInFirestore: any = null;
 
-        // A. If topicIdToTry exists, fetch by ID
+        // A. If topicIdToTry exists, fetch by ID and verify title match
         if (topicIdToTry && typeof topicIdToTry === 'string' && !topicIdToTry.startsWith('local_')) {
           try {
             const topicDocRef = doc(db, 'users', user.uid, 'topics', topicIdToTry);
             const topicSnap = await getDoc(topicDocRef);
             if (topicSnap.exists()) {
-              foundInFirestore = { id: topicSnap.id, ...topicSnap.data() as any };
+              const docData = { id: topicSnap.id, ...topicSnap.data() as any };
+              const docNorm = (docData.title || docData.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+              if (docNorm === targetNorm || !targetNorm) {
+                foundInFirestore = docData;
+              } else {
+                console.warn(`[MedRevise Trace ${traceId}] ETAPA B4A (Firestore por ID REJEITADO): ID ${topicIdToTry} possui título "${docData.title}", divergente de cleanTitle "${cleanTitle}"`);
+              }
             }
           } catch (err) {
             console.warn('Error fetching topic by ID from Firestore:', err);
           }
         }
+        console.log(`[MedRevise Trace ${traceId}] ETAPA B4A (Firestore por ID):`, {
+          candidateId: topicIdToTry,
+          isAccepted: Boolean(foundInFirestore),
+          foundTitle: foundInFirestore?.title || null
+        });
 
         // B. Query users/{uid}/topics by exact cleanTitle
         if (!foundInFirestore && cleanTitle) {
           try {
-            const qTitle = query(collection(db, 'users', user.uid, 'topics'), where('title', '==', cleanTitle), limit(1));
+            const qTitle = query(collection(db, 'users', user.uid, 'topics'), where('title', '==', cleanTitle), limit(5));
             const snapTitle = await getDocs(qTitle);
             if (!snapTitle.empty) {
-              foundInFirestore = { id: snapTitle.docs[0].id, ...snapTitle.docs[0].data() };
+              const matches = snapTitle.docs.map(d => ({ id: d.id, ...d.data() as any }));
+              if (targetSubjNorm) {
+                const matchedBySubj = matches.find(m => {
+                  const mSubjNorm = (m.subjectName || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+                  return mSubjNorm === targetSubjNorm || m.subjectId === scheduleTopic?.subjectId;
+                });
+                if (matchedBySubj) foundInFirestore = matchedBySubj;
+              }
+              if (!foundInFirestore) {
+                foundInFirestore = matches[0];
+              }
             }
           } catch (err) {
             console.warn('Error querying topic by title from Firestore:', err);
           }
         }
+        console.log(`[MedRevise Trace ${traceId}] ETAPA B4B (Firestore por Título):`, {
+          cleanTitle,
+          isAccepted: Boolean(foundInFirestore),
+          foundTopic: foundInFirestore ? { id: foundInFirestore.id, title: foundInFirestore.title } : null
+        });
 
         if (foundInFirestore) {
           targetTopic = foundInFirestore;
@@ -701,7 +769,6 @@ export default function Cronograma({
             });
           }
         } else if (currentChoice === 'sync') {
-          // 3. Create Subject & Topic in Firestore ONLY if it really doesn't exist anywhere
           let foundSubject = (subjects || []).find(
             s => s.name?.toLowerCase().trim() === scheduleTopic.subjectName?.toLowerCase().trim()
           );
@@ -755,6 +822,7 @@ export default function Cronograma({
           const newTopicRef = await addDoc(topicsRef, {
             title: cleanTitle,
             subjectId: targetSubject.id,
+            subjectName: targetSubject.name,
             semesterId: targetSubject.semesterId || 'cronograma_sem',
             references: "",
             createdAt: new Date().toISOString(),
@@ -766,6 +834,7 @@ export default function Cronograma({
             id: newTopicRef.id,
             title: cleanTitle,
             subjectId: targetSubject.id,
+            subjectName: targetSubject.name,
             semesterId: targetSubject.semesterId || 'cronograma_sem',
             references: "",
             historicalIncidence: tIncidence,
@@ -776,8 +845,8 @@ export default function Cronograma({
           if (setTopics) {
             setTopics(prev => [...prev, targetTopic]);
           }
+          console.log(`[MedRevise Trace ${traceId}] ETAPA B5 (Novo tópico criado no Firestore):`, targetTopic);
         } else {
-          // 'internato_only': Keep planning strictly inside MedInternato
           targetSubject = {
             id: `local_subj_${(scheduleTopic.subjectName || 'Geral').toLowerCase().replace(/\s+/g, '_')}`,
             name: scheduleTopic.subjectName || 'Geral',
@@ -785,18 +854,44 @@ export default function Cronograma({
             icon: 'BookOpen',
             color: 'bg-blue-100 text-[#0066cc]'
           };
+          const localTopicId = `local_topic_${cleanTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
           targetTopic = {
-            id: topicIdToTry || `local_topic_${cleanTitle.toLowerCase().replace(/\s+/g, '_')}`,
+            id: localTopicId,
             title: cleanTitle,
             subjectId: targetSubject.id,
+            subjectName: targetSubject.name,
             semesterId: 'cronograma_local',
             references: "",
             historicalIncidence: scheduleTopic.historicalIncidence || 15,
             importanceDegree: scheduleTopic.importanceDegree || 'medio',
             completed: false
           };
+          console.log(`[MedRevise Trace ${traceId}] ETAPA B5 (Novo tópico local criado):`, targetTopic);
         }
       }
+
+      // CRITICAL PERSISTENCE: Write targetTopic.id back to scheduleTopic in schedule.weeks!
+      if (schedule && schedule.id && scheduleTopic && targetTopic?.id && scheduleTopic.topicId !== targetTopic.id) {
+        scheduleTopic.topicId = targetTopic.id;
+        try {
+          const updatedWeeks = [...schedule.weeks];
+          const scheduleRef = doc(db, 'users', user.uid, 'schedules', schedule.id);
+          updateDoc(scheduleRef, { weeks: updatedWeeks }).catch(err => {
+            console.warn('[MedRevise Audit Trace] Non-critical error persisting topicId to schedule:', err);
+          });
+          setSchedule(prev => prev ? { ...prev, weeks: updatedWeeks } : null);
+        } catch (persErr) {
+          console.warn('[MedRevise Audit Trace] Error updating schedule weeks with topicId:', persErr);
+        }
+      }
+
+      console.log(`[MedRevise Trace ${traceId}] ETAPA C (Imediatamente antes da navegação):`, {
+        finalTopicId: targetTopic.id,
+        finalTopicTitle: targetTopic.title,
+        finalSubjectId: targetSubject.id,
+        finalSubjectName: targetSubject.name,
+        targetView
+      });
 
       setSelectedSubject(targetSubject);
       setSelectedTopic(targetTopic);
@@ -809,7 +904,6 @@ export default function Cronograma({
       } else if (targetView === 'flashcards') {
         setView('flashcards');
       } else {
-        // Direct view transition without blocking AI pre-analysis delay
         setView('topicDetail');
       }
 
@@ -987,17 +1081,19 @@ export default function Cronograma({
     };
 
     const findMatch = (title: string, manualTopicId?: string): any | null => {
-      // 0. ID matching
+      const titleClean = title ? cleanAndNormalize(title) : '';
+
+      // 0. ID matching (verify title match to discard stale topic IDs)
       if (manualTopicId) {
         const foundById = userTopicsById.get(manualTopicId);
         if (foundById) {
-          return foundById;
+          const foundClean = cleanAndNormalize(foundById.title || foundById.name || '');
+          if (!titleClean || foundClean === titleClean) {
+            return foundById;
+          }
         }
       }
 
-      if (!title) return null;
-
-      const titleClean = cleanAndNormalize(title);
       if (!titleClean) return null;
 
       // Rule 1: Exact clean title match
@@ -1018,17 +1114,19 @@ export default function Cronograma({
                 const canonicalTitle = getCleanTopicTitle(planTitle);
 
                 const matchVal = findMatch(canonicalTitle, planTopic.topicId);
-                const keys = [
-                  `${canonicalTitle}::${planTopic.topicId || ''}`,
-                  `${planTitle}::${planTopic.topicId || ''}`,
-                  `${canonicalTitle}::`,
-                  `${planTitle}::`
-                ];
-                keys.forEach(k => {
-                  if (!cache.has(k)) {
-                    cache.set(k, matchVal);
+                if (matchVal) {
+                  const matchValTitleNorm = cleanAndNormalize(matchVal.title || matchVal.name || '');
+                  const canonNorm = cleanAndNormalize(canonicalTitle);
+
+                  if (planTopic.topicId && matchVal.id === planTopic.topicId) {
+                    cache.set(`${canonicalTitle}::${planTopic.topicId}`, matchVal);
+                    cache.set(`${planTitle}::${planTopic.topicId}`, matchVal);
                   }
-                });
+                  if (matchValTitleNorm && canonNorm && matchValTitleNorm === canonNorm) {
+                    cache.set(`${canonicalTitle}::`, matchVal);
+                    cache.set(`${planTitle}::`, matchVal);
+                  }
+                }
               });
             }
           });
@@ -1047,17 +1145,19 @@ export default function Cronograma({
                 const canonicalTitle = getCleanTopicTitle(planTitle);
 
                 const matchVal = findMatch(canonicalTitle, planTopic.topicId);
-                const keys = [
-                  `${canonicalTitle}::${planTopic.topicId || ''}`,
-                  `${planTitle}::${planTopic.topicId || ''}`,
-                  `${canonicalTitle}::`,
-                  `${planTitle}::`
-                ];
-                keys.forEach(k => {
-                  if (!cache.has(k)) {
-                    cache.set(k, matchVal);
+                if (matchVal) {
+                  const matchValTitleNorm = cleanAndNormalize(matchVal.title || matchVal.name || '');
+                  const canonNorm = cleanAndNormalize(canonicalTitle);
+
+                  if (planTopic.topicId && matchVal.id === planTopic.topicId) {
+                    cache.set(`${canonicalTitle}::${planTopic.topicId}`, matchVal);
+                    cache.set(`${planTitle}::${planTopic.topicId}`, matchVal);
                   }
-                });
+                  if (matchValTitleNorm && canonNorm && matchValTitleNorm === canonNorm) {
+                    cache.set(`${canonicalTitle}::`, matchVal);
+                    cache.set(`${planTitle}::`, matchVal);
+                  }
+                }
               });
             }
           });
@@ -1072,18 +1172,24 @@ export default function Cronograma({
   const getMatchedDbTopic = (title: string, topicId?: string, type?: string) => {
     if (!title) return null;
     const canonicalTitle = getCleanTopicTitle(title);
+    const targetNorm = canonicalTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
 
-    const key1 = `${canonicalTitle}::${topicId || ''}`;
-    if (matchedTopicsMap.has(key1)) return matchedTopicsMap.get(key1);
+    const candidates = [
+      matchedTopicsMap.get(`${canonicalTitle}::${topicId || ''}`),
+      matchedTopicsMap.get(`${title}::${topicId || ''}`),
+      matchedTopicsMap.get(`${canonicalTitle}::`),
+      matchedTopicsMap.get(`${title}::`)
+    ].filter(Boolean);
 
-    const key2 = `${title}::${topicId || ''}`;
-    if (matchedTopicsMap.has(key2)) return matchedTopicsMap.get(key2);
-
-    const key3 = `${canonicalTitle}::`;
-    if (matchedTopicsMap.has(key3)) return matchedTopicsMap.get(key3);
-
-    const key4 = `${title}::`;
-    if (matchedTopicsMap.has(key4)) return matchedTopicsMap.get(key4);
+    for (const cand of candidates) {
+      const candNorm = (cand.title || cand.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      if (candNorm && targetNorm && candNorm === targetNorm) {
+        return cand;
+      }
+      if (topicId && cand.id === topicId && candNorm === targetNorm) {
+        return cand;
+      }
+    }
 
     return null;
   };

@@ -991,6 +991,21 @@ export default function TopicDetail({
     return null;
   });
 
+  useEffect(() => {
+    setLocalTopic(initialTopic);
+    const hasAnySummary = getAvailableDepths(initialTopic).length > 0;
+    setShowSummaryWizard(!hasAnySummary && !(initialTopic as any).hasSummary);
+    const d = detectRealDepth(initialTopic);
+    setDepth(d !== 'none' ? d : 'standard');
+
+    console.log('[MedRevise Trace] ETAPA E1 (TopicDetail props recebidas/re-sincronizadas):', {
+      initialTopicId: initialTopic?.id,
+      initialTopicTitle: initialTopic?.title,
+      initialSubjectName: initialTopic?.subjectName,
+      hasAnySummary
+    });
+  }, [initialTopic.id, initialTopic.title]);
+
   const [loadingFullTopic, setLoadingFullTopic] = useState(false);
 
   useEffect(() => {
@@ -999,20 +1014,49 @@ export default function TopicDetail({
       if (!initialTopic?.id) return;
       try {
         setLoadingFullTopic(true);
+        console.log('[MedRevise Trace] ETAPA E2 (TopicDetail loadFullTopic início):', {
+          fetchingId: initialTopic.id,
+          expectedTitle: initialTopic.title
+        });
+
         const docRef = getTopicDocRef(initialTopic.id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists() && active) {
           const fullData = docSnap.data() as Topic;
-          setLocalTopic(prev => ({
-            ...prev,
-            ...fullData
-          }));
-          const d = detectRealDepth(fullData);
-          if (d !== 'none') {
-            setDepth(d);
+          const normFull = (fullData.title || fullData.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+          const normInit = (initialTopic.title || (initialTopic as any).name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+
+          const isMatching = normFull === normInit || !normInit;
+
+          console.log('[MedRevise Trace] ETAPA E3 (TopicDetail loadFullTopic resultado):', {
+            fetchingId: initialTopic.id,
+            docSnapExists: true,
+            fetchedDocTitle: fullData.title,
+            expectedTitle: initialTopic.title,
+            isMatching
+          });
+
+          if (isMatching) {
+            setLocalTopic(prev => ({
+              ...prev,
+              ...fullData
+            }));
+            const d = detectRealDepth(fullData);
+            if (d !== 'none') {
+              setDepth(d);
+            }
+            const hasAnySummary = getAvailableDepths(fullData).length > 0;
+            setShowSummaryWizard(!hasAnySummary);
+          } else {
+            console.error(`[MedRevise Trace ALERTA DE DIVERGÊNCIA] O documento do Firestore (${initialTopic.id}) possui o título "${fullData.title}", mas o tópico solicitado pelo usuário é "${initialTopic.title}". Documento divergente descartado!`);
+            setShowSummaryWizard(true);
           }
-          const hasAnySummary = getAvailableDepths(fullData).length > 0;
-          setShowSummaryWizard(!hasAnySummary);
+        } else if (active) {
+          console.log('[MedRevise Trace] ETAPA E3 (TopicDetail loadFullTopic - documento não encontrado no Firestore):', {
+            fetchingId: initialTopic.id,
+            expectedTitle: initialTopic.title
+          });
+          setShowSummaryWizard(true);
         }
       } catch (err) {
         console.error("Erro ao carregar o resumo completo do tópico:", err);
@@ -1023,7 +1067,7 @@ export default function TopicDetail({
 
     loadFullTopic();
     return () => { active = false; };
-  }, [initialTopic.id]);
+  }, [initialTopic.id, initialTopic.title]);
 
   const [editedChapters, setEditedChapters] = useState<string[]>([]);
   const [newChapterName, setNewChapterName] = useState('');
@@ -3168,8 +3212,13 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
   }, [onTopicUpdate]);
 
   useEffect(() => {
+    console.log('[MedRevise Audit Trace] Step 3 (TopicDetail received topic):', {
+      initialTopicId: initialTopic?.id,
+      initialTopicTitle: initialTopic?.title || (initialTopic as any)?.name,
+      availableDepthsCount: getAvailableDepths(initialTopic).length
+    });
     setLocalTopic(initialTopic);
-  }, [initialTopic.id]);
+  }, [initialTopic.id, initialTopic.title]);
 
   useEffect(() => {
     if (getAvailableDepths(localTopic).length > 0) {

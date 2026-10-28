@@ -418,9 +418,24 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
   };
 
   const handleSelectTopic = (topic: Topic) => {
+    console.log('[MedRevise Trace] ETAPA D (InternatoApp handleSelectTopic recebido):', {
+      id: topic?.id,
+      title: topic?.title || (topic as any)?.name,
+      subjectName: topic?.subjectName
+    });
     setSelectedTopic(topic);
     setCurrentView('topicDetail');
   };
+
+  useEffect(() => {
+    if (currentView === 'topicDetail') {
+      console.log('[MedRevise Trace] ETAPA D (InternatoApp repassando para TopicDetail):', {
+        selectedTopicId: selectedTopic?.id,
+        selectedTopicTitle: selectedTopic?.title,
+        selectedSubjectName: selectedTopic?.subjectName
+      });
+    }
+  }, [currentView, selectedTopic]);
 
   const handleSelectSubject = (subject: Subject) => {
     setSelectedSubject(subject);

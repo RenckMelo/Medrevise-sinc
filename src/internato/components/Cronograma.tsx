@@ -338,9 +338,18 @@ export const getTodayWeekAndDay = (schedule: StudySchedule): { weekIndex: number
 };
 
 const findMatchingTopic = (title: string, userTopics: any[], manualTopicId?: string): any | null => {
-  if (!title || !userTopics || userTopics.length === 0) return null;
+  if (!userTopics || userTopics.length === 0) return null;
 
-  // 1. Core normalization function
+  // 0. ID matching (if manually linked or schedule item contains topicId)
+  if (manualTopicId) {
+    const foundById = userTopics.find(t => t.id === manualTopicId);
+    if (foundById) {
+      return foundById;
+    }
+  }
+
+  if (!title) return null;
+
   const cleanAndNormalize = (text: string): string => {
     if (!text) return '';
     return text
@@ -349,7 +358,7 @@ const findMatchingTopic = (title: string, userTopics: any[], manualTopicId?: str
       .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[⚡🔄📖💡📝🎯]/gu, "") // remove emojis
       .replace(/^\[[^\]]+\]\s*/gi, "") // remove leading brackets
       .replace(/\[[^\]]+\]/gi, "") // remove all brackets
-      .replace(/^[0-9]+[\.\-\)\s]*/gi, "") // remove leading numbers (1., 2., 3., 01 -)
+      .replace(/^[0-9]+[\.\-\)\s]*/gi, "") // remove leading numbers
       .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, "")
       .replace(/^Revisão\s*(Ativa|24h|7d|30d|R\d+|de Reforço|Ebbinghaus|Sistemática|Ativa \+ Flashcards)?[\s:\-\–\—]*/gi, "")
       .replace(/^REVISÃO\s*R?\d*[\s:\-\–\—]*/gi, "")
@@ -369,33 +378,15 @@ const findMatchingTopic = (title: string, userTopics: any[], manualTopicId?: str
   };
 
   const titleClean = cleanAndNormalize(title);
+  if (!titleClean) return null;
 
-  // 0. ID matching (if manually linked)
-  if (manualTopicId) {
-    const foundById = userTopics.find(t => t.id === manualTopicId);
-    if (foundById) {
-      return foundById;
-    }
-  }
-
-  const titleExpanded = expandPhrase(titleClean);
-
-  // Rule 1: Exact normalized or exact expanded phrase match
+  // Rule 1: Exact normalized title match
   for (const t of userTopics) {
     const tTitle = t.title || t.name || '';
     const tClean = cleanAndNormalize(tTitle);
     
-    if (tClean === titleClean && tClean.length > 0) {
+    if (tClean === titleClean) {
       return t;
-    }
-
-    const tExpanded = expandPhrase(tClean);
-    for (const te of titleExpanded) {
-      for (const tte of tExpanded) {
-        if (te === tte && te.length > 0) {
-          return t;
-        }
-      }
     }
   }
 
@@ -624,32 +615,36 @@ export default function Cronograma({
 
     try {
       const topicIdToTryRaw = scheduleTopic?.topicId || scheduleTopic?.linkedTopicId || scheduleTopic?.id;
-      let topicIdToTry = topicIdToTryRaw;
-
-      // Double-check: if this ID actually belongs to a completely different topic in topics list, do not use it!
-      if (topicIdToTry && typeof topicIdToTry === 'string' && !topicIdToTry.startsWith('local_')) {
-        const topicsList = topics || [];
-        const foundWithId = topicsList.find(t => t.id === topicIdToTry);
-        if (foundWithId) {
-          const tNameNorm = (foundWithId.title || foundWithId.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-          const targetNameNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-          if (tNameNorm && targetNameNorm && tNameNorm !== targetNameNorm) {
-            topicIdToTry = undefined;
-          }
-        }
-      }
+      const topicIdToTry = topicIdToTryRaw;
 
       let targetSubject: any;
       let targetTopic: any;
 
-      // 1. Fast path: check in-memory cache and topics list using exact normalized title match
+      // 1. Check in-memory topics list by exact ID first
+      let matchedInMemory: any = null;
+      if (topicIdToTry && typeof topicIdToTry === 'string' && topics && topics.length > 0) {
+        matchedInMemory = topics.find(t => t.id === topicIdToTry);
+      }
+
+      // 2. Check in-memory topics list by exact normalized title match
       const targetNorm = cleanTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-      const matchedFromCache = getMatchedDbTopic(rawTitle, topicIdToTry, scheduleTopic?.type) || getMatchedDbTopic(cleanTitle, topicIdToTry, scheduleTopic?.type);
-      const exactMatchInMemory = (topics || []).find(t => {
-        const tNorm = (t.title || t.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-        return tNorm && targetNorm && tNorm === targetNorm;
-      });
-      const matchedInMemory = matchedFromCache || findMatchingTopic(cleanTitle, topics || [], topicIdToTry) || exactMatchInMemory;
+      if (!matchedInMemory && targetNorm && topics && topics.length > 0) {
+        matchedInMemory = topics.find(t => {
+          const tNorm = (t.title || t.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+          return tNorm && tNorm === targetNorm;
+        });
+      }
+
+      // 3. Check matched cache if exact match is recorded
+      if (!matchedInMemory) {
+        const cachedMatch = getMatchedDbTopic(rawTitle, topicIdToTry, scheduleTopic?.type) || getMatchedDbTopic(cleanTitle, topicIdToTry, scheduleTopic?.type);
+        if (cachedMatch) {
+          const cachedNorm = (cachedMatch.title || cachedMatch.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+          if (cachedMatch.id === topicIdToTry || (cachedNorm && cachedNorm === targetNorm)) {
+            matchedInMemory = cachedMatch;
+          }
+        }
+      }
 
       if (matchedInMemory) {
         targetTopic = { ...matchedInMemory, title: matchedInMemory.title || cleanTitle };
@@ -661,7 +656,7 @@ export default function Cronograma({
           color: 'bg-blue-100 text-[#0066cc]'
         };
       } else {
-        // 2. Fast single-doc Firestore lookup before creating a new topic
+        // 4. Fast single-doc Firestore lookup before creating a new topic
         let foundInFirestore: any = null;
 
         // A. If topicIdToTry exists, fetch by ID
@@ -670,18 +665,14 @@ export default function Cronograma({
             const topicDocRef = doc(db, 'users', user.uid, 'topics', topicIdToTry);
             const topicSnap = await getDoc(topicDocRef);
             if (topicSnap.exists()) {
-              const fsData = { id: topicSnap.id, ...topicSnap.data() as any };
-              const fsTitleNorm = (fsData.title || fsData.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-              if (!targetNorm || fsTitleNorm === targetNorm) {
-                foundInFirestore = fsData;
-              }
+              foundInFirestore = { id: topicSnap.id, ...topicSnap.data() as any };
             }
           } catch (err) {
             console.warn('Error fetching topic by ID from Firestore:', err);
           }
         }
 
-        // B. Query users/{uid}/topics by exact cleanTitle (single document limit 1)
+        // B. Query users/{uid}/topics by exact cleanTitle
         if (!foundInFirestore && cleanTitle) {
           try {
             const qTitle = query(collection(db, 'users', user.uid, 'topics'), where('title', '==', cleanTitle), limit(1));
@@ -955,18 +946,16 @@ export default function Cronograma({
 
     // Create O(1) indexing maps to completely eliminate slow loops
     const userTopicsById = new Map<string, any>();
-    const userTopicsByExpandedPhrase = new Map<string, any>();
+    const userTopicsByExactCleanTitle = new Map<string, any>();
 
     preprocessedUserTopics.forEach(t => {
       if (t.id) {
         userTopicsById.set(t.id, t.topic);
       }
-      if (t.expandedPhrases) {
-        t.expandedPhrases.forEach(phrase => {
-          if (phrase.length > 0 && !userTopicsByExpandedPhrase.has(phrase)) {
-            userTopicsByExpandedPhrase.set(phrase, t.topic);
-          }
-        });
+      if (t.cleanTitle) {
+        if (!userTopicsByExactCleanTitle.has(t.cleanTitle)) {
+          userTopicsByExactCleanTitle.set(t.cleanTitle, t.topic);
+        }
       }
     });
 
@@ -978,7 +967,7 @@ export default function Cronograma({
         .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[⚡🔄📖💡📝🎯]/gu, "") // remove emojis
         .replace(/^\[[^\]]+\]\s*/gi, "") // remove leading brackets
         .replace(/\[[^\]]+\]/gi, "") // remove all brackets
-        .replace(/^[0-9]+[\.\-\)\s]*/gi, "") // remove leading numbers (1., 2., 3., 01 -)
+        .replace(/^[0-9]+[\.\-\)\s]*/gi, "") // remove leading numbers
         .replace(/^Revisão Ativa \+ Flashcards:\s*/gi, "")
         .replace(/^Revisão\s*(Ativa|24h|7d|30d|R\d+|de Reforço|Ebbinghaus|Sistemática|Ativa \+ Flashcards)?[\s:\-\–\—]*/gi, "")
         .replace(/^REVISÃO\s*R?\d*[\s:\-\–\—]*/gi, "")
@@ -997,32 +986,7 @@ export default function Cronograma({
         .trim();
     };
 
-    const stopWords = new Set(["de", "da", "do", "em", "com", "e", "o", "a", "os", "as", "para", "por", "um", "uma", "tipo", "apos", "pos"]);
-
-    const getCleanWords = (text: string): string[] => {
-      return cleanAndNormalize(text)
-        .split(" ")
-        .filter(w => w.length > 0 && !stopWords.has(w));
-    };
-
-    const areWordsSimilar = (w1: string, w2: string): boolean => {
-      if (w1 === w2) return true;
-      if (w1.startsWith(w2) && w2.length >= 5) return true;
-      if (w2.startsWith(w1) && w1.length >= 5) return true;
-      return false;
-    };
-
-    const genericWords = new Set([
-      "aguda", "agudo", "cronica", "cronico", "doenca", "sindrome", "infantil", "clinica", "cirurgia", "geral",
-      "tratamento", "diagnostico", "exame", "prevencao", "fisiopatologia", "quadro", "clinico",
-      "revisao", "revisoes", "reforco", "questoes", "avancadas", "simulado", "semanal", "mensal"
-    ]);
-
     const findMatch = (title: string, manualTopicId?: string): any | null => {
-      if (!title) return null;
-
-      const titleClean = cleanAndNormalize(title);
-
       // 0. ID matching
       if (manualTopicId) {
         const foundById = userTopicsById.get(manualTopicId);
@@ -1031,15 +995,14 @@ export default function Cronograma({
         }
       }
 
-      const titleExpanded = expandPhrase(titleClean);
+      if (!title) return null;
 
-      // Rule 1: Exact or expanded exact match (using O(1) prebuilt phrases map)
-      for (const te of titleExpanded) {
-        if (te.length > 0) {
-          const matched = userTopicsByExpandedPhrase.get(te);
-          if (matched) return matched;
-        }
-      }
+      const titleClean = cleanAndNormalize(title);
+      if (!titleClean) return null;
+
+      // Rule 1: Exact clean title match
+      const matched = userTopicsByExactCleanTitle.get(titleClean);
+      if (matched) return matched;
 
       return null;
     };

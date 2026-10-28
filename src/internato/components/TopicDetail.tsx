@@ -3267,6 +3267,8 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
       }
     }
 
+    let active = true;
+
     // Fetch freshest document ONLY when cache is empty
     const fetchLatestTopic = async () => {
       try {
@@ -3274,11 +3276,13 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
           ? doc(db, 'users', userId, 'topics', initialTopic.id)
           : doc(db, 'topics', initialTopic.id);
         const docSnap = await getDoc(docRef);
+        if (!active) return;
         if (docSnap.exists()) {
           const fetchedData = { id: docSnap.id, ...docSnap.data() } as Topic;
           
           const migrated = await migrateLegacyTopicFields(fetchedData);
           const finalData = migrated || fetchedData;
+          if (!active) return;
           
           setLocalTopic(finalData);
           
@@ -3286,7 +3290,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
           const d = detectRealDepth(finalData);
           setDepth(d !== 'none' ? d : 'standard');
 
-          if (onTopicUpdateRef.current) {
+          if (onTopicUpdateRef.current && active) {
             onTopicUpdateRef.current(finalData);
           }
         }
@@ -3296,6 +3300,10 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     };
     
     fetchLatestTopic();
+
+    return () => {
+      active = false;
+    };
   }, [initialTopic.id, userId]);
 
   const getActiveContentByDepth = (currentDepth: GenerationDepth) => {

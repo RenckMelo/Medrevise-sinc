@@ -2,7 +2,25 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy, getDocs, where } from '../firebase';
 import { Subject, Topic, StudySession, Semester } from '../types';
-import { Plus, Trash2, BookOpen, ChevronRight, History, BarChart2, Clock, CheckCircle, X, Edit2, Sparkles, Lightbulb, Brain, Zap, AlertTriangle, TrendingDown, Globe, Link2, Unlink } from 'lucide-react';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import History from 'lucide-react/dist/esm/icons/history.js';
+import BarChart2 from 'lucide-react/dist/esm/icons/bar-chart-2.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import CheckCircle from 'lucide-react/dist/esm/icons/check-circle.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Edit2 from 'lucide-react/dist/esm/icons/edit-2.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Lightbulb from 'lucide-react/dist/esm/icons/lightbulb.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import TrendingDown from 'lucide-react/dist/esm/icons/trending-down.js';
+import Globe from 'lucide-react/dist/esm/icons/globe.js';
+import Link2 from 'lucide-react/dist/esm/icons/link-2.js';
+import Unlink from 'lucide-react/dist/esm/icons/unlink.js';
 import { format, parseISO } from 'date-fns';
 import { accuracyToQuality, calculateNextReview } from '../utils/srs';
 import { useStudyData } from '../hooks/useStudyData';
@@ -2285,5 +2303,5 @@ function cn(...inputs: any[]) {
 function CalendarIcon({ size }: { size: number }) {
   return <CalendarIconLucide size={size} />;
 }
-import { Calendar as CalendarIconLucide } from 'lucide-react';
-import { Target } from 'lucide-react';
+import CalendarIconLucide from 'lucide-react/dist/esm/icons/calendar.js';
+import Target from 'lucide-react/dist/esm/icons/target.js';

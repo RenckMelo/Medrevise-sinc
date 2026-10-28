@@ -1,81 +1,213 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { google } from 'googleapis';
+import net from 'net';
+import dns from 'dns';
+import http from 'http';
+import https from 'https';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
+
+// ============================================================================
+// 1. VALIDAÇÃO ESTRITA DE AMBIENTE (ISOLAMENTO DE PRODUÇÃO E TESTE)
+// ============================================================================
+const APP_ENV = process.env.APP_ENV;
+const PROD_FIRESTORE_DB_ID = 'ai-studio-91f1d7eb-cec1-4159-8148-4ba7d6a63b82';
+const PROD_SUPABASE_URL = 'https://jhttjndhjzpfphqxjiao.supabase.co';
+
+if (APP_ENV !== 'test' && APP_ENV !== 'production' && APP_ENV !== undefined && APP_ENV !== '') {
+  console.error('[FATAL] APP_ENV inválido. Deve ser "test" ou "production".');
+  process.exit(1);
+}
+
+// Detecção segura do ambiente AI Studio Preview
+let appletConfig: any = null;
+const appletConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+if (fs.existsSync(appletConfigPath)) {
+  try {
+    appletConfig = JSON.parse(fs.readFileSync(appletConfigPath, 'utf8'));
+  } catch (err) {
+    console.warn('[Preview Mode] Não foi possível ler firebase-applet-config.json:', err);
+  }
+}
+const isAIStudio = Boolean(appletConfig?.projectId || fs.existsSync(appletConfigPath));
+
+// Bloqueio de segurança: impede que a ausência de APP_ENV assuma silenciosamente produção fora do Preview
+if (!APP_ENV) {
+  if (!isAIStudio) {
+    console.error('[FATAL] APP_ENV não configurado fora do AI Studio Preview. Em ambientes de hospedagem como Netlify, configure APP_ENV="production".');
+    process.exit(1);
+  }
+
+  const candidateSupaUrl = process.env.SUPABASE_URL;
+  if ((candidateSupaUrl === PROD_SUPABASE_URL || process.env.FIREBASE_SERVICE_ACCOUNT?.includes('gen-lang-client-0128984368')) && !isAIStudio) {
+    console.error('[Security Error] Anti-production lock: Credenciais de produção do backend não podem ser usadas fora do AI Studio Preview ou sem APP_ENV="production".');
+    process.exit(1);
+  }
+  console.log('[Preview Mode] Servidor iniciando em modo AI Studio Preview seguro.');
+}
+
+interface EnvironmentConfig {
+  firebaseProjectId: string;
+  supabaseUrl: string;
+  firestoreDbId: string;
+}
+
+const PROD_CONFIG: EnvironmentConfig = {
+  firebaseProjectId: 'gen-lang-client-0128984368',
+  supabaseUrl: PROD_SUPABASE_URL,
+  firestoreDbId: PROD_FIRESTORE_DB_ID
+};
+
+const TEST_CONFIG: EnvironmentConfig = {
+  firebaseProjectId: 'teste-migracao-e7027',
+  supabaseUrl: 'https://xoijnmpadomzxoftjune.supabase.co',
+  firestoreDbId: process.env.FIRESTORE_DATABASE_ID?.trim() || ''
+};
+
+let EXPECTED_CONFIG: EnvironmentConfig;
+
+if (APP_ENV === 'production') {
+  EXPECTED_CONFIG = PROD_CONFIG;
+} else if (APP_ENV === 'test') {
+  EXPECTED_CONFIG = TEST_CONFIG;
+} else if (!APP_ENV && isAIStudio) {
+  EXPECTED_CONFIG = {
+    firebaseProjectId: appletConfig?.projectId || PROD_CONFIG.firebaseProjectId,
+    supabaseUrl: PROD_CONFIG.supabaseUrl,
+    firestoreDbId: appletConfig?.firestoreDatabaseId || PROD_CONFIG.firestoreDbId
+  };
+} else {
+  console.error('[FATAL] Não foi possível determinar EXPECTED_CONFIG para o ambiente atual.');
+  process.exit(1);
+  throw new Error('Ambiente inválido');
+}
+
+const currentSupabaseUrl = process.env.SUPABASE_URL;
+if (!currentSupabaseUrl || !EXPECTED_CONFIG || currentSupabaseUrl !== EXPECTED_CONFIG.supabaseUrl) {
+  console.error(`[FATAL] SUPABASE_URL incompatível ou ausente para o ambiente (${APP_ENV || 'preview'}).`);
+  process.exit(1);
+}
+
+// Validação de correspondência de projeto para SUPABASE_SERVICE_ROLE_KEY (sem expor credenciais)
+if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  try {
+    const parts = process.env.SUPABASE_SERVICE_ROLE_KEY.split('.');
+    if (parts.length >= 2) {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+      if (payload.ref && !EXPECTED_CONFIG.supabaseUrl.includes(payload.ref)) {
+        console.error(`[FATAL] SUPABASE_SERVICE_ROLE_KEY pertence ao projeto "${payload.ref}", divergindo da SUPABASE_URL esperada.`);
+        process.exit(1);
+      }
+    }
+  } catch {
+    // Chave em formato não-JWT ou opaca, prossegue normalmente
+  }
+}
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
   try {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      try {
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-          projectId: serviceAccount.project_id
-        });
-        console.log('Firebase Admin initialized from FIREBASE_SERVICE_ACCOUNT environment variable');
-      } catch (jsonErr) {
-        console.error('FIREBASE_SERVICE_ACCOUNT parsing failed, trying ADC instead:', jsonErr);
-        admin.initializeApp();
-      }
-    } else {
-      const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-      if (fs.existsSync(configPath)) {
-        const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        admin.initializeApp({
-          projectId: firebaseConfig.projectId,
-        });
-        console.log('Firebase Admin initialized from JSON config file');
-      } else if (process.env.FIREBASE_PROJECT_ID) {
-        admin.initializeApp({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-        });
-        console.log('Firebase Admin initialized from FIREBASE_PROJECT_ID environment variable');
-      } else {
-        admin.initializeApp();
-        console.log('Firebase Admin initialized using Application Default Credentials (ADC)');
-      }
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+      console.error(`[FATAL] FIREBASE_SERVICE_ACCOUNT é obrigatória em ambiente ${APP_ENV || 'preview'}. ADC e arquivos locais são proibidos.`);
+      process.exit(1);
     }
+
+    let serviceAccount: any;
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    } catch (parseErr) {
+      console.error(`[FATAL] Falha crítica ao processar JSON de FIREBASE_SERVICE_ACCOUNT em ${APP_ENV || 'preview'}.`);
+      process.exit(1);
+    }
+
+    if (!serviceAccount || serviceAccount.project_id !== EXPECTED_CONFIG.firebaseProjectId) {
+      console.error(`[FATAL] Projeto do Firebase Admin diverge do esperado para ${APP_ENV || 'preview'}. Esperado: "${EXPECTED_CONFIG.firebaseProjectId}".`);
+      process.exit(1);
+    }
+
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      projectId: serviceAccount.project_id
+    });
   } catch (e) {
     console.error('Failed to load firebase config for admin:', e);
+    process.exit(1);
   }
 }
 
+// Validação rigorosa da instância efetiva do Firebase Admin
+const defaultAdminApp = admin.apps[0];
+if (!defaultAdminApp || defaultAdminApp.options.projectId !== EXPECTED_CONFIG.firebaseProjectId) {
+  console.error('[FATAL] Instância ativa do Firebase Admin diverge do projeto esperado para o ambiente.');
+  process.exit(1);
+}
+
 let db: admin.firestore.Firestore | null = null;
-if (admin.apps.length) {
-  try {
-    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-    const firebaseConfig = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : null;
-    const databaseId = firebaseConfig?.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID;
-    
-    const app = admin.apps[0];
-    if (databaseId) {
-      db = getFirestore(app, databaseId);
-      console.log(`Firestore Database instance selected: ${databaseId}`);
-    } else {
-      db = getFirestore(app);
-      console.log('Firestore Database default instance selected');
+try {
+  const targetDbId = EXPECTED_CONFIG.firestoreDbId;
+  if (APP_ENV === 'test') {
+    if (!targetDbId) {
+      console.error('[FATAL] FIRESTORE_DATABASE_ID é obrigatório em ambiente de teste.');
+      process.exit(1);
     }
-  } catch (err) {
-    console.error('Failed to initialize specific Firestore database instance. Falling back to default:', err);
-    db = getFirestore();
+    if (targetDbId === PROD_FIRESTORE_DB_ID) {
+      console.error('[FATAL] FIRESTORE_DATABASE_ID em teste não pode apontar para o banco de produção.');
+      process.exit(1);
+    }
+    db = targetDbId === '(default)' ? getFirestore(defaultAdminApp) : getFirestore(defaultAdminApp, targetDbId);
+  } else {
+    // production: exige estritamente o banco nomeado original
+    db = getFirestore(defaultAdminApp, targetDbId);
   }
+} catch (err) {
+  console.error('[FATAL] Falha ao selecionar instância do Firestore Database sem fallback:', err);
+  process.exit(1);
 }
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// ============================================================================
+// 2. TRAVAS DE SEGURANÇA EM AMBIENTE DE TESTE (BLOQUEIO TOTAL DE EXTERNOS)
+// ============================================================================
+if (APP_ENV === 'test') {
+  app.use((req, res, next) => {
+    const p = req.path;
+    const matchesRouteOrSubpath = (base: string) => p === base || p.startsWith(base + '/');
+
+    const isBlocked =
+      matchesRouteOrSubpath('/api/gemini') ||
+      matchesRouteOrSubpath('/api/admin/test-key-billing') ||
+      matchesRouteOrSubpath('/api/ai-provider-stats') ||
+      matchesRouteOrSubpath('/api/mercadopago');
+
+    if (isBlocked) {
+      return res.status(403).json({
+        error: '[Isolamento de Teste] Operações de IA e Mercado Pago estão estritamente bloqueadas no ambiente de teste.'
+      });
+    }
+    next();
+  });
+}
+
 // API health endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', mercadopago: !!process.env.MERCADO_PAGO_ACCESS_TOKEN });
+  const host = currentSupabaseUrl ? new URL(currentSupabaseUrl).hostname : 'not-configured';
+  res.json({
+    status: 'ok',
+    env: APP_ENV || 'preview',
+    supabaseHost: host,
+    firebaseProjectId: EXPECTED_CONFIG?.firebaseProjectId || 'unknown',
+    mercadopago: !!process.env.MERCADO_PAGO_ACCESS_TOKEN
+  });
 });
 
 // AI Usage Stats and Status Tracking
@@ -140,7 +272,7 @@ async function persistProviderCall(provider: string, email: string) {
 }
 
 // Helper for Groq API Call (Llama 3.3 70B, Llama 3.1 8B, Mixtral Fallback)
-async function callGroqApi(apiKey: string, action: string, promptText: string, payload: any): Promise<string> {
+async function callGroqApi(apiKey: string, action: string, promptText: string, payload: any): Promise<{ text: string; model: string }> {
   const url = "https://api.groq.com/openai/v1/chat/completions";
   let contentToUse: string = promptText || payload?.prompt || "";
 
@@ -169,8 +301,7 @@ async function callGroqApi(apiKey: string, action: string, promptText: string, p
     "llama-3.1-8b-instant",
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
-    "qwen/qwen3.6-27b",
-    "deepseek-r1-distill-llama-70b"
+    "qwen/qwen3.6-27b"
   ];
   let lastErr: any = null;
 
@@ -218,7 +349,7 @@ async function callGroqApi(apiKey: string, action: string, promptText: string, p
           if (retryResp.ok) {
             const retryData = await retryResp.json();
             const text = retryData.choices?.[0]?.message?.content || "";
-            if (text.trim().length > 0) return text;
+            if (text.trim().length > 0) return { text, model: modelName };
           }
         }
         lastErr = new Error(`[Groq API HTTP ${response.status}] ${errText}`);
@@ -228,7 +359,7 @@ async function callGroqApi(apiKey: string, action: string, promptText: string, p
       const data = await response.json();
       const textResult = data.choices?.[0]?.message?.content || "";
       if (textResult && textResult.trim().length > 0) {
-        return textResult;
+        return { text: textResult, model: modelName };
       }
     } catch (err: any) {
       lastErr = err;
@@ -328,18 +459,39 @@ app.get("/api/ai-provider-stats", async (req, res) => {
 // API route for AI Execution with Gemini Multi-Key / Multi-Model & Groq Fallback
 app.post("/api/admin/test-key-billing", async (req, res) => {
   try {
-    const { email, keyTarget } = req.body;
-    const userEmail = (email || "").toLowerCase().trim();
-    const isSpecialUser = userEmail === 'ysabelleosaraiva@gmail.com' || userEmail === 'yasabelleosaraiva@gmail.com' || userEmail === 'lucas1renck2melo@gmail.com';
+    const { keyTarget } = req.body;
+
+    // Verificação OBRIGATÓRIA de autenticação via Header Authorization (Bearer token)
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: "Autenticação necessária. Cabeçalho Authorization ausente ou inválido." });
+    }
+
+    const idToken = authHeader.substring(7);
+    let userEmail = "";
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      if (decodedToken && decodedToken.email) {
+        userEmail = decodedToken.email.toLowerCase().trim();
+      } else {
+        return res.status(401).json({ error: "Token de autenticação não possui e-mail associado." });
+      }
+    } catch (tokenErr) {
+      console.warn('[Admin Security] ID Token fornecido é inválido:', tokenErr);
+      return res.status(401).json({ error: "Token de autenticação inválido ou expirado." });
+    }
+
+    const ALLOWED_ADMINS = ['ysabelleosaraiva@gmail.com', 'yasabelleosaraiva@gmail.com', 'lucas1renck2melo@gmail.com'];
+    const isSpecialUser = ALLOWED_ADMINS.includes(userEmail);
     
     if (!isSpecialUser) {
-      return res.status(403).json({ error: "Não autorizado." });
+      return res.status(403).json({ error: "Acesso negado. Apenas administradores autorizados podem testar a chave." });
     }
 
     const allEnv = process.env;
     const key1 = allEnv['GEMINI_API_KEY_1'] || allEnv['GEMINI_API_KEY'] || process.env.GEMINI_API_KEY_1 || process.env.GEMINI_API_KEY;
     const key2 = allEnv['GEMINI_API_KEY_2'] || process.env.GEMINI_API_KEY_2;
-    const key3 = 'AIzaSyAWH3Rvgzj2ku_i-Vy7iizZ1TeqGFVKMSo';
+    const key3 = allEnv['GEMINI_API_KEY_3'] || process.env.GEMINI_API_KEY_3;
     const groqKey = allEnv['GROQ_API_KEY'] || process.env.GROQ_API_KEY;
 
     const keysToTest: { name: string; key: string | undefined; code: string; type: 'gemini' | 'groq' }[] = [];
@@ -528,9 +680,23 @@ app.post("/api/gemini", async (req, res) => {
     
     const userEmail = (email || "").toLowerCase().trim();
     const isSpecialUser = userEmail === 'ysabelleosaraiva@gmail.com' || userEmail === 'yasabelleosaraiva@gmail.com' || userEmail === 'lucas1renck2melo@gmail.com';
-    const { prompt, model } = payload;
-    let modelToUse = "gemini-3.1-flash-lite";
-    const promptText = prompt || payload.promptText || "";
+    
+    // Support parameters both within "payload" or at the root of req.body robustly
+    const payloadToUse = {
+      ...(payload || {}),
+      prompt: req.body.prompt || (payload || {}).prompt || (payload || {}).promptText || req.body.promptText || "",
+      promptText: req.body.promptText || (payload || {}).promptText || (payload || {}).prompt || req.body.prompt || "",
+      model: req.body.model || (payload || {}).model || "gemini-3.1-flash-lite",
+      parts: req.body.parts || (payload || {}).parts,
+      tools: req.body.tools || (payload || {}).tools,
+      preferredProvider: req.body.preferredProvider || (payload || {}).preferredProvider || req.body.preferredEngine || (payload || {}).preferredEngine || "",
+      fileData: req.body.fileData || (payload || {}).fileData,
+      mimeType: req.body.mimeType || (payload || {}).mimeType,
+    };
+
+    const { prompt, model } = payloadToUse;
+    let modelToUse = model || "gemini-3.1-flash-lite";
+    const promptText = prompt || payloadToUse.promptText || "";
 
     const groqKey = allEnv['GROQ_API_KEY'];
 
@@ -559,7 +725,7 @@ app.post("/api/gemini", async (req, res) => {
 
     const isValidKey = (k?: string) => Boolean(k && k !== "MY_GEMINI_API_KEY" && k.trim().length > 10);
 
-    const preferredProvider = (payload?.preferredProvider || payload?.preferredEngine || "").toLowerCase().trim();
+    const preferredProvider = (payloadToUse.preferredProvider || payloadToUse.preferredEngine || "").toLowerCase().trim();
 
     let providerSteps: { provider: 'groq' | 'gemini', keys?: string[] }[] = [];
 
@@ -613,6 +779,8 @@ app.post("/api/gemini", async (req, res) => {
     let success = false;
     let resultText = "";
     let lastError: any = null;
+    let capturedGroundingMetadata: any = null;
+    let capturedProviderInfo: { provider: 'gemini' | 'groq'; model: string } | null = null;
 
     // Execute provider steps in up to 3 rounds (initial attempt + retries with progressive delay)
     const MAX_ROUNDS = 3;
@@ -631,16 +799,19 @@ app.post("/api/gemini", async (req, res) => {
         if (step.provider === 'groq') {
           try {
             console.log(`[AI Engine - Rodada ${round}] Tentando Groq LPU para ${userEmail}...`);
-            resultText = await callGroqApi(groqKey!, action, promptText, payload);
+            const groqRes = await callGroqApi(groqKey!, action, promptText, payloadToUse);
+            resultText = groqRes.text;
             success = true;
+            capturedGroundingMetadata = { provider: 'groq', searchAvailable: false, message: 'Web search grounding not supported by non-Gemini provider' };
+            capturedProviderInfo = { provider: 'groq', model: groqRes.model };
             aiUsageStats.groq.requestsToday++;
             aiUsageStats.groq.status = "OK";
             aiUsageStats.groq.lastError = null;
             aiUsageStats.groq.lastUsed = new Date().toISOString();
             aiUsageStats.lastActiveProvider = "Groq Cloud";
-            aiUsageStats.lastActiveModel = "llama-3.3-70b-versatile";
+            aiUsageStats.lastActiveModel = groqRes.model;
             aiUsageStats.lastCallTime = new Date().toLocaleTimeString('pt-BR');
-            console.log(`[AI Engine] Sucesso total com Groq Llama 3.3 70B!`);
+            console.log(`[AI Engine] Sucesso total com Groq (${groqRes.model})!`);
             await persistProviderCall('groq', userEmail);
           } catch (err: any) {
             lastError = err;
@@ -653,8 +824,8 @@ app.post("/api/gemini", async (req, res) => {
           const keysToTry = step.keys || [];
           const keysInOrder = keysToTry.length === 1 ? keysToTry : [...keysToTry].sort(() => Math.random() - 0.5);
 
-          // Strictly use gemini-3.1-flash-lite without model cascading
-          const candidateModels = ["gemini-3.1-flash-lite"];
+          // Support dynamic model from payload, defaulting to gemini-3.1-flash-lite
+          const candidateModels = [model || "gemini-3.1-flash-lite"];
 
           for (let i = 0; i < keysInOrder.length; i++) {
             if (success) break;
@@ -662,8 +833,8 @@ app.post("/api/gemini", async (req, res) => {
             const keyObfuscated = apiKey.substring(0, 6) + "..." + apiKey.substring(apiKey.length - 4);
             
             let contentsToUse: any = [{ role: "user", parts: [{ text: promptText }] }];
-            if (payload.parts && Array.isArray(payload.parts)) {
-              const cleanParts = payload.parts.map((p: any) => {
+            if (payloadToUse.parts && Array.isArray(payloadToUse.parts)) {
+              const cleanParts = payloadToUse.parts.map((p: any) => {
                 const part: any = {};
                 if (p.text) part.text = p.text;
                 if (p.inlineData) {
@@ -676,7 +847,7 @@ app.post("/api/gemini", async (req, res) => {
               });
               contentsToUse = [{ role: "user", parts: cleanParts }];
             } else if (action === 'importPdf') {
-              const { fileData, mimeType, promptText: pText } = payload;
+              const { fileData, mimeType, promptText: pText } = payloadToUse;
               const isBase64Binary = typeof fileData === 'string' && (
                 fileData.startsWith('JVBERi0') || 
                 fileData.startsWith('iVBORw0') || 
@@ -728,6 +899,7 @@ app.post("/api/gemini", async (req, res) => {
                       if (imageBase64) {
                         currentResult = `data:image/png;base64,${imageBase64}`;
                         imageSuccess = true;
+                        capturedProviderInfo = { provider: 'gemini', model: imgModel };
                         break;
                       }
                     } catch (imgErr) {
@@ -743,10 +915,13 @@ app.post("/api/gemini", async (req, res) => {
                   const modelInstance = ai.getGenerativeModel({
                     model: currentModelName,
                     generationConfig: genConfig,
+                    tools: payloadToUse.tools || undefined
                   });
 
                   const result = await modelInstance.generateContent({ contents: contentsToUse });
                   currentResult = result.response.text() || "";
+                  capturedGroundingMetadata = result.response.candidates?.[0]?.groundingMetadata || null;
+                  capturedProviderInfo = { provider: 'gemini', model: currentModelName };
                 }
 
                 if (currentResult && currentResult.trim().length > 0) {
@@ -787,13 +962,13 @@ app.post("/api/gemini", async (req, res) => {
     if (isJsonExpected || (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
       try {
         const parsed = JSON.parse(trimmed);
-        return res.json({ result: parsed });
+        return res.json({ result: parsed, groundingMetadata: capturedGroundingMetadata, providerInfo: capturedProviderInfo });
       } catch (e) {
         // Fallback for markdown JSON blocks ```json { ... } ```
         const cleanJsonText = trimmed.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
         try {
           const parsed = JSON.parse(cleanJsonText);
-          return res.json({ result: parsed });
+          return res.json({ result: parsed, groundingMetadata: capturedGroundingMetadata, providerInfo: capturedProviderInfo });
         } catch (e2) {
           if (action === 'generateJson') {
             console.warn("[Server] Falha ao converter resposta em JSON:", text.substring(0, 100));
@@ -802,10 +977,505 @@ app.post("/api/gemini", async (req, res) => {
       }
     }
 
-    return res.json({ result: text });
+    return res.json({ result: text, groundingMetadata: capturedGroundingMetadata, providerInfo: capturedProviderInfo });
   } catch (error: any) {
     console.error("AI Proxy Error:", error.message);
     res.status(500).json({ error: error.message || "Internal Server Error" });
+  }
+});
+
+// ============================================================================
+// HELPERS DE SEGURANÇA IPV4 / IPV6 & SSRF PROTECTION (IANA COMPLIANT)
+// ============================================================================
+
+// Converter IPv4 para Uint32 (32-bit unsigned integer)
+function ipv4ToUint32(ip: string): number | null {
+  if (typeof ip !== 'string') return null;
+  const parts = ip.trim().split('.');
+  if (parts.length !== 4) return null;
+  let res = 0;
+  for (let i = 0; i < 4; i++) {
+    const pStr = parts[i];
+    if (!/^\d+$/.test(pStr)) return null;
+    const num = parseInt(pStr, 10);
+    if (num < 0 || num > 255 || (pStr.length > 1 && pStr.startsWith('0'))) return null;
+    res = (res * 256) + num;
+  }
+  return res >>> 0;
+}
+
+// Validador IANA para IPv4
+function isPrivateOrReservedIPv4(ip: string): boolean {
+  const ipInt = ipv4ToUint32(ip);
+  if (ipInt === null) return true;
+
+  const p1 = (ipInt >>> 24) & 0xFF;
+  const p2 = (ipInt >>> 16) & 0xFF;
+
+  if (p1 === 0) return true;
+  if (p1 === 10) return true;
+  if (p1 === 100 && p2 >= 64 && p2 <= 127) return true;
+  if (p1 === 127) return true;
+  if (p1 === 169 && p2 === 254) return true;
+  if (p1 === 172 && p2 >= 16 && p2 <= 31) return true;
+  if (p1 === 192 && p2 === 0 && ((ipInt >>> 8 & 0xFF) === 0 || (ipInt >>> 8 & 0xFF) === 2)) return true;
+  if (p1 === 192 && p2 === 88 && (ipInt >>> 8 & 0xFF) === 99) return true;
+  if (p1 === 192 && p2 === 168) return true;
+  if (p1 === 198 && (p2 === 18 || p2 === 19)) return true;
+  if (p1 === 198 && p2 === 51 && (ipInt >>> 8 & 0xFF) === 100) return true;
+  if (p1 === 203 && p2 === 0 && (ipInt >>> 8 & 0xFF) === 113) return true;
+  if (p1 >= 224) return true;
+
+  return false;
+}
+
+// Parser completo IPv6 para 8 palavras de 16 bits
+function parseIPv6Words(ip: string): number[] | null {
+  if (typeof ip !== 'string') return null;
+  let str = ip.trim().toLowerCase();
+
+  const lastColon = str.lastIndexOf(':');
+  if (lastColon !== -1) {
+    const possibleIpv4 = str.substring(lastColon + 1);
+    if (possibleIpv4.includes('.')) {
+      const v4Int = ipv4ToUint32(possibleIpv4);
+      if (v4Int === null) return null;
+      const w7 = (v4Int >>> 16) & 0xFFFF;
+      const w8 = v4Int & 0xFFFF;
+      const hexV4 = `${w7.toString(16)}:${w8.toString(16)}`;
+      str = str.substring(0, lastColon + 1) + hexV4;
+    }
+  }
+
+  const doubleColonCount = (str.match(/::/g) || []).length;
+  if (doubleColonCount > 1) return null;
+
+  let parts: string[];
+  if (doubleColonCount === 1) {
+    const [leftStr, rightStr] = str.split('::');
+    const leftParts = leftStr ? leftStr.split(':') : [];
+    const rightParts = rightStr ? rightStr.split(':') : [];
+
+    const missing = 8 - (leftParts.length + rightParts.length);
+    if (missing < 1) return null;
+
+    const zeros = new Array(missing).fill('0');
+    parts = [...leftParts, ...zeros, ...rightParts];
+  } else {
+    parts = str.split(':');
+  }
+
+  if (parts.length !== 8) return null;
+
+  const words: number[] = [];
+  for (const p of parts) {
+    if (!/^[0-9a-f]{1,4}$/i.test(p)) return null;
+    const val = parseInt(p, 16);
+    if (isNaN(val) || val < 0 || val > 0xFFFF) return null;
+    words.push(val);
+  }
+
+  return words;
+}
+
+// Classificador rigoroso de IP (IPv4 e IPv6)
+function isPrivateOrReservedIP(ip: string): boolean {
+  const family = net.isIP(ip);
+  if (family === 4) {
+    return isPrivateOrReservedIPv4(ip);
+  } else if (family === 6) {
+    const words = parseIPv6Words(ip);
+    if (!words) return true;
+
+    const [w1, w2, w3, w4, w5, w6, w7, w8] = words;
+
+    if (w1 === 0 && w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0 && w6 === 0 && w7 === 0) {
+      if (w8 === 0 || w8 === 1) return true;
+    }
+
+    if (w1 === 0 && w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0 && w6 === 0xFFFF) {
+      const v4Int = (w7 << 16) | w8;
+      const p1 = (v4Int >>> 24) & 0xFF;
+      const p2 = (v4Int >>> 16) & 0xFF;
+      const p3 = (v4Int >>> 8) & 0xFF;
+      const p4 = v4Int & 0xFF;
+      return isPrivateOrReservedIPv4(`${p1}.${p2}.${p3}.${p4}`);
+    }
+
+    if (w1 === 0 && w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0xFFFF && w6 === 0) {
+      const v4Int = (w7 << 16) | w8;
+      const p1 = (v4Int >>> 24) & 0xFF;
+      const p2 = (v4Int >>> 16) & 0xFF;
+      const p3 = (v4Int >>> 8) & 0xFF;
+      const p4 = v4Int & 0xFF;
+      return isPrivateOrReservedIPv4(`${p1}.${p2}.${p3}.${p4}`);
+    }
+
+    if (w1 === 0x0064 && w2 === 0xFF9B && w3 === 0 && w4 === 0 && w5 === 0 && w6 === 0) {
+      const v4Int = (w7 << 16) | w8;
+      const p1 = (v4Int >>> 24) & 0xFF;
+      const p2 = (v4Int >>> 16) & 0xFF;
+      const p3 = (v4Int >>> 8) & 0xFF;
+      const p4 = v4Int & 0xFF;
+      return isPrivateOrReservedIPv4(`${p1}.${p2}.${p3}.${p4}`);
+    }
+
+    if (w1 === 0x2002) {
+      const v4Int = (w2 << 16) | w3;
+      const p1 = (v4Int >>> 24) & 0xFF;
+      const p2 = (v4Int >>> 16) & 0xFF;
+      const p3 = (v4Int >>> 8) & 0xFF;
+      const p4 = v4Int & 0xFF;
+      return isPrivateOrReservedIPv4(`${p1}.${p2}.${p3}.${p4}`);
+    }
+
+    if (w1 === 0x2001 && w2 === 0x0000) {
+      return true;
+    }
+
+    if ((w1 & 0xFE00) === 0xFC00) return true;
+    if ((w1 & 0xFFC0) === 0xFE80) return true;
+    if ((w1 & 0xFF00) === 0xFF00) return true;
+
+    if ((w1 & 0xE000) !== 0x2000) return true;
+
+    return false;
+  }
+
+  return true;
+}
+
+// Helper assíncrono para validação rigorosa de URL e resolução DNS completa
+async function validateAndResolveUrl(urlStr: string): Promise<{
+  safe: boolean;
+  reason?: string;
+  parsedUrl?: URL;
+  resolvedIps?: string[];
+  targetIp?: string;
+  family?: 4 | 6;
+}> {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { safe: false, reason: 'Apenas os protocolos HTTP e HTTPS são permitidos.' };
+    }
+
+    if (parsed.username || parsed.password) {
+      return { safe: false, reason: 'URLs contendo credenciais embutidas não são permitidas.' };
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+
+    if (
+      hostname === 'localhost' ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.internal') ||
+      hostname.endsWith('.localhost')
+    ) {
+      return { safe: false, reason: 'Acesso a domínios locais e internos não é permitido.' };
+    }
+
+    const ipFamily = net.isIP(hostname);
+    if (ipFamily !== 0) {
+      if (isPrivateOrReservedIP(hostname)) {
+        return { safe: false, reason: 'O endereço IP especificado é privado, de loopback ou reservado.' };
+      }
+      return {
+        safe: true,
+        parsedUrl: parsed,
+        resolvedIps: [hostname],
+        targetIp: hostname,
+        family: ipFamily as 4 | 6
+      };
+    }
+
+    let addresses: dns.LookupAddress[] = [];
+    try {
+      addresses = await dns.promises.lookup(hostname, { all: true });
+    } catch (dnsErr) {
+      return { safe: false, reason: 'Não foi possível resolver o nome de domínio no servidor DNS.' };
+    }
+
+    if (!addresses || addresses.length === 0) {
+      return { safe: false, reason: 'O servidor DNS não retornou nenhum endereço IP para este domínio.' };
+    }
+
+    const resolvedIps: string[] = [];
+    let selectedIp: string | null = null;
+    let selectedFamily: 4 | 6 = 4;
+
+    for (const addr of addresses) {
+      if (isPrivateOrReservedIP(addr.address)) {
+        return { safe: false, reason: `O domínio resolve para o IP não permitido (${addr.address}).` };
+      }
+      resolvedIps.push(addr.address);
+      if (!selectedIp) {
+        selectedIp = addr.address;
+        selectedFamily = addr.family as 4 | 6;
+      }
+    }
+
+    return {
+      safe: true,
+      parsedUrl: parsed,
+      resolvedIps,
+      targetIp: selectedIp!,
+      family: selectedFamily
+    };
+  } catch (err) {
+    return { safe: false, reason: 'URL malformatada ou inválida.' };
+  }
+}
+
+// Helper para verificação de Magic Bytes em imagens recebidas
+function validateImageContent(buffer: Buffer): { safe: boolean; detectedType?: string; error?: string } {
+  if (!buffer || buffer.length === 0) {
+    return { safe: false, error: 'Buffer de imagem vazio ou nulo.' };
+  }
+
+  // 1. JPEG: FF D8 FF
+  if (buffer.length >= 3 && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    return { safe: true, detectedType: 'image/jpeg' };
+  }
+
+  // 2. PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (buffer.length >= 8 &&
+      buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 &&
+      buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
+    return { safe: true, detectedType: 'image/png' };
+  }
+
+  // 3. GIF: GIF87a ou GIF89a (47 49 46 38 37/39 61)
+  if (buffer.length >= 6 &&
+      buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38 &&
+      (buffer[4] === 0x37 || buffer[4] === 0x39) && buffer[5] === 0x61) {
+    return { safe: true, detectedType: 'image/gif' };
+  }
+
+  // 4. WEBP: RIFF + 4 bytes tamanho + WEBP
+  if (buffer.length >= 12 &&
+      buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+      buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+    return { safe: true, detectedType: 'image/webp' };
+  }
+
+  const sample = buffer.subarray(0, Math.min(buffer.length, 512)).toString('utf8').toLowerCase();
+  if (sample.includes('<html') || sample.includes('<script') || sample.includes('<?php') || sample.includes('<svg')) {
+    return { safe: false, error: 'O conteúdo remoto contém HTML, script ou vetor não permitido em proxy binário.' };
+  }
+
+  return { safe: false, error: 'Formato de imagem não reconhecido ou assinatura mágica inválida.' };
+}
+
+// Helper para executar requisições HTTP/HTTPS com fixação nativa de IP (IP Pinning)
+function fetchPinnedResource(
+  val: { parsedUrl: URL; targetIp: string; family: 4 | 6 },
+  headers: Record<string, string>,
+  maxBytes: number,
+  timeoutMs: number
+): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; buffer: Buffer }> {
+  return new Promise((resolve, reject) => {
+    const isHttps = val.parsedUrl.protocol === 'https:';
+    const transport = isHttps ? https : http;
+    const cleanHost = val.parsedUrl.hostname;
+    const isHostIp = net.isIP(cleanHost) !== 0;
+
+    const reqOptions: http.RequestOptions = {
+      protocol: val.parsedUrl.protocol,
+      hostname: cleanHost,
+      port: val.parsedUrl.port ? parseInt(val.parsedUrl.port, 10) : (isHttps ? 443 : 80),
+      path: val.parsedUrl.pathname + val.parsedUrl.search,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        ...headers
+      },
+      lookup: (_dom, opts, cb: any) => {
+        if (opts && opts.all) {
+          cb(null, [{ address: val.targetIp, family: val.family }], val.family);
+        } else {
+          cb(null, val.targetIp, val.family);
+        }
+      }
+    };
+
+    if (isHttps && !isHostIp) {
+      (reqOptions as any).servername = cleanHost;
+    }
+
+    let isSettled = false;
+    let timer: NodeJS.Timeout | null = null;
+    let req: http.ClientRequest | null = null;
+
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    timer = setTimeout(() => {
+      if (isSettled) return;
+      isSettled = true;
+      if (req) req.destroy(new Error('TIMEOUT'));
+      reject(new Error('TIMEOUT'));
+    }, timeoutMs);
+
+    req = transport.request(reqOptions, (res) => {
+      const statusCode = res.statusCode || 500;
+
+      if (statusCode >= 300 && statusCode < 400) {
+        cleanup();
+        res.resume();
+        if (!isSettled) {
+          isSettled = true;
+          reject(new Error('REDIRECT_BLOCKED'));
+        }
+        return;
+      }
+
+      const contentLengthHeader = res.headers['content-length'];
+      if (contentLengthHeader) {
+        const parsedLen = parseInt(contentLengthHeader, 10);
+        if (!isNaN(parsedLen) && parsedLen > maxBytes) {
+          cleanup();
+          res.resume();
+          if (!isSettled) {
+            isSettled = true;
+            reject(new Error('MAX_SIZE_EXCEEDED'));
+          }
+          return;
+        }
+      }
+
+      const chunks: Buffer[] = [];
+      let totalBytes = 0;
+
+      res.on('data', (chunk: Buffer) => {
+        if (isSettled) return;
+        totalBytes += chunk.length;
+        if (totalBytes > maxBytes) {
+          isSettled = true;
+          cleanup();
+          res.destroy();
+          reject(new Error('MAX_SIZE_EXCEEDED'));
+          return;
+        }
+        chunks.push(chunk);
+      });
+
+      res.on('end', () => {
+        if (isSettled) return;
+        isSettled = true;
+        cleanup();
+        resolve({
+          statusCode,
+          headers: res.headers,
+          buffer: Buffer.concat(chunks, totalBytes)
+        });
+      });
+
+      res.on('error', (err) => {
+        if (isSettled) return;
+        isSettled = true;
+        cleanup();
+        reject(err);
+      });
+    });
+
+    req.on('error', (err) => {
+      if (isSettled) return;
+      isSettled = true;
+      cleanup();
+      reject(err);
+    });
+
+    req.end();
+  });
+}
+
+// Proxy endpoint to securely download a file from a URL for admin PDF import
+app.post("/api/download-file", async (req, res) => {
+  try {
+    // 1. Verificação OBRIGATÓRIA de autenticação administrativa via Firebase ID Token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: "Autenticação necessária. Cabeçalho Authorization ausente ou inválido." });
+    }
+
+    const idToken = authHeader.substring(7);
+    let userEmail = "";
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      if (decodedToken && decodedToken.email) {
+        userEmail = decodedToken.email.toLowerCase().trim();
+      } else {
+        return res.status(401).json({ error: "Token de autenticação não possui e-mail associado." });
+      }
+    } catch (tokenErr) {
+      console.warn('[Download Security] ID Token fornecido é inválido:', tokenErr);
+      return res.status(401).json({ error: "Token de autenticação inválido ou expirado." });
+    }
+
+    const ALLOWED_ADMINS = ['ysabelleosaraiva@gmail.com', 'yasabelleosaraiva@gmail.com', 'lucas1renck2melo@gmail.com'];
+    if (!ALLOWED_ADMINS.includes(userEmail)) {
+      return res.status(403).json({ error: "Acesso negado. Apenas administradores autorizados podem importar arquivos." });
+    }
+
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: "A URL do arquivo é obrigatória." });
+    }
+
+    // 2. Validação rigorosa de SSRF / DNS
+    const val = await validateAndResolveUrl(url);
+    if (!val.safe || !val.parsedUrl || !val.targetIp) {
+      console.warn(`[Proxy Download] Requisição bloqueada por segurança (SSRF Protection): ${url} - ${val.reason}`);
+      return res.status(400).json({ error: `URL inválida ou não permitida: ${val.reason}` });
+    }
+
+    console.log(`[Proxy Download] Admin ${userEmail} baixando arquivo via IP Pinned (${val.targetIp}): ${url}`);
+
+    const MAX_BYTES = 25 * 1024 * 1024; // 25 MiB
+    const TIMEOUT_MS = 15000; // 15 segundos
+
+    try {
+      const result = await fetchPinnedResource(
+        { parsedUrl: val.parsedUrl, targetIp: val.targetIp, family: val.family || 4 },
+        {},
+        MAX_BYTES,
+        TIMEOUT_MS
+      );
+
+      if (result.statusCode !== 200) {
+        return res.status(result.statusCode).json({ error: `Falha ao baixar arquivo remoto (HTTP ${result.statusCode}).` });
+      }
+
+      const base64 = result.buffer.toString('base64');
+      const contentType = (result.headers['content-type'] as string) || 'application/pdf';
+
+      console.log(`[Proxy Download] Download concluído com sucesso. MimeType: ${contentType}, Tamanho: ${(result.buffer.byteLength / (1024 * 1024)).toFixed(2)} MB`);
+
+      return res.json({
+        success: true,
+        base64,
+        contentType
+      });
+    } catch (fetchErr: any) {
+      if (fetchErr.message === 'REDIRECT_BLOCKED') {
+        return res.status(400).json({ error: "Redirecionamentos HTTP (3xx) não são permitidos por motivos de segurança (SSRF)." });
+      }
+      if (fetchErr.message === 'TIMEOUT') {
+        return res.status(408).json({ error: "O tempo limite para o download do arquivo foi excedido (15 segundos)." });
+      }
+      if (fetchErr.message === 'MAX_SIZE_EXCEEDED') {
+        return res.status(400).json({ error: "O arquivo excede o limite máximo permitido de 25 MB." });
+      }
+      throw fetchErr;
+    }
+  } catch (err: any) {
+    console.error("[Proxy Download] Erro ao baixar arquivo:", err);
+    return res.status(500).json({ error: err.message || "Erro interno ao realizar o download do arquivo." });
   }
 });
 
@@ -819,7 +1489,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'openi') {
       try {
         const url = `https://openi.nlm.nih.gov/api/search?query=${encodeURIComponent(qStr)}&m=1&n=${limit || 25}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(8000) });
         if (!response.ok) return res.status(200).json({ list: [] });
         const text = await response.text();
         const trimmed = text.trim();
@@ -849,7 +1519,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'internetarchive') {
       try {
         const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(qStr)}&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=year&rows=${limit || 15}&page=1&output=json`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(8000) });
         if (!response.ok) return res.status(200).json({ docs: [] });
         const data = await response.json();
         return res.json(data.response || { docs: [] });
@@ -862,7 +1532,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'plos') {
       try {
         const url = `https://api.plos.org/search?q=everything:${encodeURIComponent(qStr)}&fl=id,title_display,author_display,publication_date,journal&rows=${limit || 15}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(8000) });
         if (!response.ok) return res.status(200).json({ response: { docs: [] } });
         const data = await response.json();
         return res.json(data);
@@ -875,7 +1545,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'zenodo') {
       try {
         const url = `https://zenodo.org/api/records?q=${encodeURIComponent(qStr)}&type=image&size=${limit || 20}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(8000) });
         if (!response.ok) return res.status(200).json({ hits: { hits: [] } });
         const data = await response.json();
         return res.json(data);
@@ -888,7 +1558,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'europepmc') {
       try {
         const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(qStr + ' HAS_FT:Y')}&format=json&pageSize=${limit || 20}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(8000) });
         if (!response.ok) return res.status(200).json({ resultList: { result: [] } });
         const data = await response.json();
         return res.json(data);
@@ -901,7 +1571,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
     if (source === 'openlibrary') {
       try {
         const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(qStr)}&limit=${limit || 12}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(8000) });
         if (!response.ok) return res.status(200).json({ docs: [] });
         const data = await response.json();
         return res.json(data);
@@ -919,7 +1589,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
             'Accept': 'application/json',
             'User-Agent': userAgent
           },
-          signal: AbortSignal.timeout(6000)
+          signal: AbortSignal.timeout(8000)
         });
         if (!response.ok) {
           return res.status(200).json({ items: [] });
@@ -936,7 +1606,7 @@ app.get("/api/proxy-scientific", async (req, res) => {
       try {
         const apiKey = process.env.GEMINI_API_KEY ? `&key=${process.env.GEMINI_API_KEY}` : '';
         const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(qStr)}&maxResults=${limit || 8}${apiKey}`;
-        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(6000) });
+        const response = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(8000) });
         if (!response.ok) return res.status(200).json({ items: [] });
         const data = await response.json();
         return res.json(data);
@@ -1086,7 +1756,7 @@ app.get("/api/search-web-images", async (req, res) => {
   }
 });
 
-// Proxy endpoint to prevent browser Referer header issues with Wikimedia Commons, Open-i, and PLOS
+// Proxy endpoint for summary images with IP Pinning, Magic Bytes validation, and size/timeout limits
 app.get("/api/proxy-image", async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   try {
@@ -1096,307 +1766,84 @@ app.get("/api/proxy-image", async (req, res) => {
     }
 
     imageUrl = imageUrl.trim();
-    
-    // Decodes if double-encoded
+
     if (imageUrl.includes("%25")) {
       imageUrl = decodeURIComponent(imageUrl);
     }
-    
-    // If it has no protocol, default to https://
+
     if (imageUrl.startsWith("//")) {
       imageUrl = `https:${imageUrl}`;
     } else if (!/^https?:\/\//i.test(imageUrl)) {
       imageUrl = `https://${imageUrl}`;
     }
 
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(imageUrl);
-    } catch (e) {
-      return res.status(400).send("Invalid image URL.");
+    const val = await validateAndResolveUrl(imageUrl);
+    if (!val.safe || !val.parsedUrl || !val.targetIp) {
+      console.warn(`[Proxy Image] URL recusada (SSRF Protection): ${imageUrl} - ${val.reason}`);
+      return res.status(400).send(`Invalid image URL or non-permitted destination: ${val.reason}`);
     }
 
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return res.status(400).send("Only HTTP and HTTPS image URLs are supported.");
-    }
-
-    console.log(`[Proxy] Server-side fetching image: ${imageUrl}`);
-    
-    const headers: Record<string, string> = {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-      "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+    const reqHeaders: Record<string, string> = {
+      "Accept": "image/webp,image/apng,image/png,image/jpeg,image/*;q=0.8"
     };
 
-    if (parsedUrl.hostname.includes("wikimedia.org") || parsedUrl.hostname.includes("wikipedia.org")) {
-      headers["Referer"] = "https://commons.wikimedia.org/";
-    } else if (parsedUrl.hostname.includes("nih.gov")) {
-      headers["Referer"] = "https://openi.nlm.nih.gov/";
-    } else if (parsedUrl.hostname.includes("plos.org")) {
-      headers["Referer"] = "https://journals.plos.org/";
+    if (val.parsedUrl.hostname.includes("wikimedia.org") || val.parsedUrl.hostname.includes("wikipedia.org")) {
+      reqHeaders["Referer"] = "https://commons.wikimedia.org/";
+    } else if (val.parsedUrl.hostname.includes("nih.gov")) {
+      reqHeaders["Referer"] = "https://openi.nlm.nih.gov/";
+    } else if (val.parsedUrl.hostname.includes("plos.org")) {
+      reqHeaders["Referer"] = "https://journals.plos.org/";
     }
 
-    let response = await fetch(imageUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(8000) });
+    const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MiB
+    const TIMEOUT_MS = 8000; // 8 segundos
 
-    // Fallback 1: If fetch failed with Referer header, try without Referer header
-    if (!response.ok && headers["Referer"]) {
-      const { Referer, ...cleanHeaders } = headers;
-      try {
-        const retryRes = await fetch(imageUrl, { headers: cleanHeaders, redirect: 'follow', signal: AbortSignal.timeout(6000) });
-        if (retryRes.ok) response = retryRes;
-      } catch (e) {}
-    }
+    try {
+      const result = await fetchPinnedResource(
+        { parsedUrl: val.parsedUrl, targetIp: val.targetIp, family: val.family || 4 },
+        reqHeaders,
+        MAX_IMAGE_BYTES,
+        TIMEOUT_MS
+      );
 
-    // Fallback 2: If a Wikimedia thumbnail URL fails, try to fetch the full resolution file directly
-    if (!response.ok && (parsedUrl.hostname.includes("wikimedia.org") || parsedUrl.hostname.includes("wikipedia.org"))) {
-      if (imageUrl.includes('/thumb/')) {
-        const parts = imageUrl.split('/');
-        const thumbIdx = parts.indexOf('thumb');
-        if (thumbIdx !== -1 && parts.length > thumbIdx + 3) {
-          const fullResUrl = [...parts.slice(0, thumbIdx), ...parts.slice(thumbIdx + 1, thumbIdx + 4)].join('/');
-          console.log(`[Proxy Fallback] Attempting direct full-res Wikimedia URL: ${fullResUrl}`);
-          const fallbackRes = await fetch(fullResUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(8000) });
-          if (fallbackRes.ok) {
-            response = fallbackRes;
-          }
-        }
+      if (result.statusCode !== 200) {
+        console.error(`[Proxy Image] Remote host returned status ${result.statusCode} for ${imageUrl}`);
+        return res.status(result.statusCode).send(`Failed to read remote image resource (HTTP ${result.statusCode}).`);
       }
+
+      // Validação estrita de Magic Bytes no buffer da imagem
+      const imgVal = validateImageContent(result.buffer);
+      if (!imgVal.safe) {
+        console.error(`[Proxy Image] Magic bytes check failed for ${imageUrl}: ${imgVal.error}`);
+        return res.status(415).send(`URL returned non-image or invalid format: ${imgVal.error}`);
+      }
+
+      const finalContentType = imgVal.detectedType || (result.headers['content-type'] as string) || 'image/jpeg';
+
+      res.setHeader("Content-Type", finalContentType);
+      res.setHeader("Cache-Control", "public, max-age=604800, s-maxage=604800, immutable");
+      res.setHeader("Content-Length", result.buffer.length.toString());
+
+      return res.send(result.buffer);
+    } catch (fetchErr: any) {
+      if (fetchErr.message === 'REDIRECT_BLOCKED') {
+        return res.status(400).send("HTTP redirects (3xx) are blocked for security.");
+      }
+      if (fetchErr.message === 'TIMEOUT') {
+        return res.status(504).send("Proxy timeout fetching remote image (8s exceeded).");
+      }
+      if (fetchErr.message === 'MAX_SIZE_EXCEEDED') {
+        return res.status(400).send("Image file exceeds maximum permitted size of 10 MB.");
+      }
+      throw fetchErr;
     }
-
-    if (!response.ok) {
-      console.error(`[Proxy] Remote image host returned status ${response.status} for ${imageUrl}`);
-      return res.status(response.status).send(`Failed to read remote image resource: ${response.statusText}`);
-    }
-
-    const contentType = response.headers.get("content-type") || "";
-    
-    // Validate that the remote resource returned actual image data and not an HTML error/page
-    if (!contentType.toLowerCase().includes("image/") && !contentType.toLowerCase().includes("application/octet-stream") && !contentType.toLowerCase().includes("binary")) {
-      console.error(`[Proxy] Remote host returned non-image content-type '${contentType}' for ${imageUrl}`);
-      return res.status(415).send(`URL returned non-image content-type '${contentType}'.`);
-    }
-
-    res.setHeader("Content-Type", contentType.includes("image/") ? contentType : "image/jpeg");
-    res.setHeader("Cache-Control", "public, max-age=604800, s-maxage=604800, immutable"); // Cache for 7 days
-
-    const arrayBuffer = await response.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
   } catch (err: any) {
-    console.error("[Proxy Exception]", err.message);
-    res.status(504).send("Proxy server-side error: " + err.message);
+    console.error("[Proxy Image Exception]", err.message);
+    return res.status(504).send("Proxy server-side error: " + err.message);
   }
 });
 
-// Configure Google OAuth Client
-// Helper to calculate Google OAuth Redirect URI consistently
-const getRedirectUri = (req: express.Request) => {
-  const host = req.headers.host || '';
-  const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('3000');
-  const protocol = isLocal ? 'http' : 'https';
-  
-  let baseUrl = process.env.APP_URL;
-  if (baseUrl) {
-    if (!isLocal && baseUrl.startsWith('http://')) {
-      baseUrl = baseUrl.replace('http://', 'https://');
-    }
-  } else if (host) {
-    baseUrl = `${protocol}://${host}`;
-  } else {
-    baseUrl = 'http://localhost:3000';
-  }
 
-  if (baseUrl.endsWith('/')) {
-    baseUrl = baseUrl.slice(0, -1);
-  }
-
-  return `${baseUrl}/api/auth/google/callback`;
-};
-
-// Helper to get Google OAuth Client dynamically based on request, supporting Netlify function routing under /api/*
-const getOAuth2Client = (req: express.Request) => {
-  return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    getRedirectUri(req)
-  );
-};
-
-if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-  console.warn('WARNING: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is missing. Google Calendar sync will not work.');
-}
-
-// Auth URL endpoint
-app.get('/api/auth/google/url', (req, res) => {
-  const userId = req.query.userId as string;
-  if (!userId) return res.status(400).send('userId required');
-
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_ID.includes('MY_GOOGLE_CLIENT_ID')) {
-    return res.status(400).json({
-      error: 'As credenciais do Google OAuth não estão configuradas no servidor de produção (Netlify). Por favor, configure as variáveis de ambiente GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET nas configurações do seu site no painel da Netlify.'
-    });
-  }
-
-  const client = getOAuth2Client(req);
-  const redirectUri = getRedirectUri(req);
-  const url = client.generateAuthUrl({
-    access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/calendar.events'],
-    state: userId, // Pass userId in state to associate tokens on callback
-    prompt: 'consent'
-  });
-  res.json({ url, redirectUri });
-});
-
-// Unified OAuth Callback handler
-const handleOAuthCallback = async (req: express.Request, res: express.Response) => {
-  const { code, state: userId } = req.query;
-  
-  if (!code || !userId) {
-    return res.status(400).send('Missing code or userId');
-  }
-
-  try {
-    const client = getOAuth2Client(req);
-    const { tokens } = await client.getToken(code as string);
-    
-    // Pass tokens back to client securely via postMessage.
-    // If opened as same-window, pass via URL hash.
-    res.send(`
-      <html>
-        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #E4E3E0;">
-          <div style="text-align: center; border: 1px solid #141414; padding: 2rem; background: white; box-shadow: 8px 8px 0 0 #141414;">
-            <h1 style="font-style: italic;">Conectado!</h1>
-            <p>O Google Calendar foi autorizado.</p>
-            <p>Sincronizando os dados no aplicativo... Esta janela fechará automaticamente.</p>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ 
-                  type: 'OAUTH_AUTH_SUCCESS',
-                  tokens: ${JSON.stringify(tokens)}
-                }, '*');
-                setTimeout(() => window.close(), 1500);
-              } else {
-                window.location.href = '/?google_sync_success=true&userId=' + encodeURIComponent("${userId}") + '#tokens=' + encodeURIComponent(JSON.stringify(${JSON.stringify(tokens)}));
-              }
-            </script>
-          </div>
-        </body>
-      </html>
-    `);
-  } catch (error) {
-    console.error('Error exchanging code:', error);
-    res.status(500).send('Authentication failed');
-  }
-};
-
-app.get(['/auth/callback', '/auth/callback/'], handleOAuthCallback);
-app.get(['/api/auth/google/callback', '/api/auth/google/callback/'], handleOAuthCallback);
-
-// Stateless endpoint to fetch events from Google Calendar API
-app.post('/api/calendar/fetch-events', async (req, res) => {
-  const { tokens } = req.body;
-  if (!tokens) return res.status(400).json({ error: 'tokens required' });
-
-  try {
-    const client = getOAuth2Client(req);
-    client.setCredentials(tokens);
-
-    const calendar = google.calendar({ version: 'v3', auth: client });
-
-    const googleEvents = await calendar.events.list({
-      calendarId: 'primary',
-      timeMin: new Date().toISOString(),
-      maxResults: 50,
-      singleEvents: true,
-      orderBy: 'startTime',
-    });
-
-    res.json({ items: googleEvents.data.items || [] });
-  } catch (error: any) {
-    console.error('Error fetching calendar events from Google API:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch calendar events' });
-  }
-});
-
-// Stateless endpoint to create a Google Calendar event
-app.post('/api/calendar/create-event', async (req, res) => {
-  const { tokens, event } = req.body;
-  if (!tokens) return res.status(400).json({ error: 'tokens required' });
-  if (!event) return res.status(400).json({ error: 'event required' });
-
-  console.log('Incoming request to create-event:', JSON.stringify({
-    title: event.title,
-    start: event.start,
-    end: event.end
-  }));
-
-  try {
-    const client = getOAuth2Client(req);
-    client.setCredentials(tokens);
-
-    const calendar = google.calendar({ version: 'v3', auth: client });
-
-    // Validate and normalize start & end dates
-    let startStr = (event.start || '').trim();
-    let endStr = (event.end || '').trim();
-
-    let startDate = new Date(startStr);
-    if (isNaN(startDate.getTime())) {
-      startDate = new Date(startStr.replace(' ', 'T'));
-    }
-    if (isNaN(startDate.getTime())) {
-      startDate = new Date();
-    }
-
-    let endDate = new Date(endStr);
-    if (isNaN(endDate.getTime())) {
-      endDate = new Date(endStr.replace(' ', 'T'));
-    }
-    if (isNaN(endDate.getTime())) {
-      endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1hr
-    }
-
-    // Google Calendar requires end time to be strictly after start time.
-    // If end time is before or equal to start time, adjust end time to be start time + 1 hour.
-    if (endDate.getTime() <= startDate.getTime()) {
-      console.log(`Adjusting end date from ${endDate.toISOString()} to be 1 hour after start date ${startDate.toISOString()}`);
-      endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-    }
-
-    const startPayload = { dateTime: startDate.toISOString() };
-    const endPayload = { dateTime: endDate.toISOString() };
-
-    console.log('Normalized Event payload to insert:', JSON.stringify({
-      summary: event.title,
-      description: event.description,
-      start: startPayload,
-      end: endPayload
-    }));
-
-    const createdEvent = await calendar.events.insert({
-      calendarId: 'primary',
-      requestBody: {
-        summary: event.title || 'Sem título',
-        description: event.description || '',
-        start: startPayload,
-        end: endPayload,
-      },
-    });
-
-    res.json(createdEvent.data);
-  } catch (error: any) {
-    if (error.response && error.response.data) {
-      console.error('Detailed Google Calendar API Error response data:', JSON.stringify(error.response.data, null, 2));
-    }
-    console.error('Error creating calendar event in Google API:', error);
-    const apiErrorDetail = error.response?.data?.error?.message || error.message || 'Failed to create calendar event';
-    res.status(500).json({ error: apiErrorDetail });
-  }
-});
-
-// Deprecated old sync endpoint supporting legacy client calls
-app.post('/api/calendar/sync', async (req, res) => {
-  res.status(400).json({ error: 'This endpoint is deprecated. Please perform client-side sync.' });
-});
 
 // Mercado Pago: Create Preference Endpoint
 app.post('/api/mercadopago/create-preference', async (req, res) => {
@@ -1869,6 +2316,712 @@ app.post('/api/mercadopago/webhook', async (req, res) => {
 });
 
 // Setup dev server or fallback static routes
+
+// MedRevise Staging Persistence Endpoint
+// MedRevise Staging Persistence Endpoint
+app.post('/api/admin/staging/save-batch', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token de autorização ausente.' });
+    }
+    const token = authHeader.split('Bearer ')[1];
+    
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(token);
+    } catch (tokErr) {
+      console.warn('[Staging Auth] Token verification failed:', tokErr);
+      return res.status(401).json({ error: 'Token de autorização inválido ou expirado.' });
+    }
+
+    const userEmail = (decodedToken.email || '').toLowerCase().trim();
+    const isSpecialUser = userEmail === 'lucas1renck2melo@gmail.com' || userEmail === 'ysabelleosaraiva@gmail.com';
+
+    if (!isSpecialUser) {
+      return res.status(403).json({ error: 'Acesso negado. Usuário não possui privilégios administrativos.' });
+    }
+
+    const { batchId, questions } = req.body;
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ error: 'Nenhuma questão fornecida no payload para persistência.' });
+    }
+
+    if (questions.length > 200) {
+      return res.status(400).json({ error: 'Lote excede o limite máximo permitido de 200 questões por requisição.' });
+    }
+
+    const stagingUrl = currentSupabaseUrl;
+    const stagingKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!stagingKey) {
+      console.error('[Staging Save Batch] SUPABASE_SERVICE_ROLE_KEY não configurada. Persistência indisponível.');
+      return res.status(503).json({ error: 'Serviço de persistência temporariamente indisponível (configuração pendente).' });
+    }
+
+    const { createClient } = await import('@supabase/supabase-js');
+    const stagingClient = createClient(stagingUrl, stagingKey);
+
+    const results: any[] = [];
+    let insertedCount = 0;
+    let conflictCount = 0;
+    let errorCount = 0;
+
+    for (const q of questions) {
+      try {
+        const { data: rpcResult, error: rpcError } = await stagingClient
+          .rpc('upsert_question_atomic', {
+            p_batch_id: batchId,
+            p_question_id: q.id,
+            p_statement: q.statement,
+            p_question_type: q.questionType,
+            p_is_discursive: q.isDiscursive,
+            p_correct_option_index: q.correctOptionIndex,
+            p_correct_answer: q.correctAnswer,
+            p_alternatives: q.alternatives,
+            p_explanation: q.explanation,
+            p_topic: q.topic,
+            p_sub_subject: q.subSubject,
+            p_source_document_id: q.sourceDocumentId,
+            p_content_hash: q.contentHash,
+            p_dry_run: false,
+          });
+
+        if (rpcError) {
+          throw rpcError;
+        }
+
+        results.push({ questionId: q.id, status: 'SUCCESS' });
+        insertedCount++;
+      } catch (err: any) {
+        console.error(`[Staging Save Batch] Erro ao gravar questão ${q.id}:`, err);
+        results.push({ questionId: q.id, status: 'ERROR', message: err.message });
+        errorCount++;
+      }
+    }
+
+    return res.json({
+      status: errorCount === 0 ? 'SUCCESS' : 'PARTIAL_SUCCESS',
+      summary: { total: questions.length, inserted: insertedCount, error: errorCount },
+      results
+    });
+
+  } catch (error: any) {
+    console.error('[Staging Save Batch] Erro inesperado:', error);
+    res.status(500).json({ error: 'Erro interno ao processar o lote de persistência.' });
+  }
+});// ============================================================================
+// ENDPOINTS DE PROTOCOLO DE SEGURANÇA PARA DADOS PRIVADOS DO USUÁRIO
+// ============================================================================
+const getSupabaseAdmin = () => {
+  return createClient(
+    EXPECTED_CONFIG.supabaseUrl,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+  );
+};
+
+async function verifyFirebaseTokenMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: '[Security] Token de autenticação não fornecido.' });
+  }
+  const token = authHeader.split('Bearer ')[1].trim();
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    (req as any).user = decodedToken;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: '[Security] Token de autenticação inválido ou expirado.' });
+  }
+}
+
+const CANONICAL_ADMIN_EMAILS = [
+  'lucas1renck2melo@gmail.com',
+  'ysabelleosaraiva@gmail.com',
+  'yasabelleosaraiva@gmail.com'
+];
+
+async function verifyAdminAuthorizationMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: '[Admin Security] Token de autenticação não fornecido.' });
+  }
+  const token = authHeader.split('Bearer ')[1].trim();
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    const userEmail = (decodedToken.email || '').toLowerCase().trim();
+    
+    let isAdmin = CANONICAL_ADMIN_EMAILS.includes(userEmail) || decodedToken.admin === true;
+
+    if (!isAdmin) {
+      return res.status(403).json({ error: '[Admin Security] Acesso negado. Requer privilégios de administrador.' });
+    }
+
+    (req as any).user = decodedToken;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: '[Admin Security] Token de autenticação inválido ou expirado.' });
+  }
+}
+
+const PRIVILEGED_PROFILE_KEYS = new Set([
+  'role',
+  'admin',
+  'isadmin',
+  'is_admin',
+  'ispremium',
+  'is_premium',
+  'islifetimepremium',
+  'is_lifetime_premium',
+  'lifetimepremium',
+  'premiumprovider',
+  'premium_provider',
+  'premiumpaymentid',
+  'premium_payment_id',
+  'premiumsince',
+  'premium_since',
+  'premiumuntil',
+  'premium_until',
+  'premiumplan',
+  'premium_plan',
+  'plantype',
+  'plan_type',
+  'referralrewardgranted',
+  'referral_reward_granted'
+]);
+
+function normalizeProfileKey(k: string): string {
+  return k.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function findPrivilegedFields(obj: any, parentPath = ''): string[] {
+  if (!obj || typeof obj !== 'object') return [];
+  const violations: string[] = [];
+
+  for (const rawKey of Object.keys(obj)) {
+    const fullPath = parentPath ? `${parentPath}.${rawKey}` : rawKey;
+    const leafKey = rawKey.includes('.') ? rawKey.split('.').pop()! : rawKey;
+    const normalizedRaw = normalizeProfileKey(rawKey);
+    const normalizedLeaf = normalizeProfileKey(leafKey);
+
+    if (PRIVILEGED_PROFILE_KEYS.has(normalizedRaw) || PRIVILEGED_PROFILE_KEYS.has(normalizedLeaf)) {
+      violations.push(fullPath);
+    }
+
+    const val = obj[rawKey];
+    if (val && typeof val === 'object' && !(val instanceof Date) && !Array.isArray(val)) {
+      violations.push(...findPrivilegedFields(val, fullPath));
+    }
+  }
+
+  return violations;
+}
+
+function checkUserDocumentAuthorization(collection: string, docId: string, authUid: string, docDataInDb?: any): boolean {
+  if (!authUid) return false;
+  if (collection === 'userProgress' || collection === 'users') {
+    return docId === authUid;
+  }
+  if (collection.startsWith('users/')) {
+    const parts = collection.split('/');
+    return parts[1] === authUid;
+  }
+  if (collection === 'quizAttempts' || collection === 'flashcardSessions' || collection === 'userSuggestions' || collection === 'studySessions') {
+    if (docDataInDb) {
+      const owner = docDataInDb.userId || docDataInDb.uid || docDataInDb.userEmail;
+      if (owner === authUid) return true;
+      if (typeof docId === 'string' && (docId.startsWith(authUid + '_') || docId === authUid)) return true;
+      return false;
+    }
+    if (typeof docId === 'string' && (docId.startsWith(authUid + '_') || docId === authUid)) {
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+app.post('/api/user-documents/get-doc', verifyFirebaseTokenMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection, id } = req.body;
+    const uid = (req as any).user.uid;
+    const userEmail = ((req as any).user.email || '').toLowerCase().trim();
+    const isReqAdmin = CANONICAL_ADMIN_EMAILS.includes(userEmail) || (req as any).user.admin === true;
+
+    if (!collection || !id) {
+      return res.status(400).json({ error: 'Parâmetros collection e id são obrigatórios.' });
+    }
+
+    const supaAdmin = getSupabaseAdmin();
+    const { data, error } = await supaAdmin
+      .from('firestore_documents')
+      .select('*')
+      .eq('collection', collection)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.json({ data: null, exists: false });
+
+    if (!isReqAdmin && !checkUserDocumentAuthorization(collection, id, uid, data.data)) {
+      return res.status(403).json({ error: '[Security] Acesso negado a documento de outro usuário.' });
+    }
+
+    return res.json({ data: data.data || null, exists: true });
+  } catch (err: any) {
+    console.error('[UserDoc Get Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao buscar documento de usuário.' });
+  }
+});
+
+app.post('/api/user-documents/set-doc', verifyFirebaseTokenMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection, id, docData, merge } = req.body;
+    const uid = (req as any).user.uid;
+    const userEmail = ((req as any).user.email || '').toLowerCase().trim();
+    const isReqAdmin = CANONICAL_ADMIN_EMAILS.includes(userEmail) || (req as any).user.admin === true;
+
+    if (!collection || !id || !docData) {
+      return res.status(400).json({ error: 'Parâmetros collection, id e docData são obrigatórios.' });
+    }
+
+    if (!isReqAdmin) {
+      if (docData.userId && docData.userId !== uid) {
+        return res.status(403).json({ error: '[Security] userId no payload diverge do usuário autenticado.' });
+      }
+      if (docData.uid && docData.uid !== uid) {
+        return res.status(403).json({ error: '[Security] uid no payload diverge do usuário autenticado.' });
+      }
+      if (collection === 'users' && id !== uid) {
+        return res.status(403).json({ error: '[Security] Acesso negado para gravar dados no perfil de outro usuário.' });
+      }
+
+      if (collection === 'users') {
+        const violations = findPrivilegedFields(docData);
+        if (violations.length > 0) {
+          return res.status(403).json({
+            error: `[Security] Tentativa não autorizada de alterar campos privilegiados do perfil: ${violations.join(', ')}.`
+          });
+        }
+      }
+    }
+
+    const supaAdmin = getSupabaseAdmin();
+    const { data: existing } = await supaAdmin
+      .from('firestore_documents')
+      .select('data')
+      .eq('collection', collection)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (!isReqAdmin) {
+      if (!checkUserDocumentAuthorization(collection, id, uid, existing?.data)) {
+        return res.status(403).json({ error: '[Security] Acesso negado para gravar em outro usuário.' });
+      }
+    }
+
+    let payloadWithUid = { ...docData };
+    if (collection !== 'users') {
+      payloadWithUid.userId = uid;
+    } else {
+      payloadWithUid.uid = uid;
+    }
+
+    let finalData = payloadWithUid;
+
+    if (merge && existing?.data) {
+      finalData = { ...existing.data, ...payloadWithUid };
+    }
+
+    // Preserve existing privileged fields on user profile if non-admin writes
+    if (!isReqAdmin && collection === 'users' && existing?.data) {
+      for (const privKey of ['role', 'admin', 'isPremium', 'isLifetimePremium', 'premiumProvider', 'premiumPaymentId', 'premiumSince', 'premiumUntil', 'premiumPlan', 'planType', 'referralRewardGranted']) {
+        if (existing.data[privKey] !== undefined && finalData[privKey] === undefined) {
+          finalData[privKey] = existing.data[privKey];
+        }
+      }
+    }
+
+    const { error } = await supaAdmin
+      .from('firestore_documents')
+      .upsert({
+        collection,
+        id,
+        data: finalData,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'collection,id' });
+
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('[UserDoc Set Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao gravar documento do usuário.' });
+  }
+});
+
+app.post('/api/user-documents/add-doc', verifyFirebaseTokenMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection, docData } = req.body;
+    const uid = (req as any).user.uid;
+    const userEmail = ((req as any).user.email || '').toLowerCase().trim();
+    const isReqAdmin = CANONICAL_ADMIN_EMAILS.includes(userEmail) || (req as any).user.admin === true;
+
+    if (!collection || !docData) {
+      return res.status(400).json({ error: 'Parâmetros collection e docData são obrigatórios.' });
+    }
+
+    const id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    if (!isReqAdmin && !checkUserDocumentAuthorization(collection, id, uid)) {
+      return res.status(403).json({ error: '[Security] Acesso negado para criar documento.' });
+    }
+
+    const payloadWithUid = { ...docData, userId: uid };
+    const supaAdmin = getSupabaseAdmin();
+    const { error } = await supaAdmin
+      .from('firestore_documents')
+      .insert({
+        collection,
+        id,
+        data: payloadWithUid,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) throw error;
+    return res.json({ id });
+  } catch (err: any) {
+    console.error('[UserDoc Add Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao adicionar documento do usuário.' });
+  }
+});
+
+app.post('/api/user-documents/update-doc', verifyFirebaseTokenMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection, id, updateFields } = req.body;
+    const uid = (req as any).user.uid;
+    const userEmail = ((req as any).user.email || '').toLowerCase().trim();
+    const isReqAdmin = CANONICAL_ADMIN_EMAILS.includes(userEmail) || (req as any).user.admin === true;
+
+    if (!collection || !id || !updateFields) {
+      return res.status(400).json({ error: 'Parâmetros collection, id e updateFields são obrigatórios.' });
+    }
+
+    if (!isReqAdmin) {
+      if (updateFields.userId && updateFields.userId !== uid) {
+        return res.status(403).json({ error: '[Security] Tentativa de alterar o proprietário userId.' });
+      }
+      if (updateFields.uid && updateFields.uid !== uid) {
+        return res.status(403).json({ error: '[Security] Tentativa de alterar o proprietário uid.' });
+      }
+      if (collection === 'users' && id !== uid) {
+        return res.status(403).json({ error: '[Security] Acesso negado para atualizar perfil de outro usuário.' });
+      }
+
+      if (collection === 'users') {
+        const violations = findPrivilegedFields(updateFields);
+        if (violations.length > 0) {
+          return res.status(403).json({
+            error: `[Security] Tentativa não autorizada de alterar campos privilegiados do perfil: ${violations.join(', ')}.`
+          });
+        }
+      }
+    }
+
+    const supaAdmin = getSupabaseAdmin();
+    const { data: existing } = await supaAdmin
+      .from('firestore_documents')
+      .select('data')
+      .eq('collection', collection)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (!isReqAdmin) {
+      if (!checkUserDocumentAuthorization(collection, id, uid, existing?.data)) {
+        return res.status(403).json({ error: '[Security] Acesso negado para atualizar outro usuário.' });
+      }
+    }
+
+    const mergedData = existing?.data ? { ...existing.data } : {};
+
+    for (const [key, val] of Object.entries(updateFields)) {
+      if (key.includes('.')) {
+        const parts = key.split('.');
+        let current = mergedData;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const part = parts[i];
+          if (!current[part] || typeof current[part] !== 'object') {
+            current[part] = {};
+          }
+          current = current[part];
+        }
+        current[parts[parts.length - 1]] = val;
+      } else {
+        mergedData[key] = val;
+      }
+    }
+
+    if (collection !== 'users') {
+      mergedData.userId = uid;
+    } else {
+      mergedData.uid = uid;
+    }
+
+    const { error } = await supaAdmin
+      .from('firestore_documents')
+      .upsert({
+        collection,
+        id,
+        data: mergedData,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'collection,id' });
+
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('[UserDoc Update Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao atualizar documento do usuário.' });
+  }
+});
+
+app.post('/api/user-documents/delete-doc', verifyFirebaseTokenMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection, id } = req.body;
+    const uid = (req as any).user.uid;
+    const userEmail = ((req as any).user.email || '').toLowerCase().trim();
+    const isReqAdmin = CANONICAL_ADMIN_EMAILS.includes(userEmail) || (req as any).user.admin === true;
+
+    if (!collection || !id) {
+      return res.status(400).json({ error: 'Parâmetros collection e id são obrigatórios.' });
+    }
+
+    if (!isReqAdmin) {
+      if (collection === 'users' && id !== uid) {
+        return res.status(403).json({ error: '[Security] Acesso negado para excluir perfil de outro usuário.' });
+      }
+    }
+
+    const supaAdmin = getSupabaseAdmin();
+    const { data: existing } = await supaAdmin
+      .from('firestore_documents')
+      .select('data')
+      .eq('collection', collection)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (!isReqAdmin) {
+      if (!checkUserDocumentAuthorization(collection, id, uid, existing?.data)) {
+        return res.status(403).json({ error: '[Security] Acesso negado para excluir documento de outro usuário.' });
+      }
+    }
+
+    const { error } = await supaAdmin
+      .from('firestore_documents')
+      .delete()
+      .eq('collection', collection)
+      .eq('id', id);
+
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('[UserDoc Delete Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao excluir documento de usuário.' });
+  }
+});
+
+app.post('/api/user-documents/get-docs', verifyFirebaseTokenMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection } = req.body;
+    const uid = (req as any).user.uid;
+
+    if (!collection) {
+      return res.status(400).json({ error: 'Parâmetro collection é obrigatório.' });
+    }
+
+    const supaAdmin = getSupabaseAdmin();
+    let supaQuery = supaAdmin
+      .from('firestore_documents')
+      .select('id, data')
+      .eq('collection', collection);
+
+    if (collection === 'userProgress' || collection === 'users') {
+      supaQuery = supaQuery.eq('id', uid);
+    } else if (collection.startsWith('users/')) {
+      const parts = collection.split('/');
+      if (parts[1] !== uid) {
+        return res.status(403).json({ error: '[Security] Acesso negado.' });
+      }
+    } else {
+      // Force strict UID isolation
+      supaQuery = supaQuery.or(`id.eq.${uid},id.like.${uid}_%,data->>userId.eq.${uid}`);
+    }
+
+    const { data, error } = await supaQuery;
+    if (error) throw error;
+
+    return res.json({ docs: data || [] });
+  } catch (err: any) {
+    console.error('[UserDoc GetDocs Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao buscar documentos do usuário.' });
+  }
+});
+
+// ============================================================================
+// ENDPOINTS ADMINISTRATIVOS PROTEGIDOS (REQUEREM CANONICAL ADMIN EMAIL OU ROLE)
+// ============================================================================
+const ALLOWED_ADMIN_COLLECTIONS = [
+  'questions',
+  'topics',
+  'subjects',
+  'semesters',
+  'sourceDocuments',
+  'source_documents',
+  'examSets',
+  'simulados',
+  'imported_exams'
+];
+
+app.post('/api/admin/content/add-doc', verifyAdminAuthorizationMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection, docData } = req.body;
+
+    if (!collection || !docData) {
+      return res.status(400).json({ error: 'Parâmetros collection e docData são obrigatórios.' });
+    }
+
+    if (!ALLOWED_ADMIN_COLLECTIONS.includes(collection)) {
+      return res.status(403).json({ error: `[Admin Security] A coleção "${collection}" não é uma coleção administrativa autorizada.` });
+    }
+
+    const id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const supaAdmin = getSupabaseAdmin();
+    const { error } = await supaAdmin
+      .from('firestore_documents')
+      .insert({
+        collection,
+        id,
+        data: docData,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) throw error;
+    return res.json({ id });
+  } catch (err: any) {
+    console.error('[Admin Add Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao adicionar conteúdo administrativo.' });
+  }
+});
+
+app.post('/api/admin/content/set-doc', verifyAdminAuthorizationMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection, id, docData, merge } = req.body;
+
+    if (!collection || !id || !docData) {
+      return res.status(400).json({ error: 'Parâmetros collection, id e docData são obrigatórios.' });
+    }
+
+    if (!ALLOWED_ADMIN_COLLECTIONS.includes(collection)) {
+      return res.status(403).json({ error: `[Admin Security] A coleção "${collection}" não é uma coleção administrativa autorizada.` });
+    }
+
+    const supaAdmin = getSupabaseAdmin();
+    let finalData = docData;
+
+    if (merge) {
+      const { data: existing } = await supaAdmin
+        .from('firestore_documents')
+        .select('data')
+        .eq('collection', collection)
+        .eq('id', id)
+        .maybeSingle();
+
+      if (existing?.data) {
+        finalData = { ...existing.data, ...docData };
+      }
+    }
+
+    const { error } = await supaAdmin
+      .from('firestore_documents')
+      .upsert({
+        collection,
+        id,
+        data: finalData,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'collection,id' });
+
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('[Admin Set Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao gravar conteúdo administrativo.' });
+  }
+});
+
+app.post('/api/admin/content/update-doc', verifyAdminAuthorizationMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection, id, updateFields } = req.body;
+
+    if (!collection || !id || !updateFields) {
+      return res.status(400).json({ error: 'Parâmetros collection, id e updateFields são obrigatórios.' });
+    }
+
+    if (!ALLOWED_ADMIN_COLLECTIONS.includes(collection)) {
+      return res.status(403).json({ error: `[Admin Security] A coleção "${collection}" não é uma coleção administrativa autorizada.` });
+    }
+
+    const supaAdmin = getSupabaseAdmin();
+    const { data: existing } = await supaAdmin
+      .from('firestore_documents')
+      .select('data')
+      .eq('collection', collection)
+      .eq('id', id)
+      .maybeSingle();
+
+    const mergedData = existing?.data ? { ...existing.data, ...updateFields } : { ...updateFields };
+
+    const { error } = await supaAdmin
+      .from('firestore_documents')
+      .upsert({
+        collection,
+        id,
+        data: mergedData,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'collection,id' });
+
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('[Admin Update Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao atualizar conteúdo administrativo.' });
+  }
+});
+
+app.post('/api/admin/content/delete-doc', verifyAdminAuthorizationMiddleware, async (req: express.Request, res: express.Response) => {
+  try {
+    const { collection, id } = req.body;
+
+    if (!collection || !id) {
+      return res.status(400).json({ error: 'Parâmetros collection e id são obrigatórios.' });
+    }
+
+    if (!ALLOWED_ADMIN_COLLECTIONS.includes(collection)) {
+      return res.status(403).json({ error: `[Admin Security] A coleção "${collection}" não é uma coleção administrativa autorizada.` });
+    }
+
+    const supaAdmin = getSupabaseAdmin();
+    const { error } = await supaAdmin
+      .from('firestore_documents')
+      .delete()
+      .eq('collection', collection)
+      .eq('id', id);
+
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('[Admin Delete Error]:', err?.message || err);
+    return res.status(500).json({ error: 'Erro ao excluir conteúdo administrativo.' });
+  }
+});
+
 
 // Handle AI Studio internal control plane file reads directly
 app.get('/__aistudio_internal_control_plane/fs/read', (req, res) => {

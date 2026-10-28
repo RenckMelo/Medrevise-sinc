@@ -5,12 +5,44 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { CheckCircle2, XCircle, ChevronRight, ChevronLeft, ArrowLeft, HelpCircle, Trophy, RefreshCcw, Sparkles, Loader2, Clock, Filter, Layers, Brain, BookCheck, RotateCcw, List, Bookmark, Trash2, SlidersHorizontal, AlertCircle, Building2, Calendar, Eye, Search, Plus, Check, Pause, Play, PauseCircle, Zap, Coins, X } from 'lucide-react';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import XCircle from 'lucide-react/dist/esm/icons/x-circle.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import Trophy from 'lucide-react/dist/esm/icons/trophy.js';
+import RefreshCcw from 'lucide-react/dist/esm/icons/refresh-ccw.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Filter from 'lucide-react/dist/esm/icons/filter.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import BookCheck from 'lucide-react/dist/esm/icons/book-check.js';
+import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw.js';
+import List from 'lucide-react/dist/esm/icons/list.js';
+import Bookmark from 'lucide-react/dist/esm/icons/bookmark.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import SlidersHorizontal from 'lucide-react/dist/esm/icons/sliders-horizontal.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import Building2 from 'lucide-react/dist/esm/icons/building-2.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Eye from 'lucide-react/dist/esm/icons/eye.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import Pause from 'lucide-react/dist/esm/icons/pause.js';
+import Play from 'lucide-react/dist/esm/icons/play.js';
+import PauseCircle from 'lucide-react/dist/esm/icons/pause-circle.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import Coins from 'lucide-react/dist/esm/icons/coins.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
 import { cn } from '@/lib/utils';
 
-import { db, collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove, addDoc, setDoc, getDoc, increment, orderBy, limit, deleteDoc } from '../firebase';
+import { db, collection, query, getDocs, where, doc, updateDoc, arrayUnion, arrayRemove, addDoc, setDoc, getDoc, increment, orderBy, limit, deleteDoc, runTransaction } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
-import { explainQuestion, generateQuestions, analyzeBancaYearAvailability } from '../services/geminiService';
+import { explainQuestion, generateQuestions, analyzeBancaYearAvailability, getUserFocusSettings } from '../services/geminiService';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -50,28 +82,127 @@ const findTopicAndSubject = (tid: string, topicsList: Topic[], subjectsList: Sub
   return { topic, subject, topicTitle, subjectName, topicId, subjectId };
 };
 
+const isGenericOrEmptyTopicName = (val?: any): boolean => {
+  if (!val || typeof val !== 'string') return true;
+  const trimmed = val.trim().toLowerCase();
+  return (
+    trimmed === '' ||
+    trimmed === 'tópico' ||
+    trimmed === 'topico' ||
+    trimmed === 'tópico geral' ||
+    trimmed === 'topico geral' ||
+    trimmed === 'tópico de matéria' ||
+    trimmed === 'topico de materia' ||
+    trimmed === 'tema geral' ||
+    trimmed === 'geral' ||
+    trimmed === 'geral_topic' ||
+    trimmed === 'sem tópico' ||
+    trimmed === 'sem topico' ||
+    trimmed === 'não categorizado' ||
+    trimmed === 'nao categorizado'
+  );
+};
+
 
 const deduplicateQuestions = (list: Question[]): Question[] => {
   if (!list || !Array.isArray(list) || list.length === 0) return [];
   const seenIds = new Set<string>();
-  const seenTexts = new Set<string>();
+  const seenContentKeys = new Set<string>();
   return list.filter(q => {
     if (!q) return false;
-    const idKey = q.id || `${q.topicId}_${q.text?.slice(0, 30)}`;
-    const textKey = (q.text || '')
+    const idKey = q.id || '';
+    if (idKey && seenIds.has(idKey)) return false;
+
+    // Full normalized statement without truncation to preserve questions with similar vignette openings
+    const normalizedText = (q.text || '')
       .toLowerCase()
       .replace(/[^\w\s]/gi, '')
       .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 100);
+      .trim();
 
-    if (seenIds.has(idKey)) return false;
-    if (textKey && textKey.length > 20 && seenTexts.has(textKey)) return false;
+    // Normalized options to distinguish clinical cases sharing standard vignettes but having different questions/options
+    const optionsSignature = Array.isArray(q.options)
+      ? q.options
+          .map(opt => (opt || '').toLowerCase().replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim())
+          .join('|')
+      : '';
 
-    seenIds.add(idKey);
-    if (textKey && textKey.length > 20) seenTexts.add(textKey);
+    const contentKey = `${q.topicId || ''}:::${normalizedText}:::${optionsSignature}`;
+
+    if (normalizedText.length > 20 && seenContentKeys.has(contentKey)) return false;
+
+    if (idKey) seenIds.add(idKey);
+    if (normalizedText.length > 20) seenContentKeys.add(contentKey);
     return true;
   });
+};
+
+const getQuestionHierarchy = (q: Question, subjectsList: Subject[], topicsList: Topic[]) => {
+  const subjectObj = subjectsList.find(s => s.id === q.subjectId);
+  const subjectName = subjectObj?.name || (q as any).subject || 'Clínica Médica';
+  
+  const topicObj = topicsList.find(t => t.id === q.topicId);
+  const topicName = topicObj?.title || q.topic || 'Tema Geral';
+  
+  let subSubject = q.subSubject || '';
+  let subtopicTag = q.subtopicTag || '';
+  
+  // Smart dynamic fallback inference if not present in DB
+  if (!subSubject) {
+    const topicLower = topicName.toLowerCase();
+    const textLower = (q.text || '').toLowerCase();
+    
+    if (subjectName === 'Pediatria') {
+      if (topicLower.includes('diarreia') || topicLower.includes('desidratação') || topicLower.includes('tro') || textLower.includes('geca') || textLower.includes('desidratação')) {
+        subSubject = 'Gastroenterologia Pediátrica';
+        subtopicTag = subtopicTag || 'Diarreia Aguda / Plano A, B e C';
+      } else if (topicLower.includes('vacina') || topicLower.includes('imunização') || textLower.includes('vacinal')) {
+        subSubject = 'Infectologia Pediátrica / PNI';
+        subtopicTag = subtopicTag || 'Calendário Vacinal da Criança (SBP/MS)';
+      } else if (topicLower.includes('crescimento') || topicLower.includes('desenvolvimento') || topicLower.includes('puericultura') || textLower.includes('dnpm') || textLower.includes('marcos do desenvolvimento')) {
+        subSubject = 'Puericultura e Crescimento';
+        subtopicTag = subtopicTag || 'Marcos de Desenvolvimento / Curvas da OMS';
+      } else if (topicLower.includes('reanimação') || topicLower.includes('neonat') || topicLower.includes('parto') || textLower.includes('sala de parto')) {
+        subSubject = 'Neonatologia';
+        subtopicTag = subtopicTag || 'Reanimação de RN na Sala de Parto (SBP)';
+      } else {
+        subSubject = 'Pediatria Geral';
+        subtopicTag = subtopicTag || 'Caso Clínico Pediátrico';
+      }
+    } else if (subjectName === 'Ginecologia e Obstetrícia') {
+      if (topicLower.includes('dheg') || topicLower.includes('hiperten') || topicLower.includes('eclâmpsia') || textLower.includes('pré-eclâmpsia') || textLower.includes('sulfato de magnésio')) {
+        subSubject = 'Obstetrícia Patológica';
+        subtopicTag = subtopicTag || 'DHEG / Pré-eclâmpsia e Eclâmpsia';
+      } else if (topicLower.includes('parto') || topicLower.includes('trabalho') || textLower.includes('bacia') || textLower.includes('partograma')) {
+        subSubject = 'Obstetrícia Fisiológica';
+        subtopicTag = subtopicTag || 'Trabalho de Parto / Partograma';
+      } else {
+        subSubject = 'Ginecologia Geral';
+        subtopicTag = subtopicTag || 'Saúde da Mulher';
+      }
+    } else if (subjectName === 'Ortopedia') {
+      if (topicLower.includes('lombalgia') || topicLower.includes('lombo') || topicLower.includes('coluna') || textLower.includes('hérnia de disco') || textLower.includes('dor lombar')) {
+        subSubject = 'Ortopedia de Coluna';
+        subtopicTag = subtopicTag || 'Lombalgia e Lombociatalgia';
+      } else if (topicLower.includes('fratura') || topicLower.includes('luxação') || textLower.includes('exposta') || textLower.includes('atls')) {
+        subSubject = 'Traumatologia';
+        subtopicTag = subtopicTag || 'Princípios Gerais de Fraturas / ATLS';
+      } else {
+        subSubject = 'Ortopedia Geral';
+        subtopicTag = subtopicTag || 'Exame Físico Ortopédico';
+      }
+    } else {
+      subSubject = 'Clínica Médica Geral';
+      subtopicTag = subtopicTag || 'Diagnóstico e Conduta';
+    }
+  }
+  
+  return {
+    subjectName,
+    subSubject,
+    topicName,
+    subtopicTag: subtopicTag || q.subtopicTag || 'Conceitos Chave'
+  };
 };
 
 interface QuestionModuleProps {
@@ -337,6 +468,28 @@ export default function QuestionModule({
     } catch (e) {}
     return null;
   });
+  const [currentSessionId, setCurrentSessionId] = useState<string>(() => pausedSession?.sessionId || pausedSession?.id || Math.random().toString(36).substr(2, 9));
+  const [completedSessionIds, setCompletedSessionIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(`medinternato_completed_session_ids_${userId || 'guest'}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return new Set(parsed);
+      }
+    } catch (e) {}
+    return new Set();
+  });
+  const finalizingSessionIdsRef = useRef<Set<string>>(new Set());
+
+  const markSessionCompleted = (sessionId: string) => {
+    setCompletedSessionIds(prev => {
+      const next = new Set(prev).add(sessionId);
+      try {
+        localStorage.setItem(`medinternato_completed_session_ids_${userId || 'guest'}`, JSON.stringify(Array.from(next)));
+      } catch (e) {}
+      return next;
+    });
+  };
 
   const clearPausedSession = () => {
     try {
@@ -354,6 +507,90 @@ export default function QuestionModule({
           pausedSimuladoSession: null
         }).catch(err => console.warn('Firestore clear paused session error:', err));
       } catch (err) {}
+    }
+  };
+
+  const finalizeSession = async (
+    sessionId: string,
+    quizAttempt: any,
+    studySessionEntry: any,
+    finalDuration: number,
+    quizResults: QuestionAttempt[],
+    score: number
+  ) => {
+    if (!sessionId || finalizingSessionIdsRef.current.has(sessionId)) {
+      return;
+    }
+    finalizingSessionIdsRef.current.add(sessionId);
+
+    const attemptDocId = `${userId || 'guest'}_${sessionId}`;
+    const attemptDocRef = doc(db, 'quizAttempts', attemptDocId);
+    const progressRef = doc(db, 'userProgress', userId);
+
+    let needsSync = false;
+
+    try {
+      // ATOMIC TRANSACTION: Check processed state and update userProgress + quizAttempt atomically
+      await runTransaction(db, async (transaction: any) => {
+        const attemptSnap = await transaction.get(attemptDocRef);
+        const attemptData = attemptSnap.exists() ? attemptSnap.data() : null;
+
+        // If already processed, abort accounting immediately to prevent duplicate increments
+        if (attemptData && attemptData.processed) {
+          // If sync is still pending or not completed, allow complementary sync to proceed
+          if (attemptData.syncStatus !== 'completed') {
+            needsSync = true;
+          }
+          return;
+        }
+
+        // Prepare subject question count increments
+        const subjectCountUpdates: Record<string, any> = {};
+        for (const r of quizResults) {
+          if (r.subjectId) {
+            const key = `stats.subjectQuestions.${r.subjectId}`;
+            subjectCountUpdates[key] = increment(1);
+          }
+        }
+
+        // Atomically update userProgress (total study time, history, study sessions, subject stats)
+        transaction.update(progressRef, {
+          totalStudyTimeSeconds: increment(finalDuration),
+          quizHistory: arrayUnion(quizAttempt),
+          studySessions: arrayUnion(studySessionEntry),
+          ...subjectCountUpdates
+        });
+
+        // Atomically set attempt as processed with syncStatus pending
+        transaction.set(attemptDocRef, {
+          ...quizAttempt,
+          processed: true,
+          syncStatus: attemptData?.syncStatus === 'completed' ? 'completed' : 'pending'
+        }, { merge: true });
+
+        needsSync = true;
+      });
+
+      // Clear paused session only after primary accounting has succeeded
+      clearPausedSession();
+
+      // Complementary sync to MedRevise (isolated from primary accounting)
+      if (needsSync) {
+        let shouldSync = questionsSyncMode === 'auto';
+        if (questionsSyncMode === 'manual') {
+          const consent = window.confirm("Você concluiu a sua sequência de questões! Deseja salvar e sincronizar automaticamente o seu aproveitamento de cada tópico estudado no MedRevise para agendar as próximas repetições espaçadas?");
+          if (consent) {
+            shouldSync = true;
+            updateQuestionsSyncMode('auto');
+          }
+        }
+
+        if (shouldSync) {
+          await syncQuizResultToMedRevise(questions, score, finalDuration, sessionId, quizResults);
+        }
+      }
+    } catch (err) {
+      console.warn('Finalization processing or sync failed:', err);
     }
   };
 
@@ -377,7 +614,8 @@ export default function QuestionModule({
     }
 
     const sessionToSave: PausedQuestionSession = {
-      id: pausedSession?.id || Math.random().toString(36).substr(2, 9),
+      id: currentSessionId,
+      sessionId: currentSessionId,
       userId,
       title,
       questions,
@@ -391,7 +629,8 @@ export default function QuestionModule({
       timerType,
       selectedTopicIds,
       selectedSubjectIds,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      status: 'in_progress'
     };
 
     try {
@@ -419,6 +658,7 @@ export default function QuestionModule({
   const handleResumeSession = () => {
     if (!pausedSession) return;
 
+    setCurrentSessionId(pausedSession.sessionId || pausedSession.id || Math.random().toString(36).substr(2, 9));
     setQuestions(pausedSession.questions);
     setCurrentIndex(pausedSession.currentIndex || 0);
     setScore(pausedSession.score || 0);
@@ -575,34 +815,38 @@ export default function QuestionModule({
     quizQuestions: Question[],
     finalScore: number,
     durationSeconds: number,
-    customMinutes?: number,
-    resultsToUse?: QuestionAttempt[]
+    sessionIdOrMinutes: string | number,
+    resultsToUse?: QuestionAttempt[] | number
   ) => {
+    const sessionId = typeof sessionIdOrMinutes === 'string' ? sessionIdOrMinutes : (currentSessionId || 'session_' + Date.now());
+    const customMinutes = typeof sessionIdOrMinutes === 'number' ? sessionIdOrMinutes : (typeof resultsToUse === 'number' ? resultsToUse : null);
+    const attemptsToUse = Array.isArray(resultsToUse) ? resultsToUse : currentQuizResults;
     if (!userId) return null;
 
     try {
       if (quizQuestions.length === 0) return null;
 
-      const attemptsToUse = resultsToUse || currentQuizResults;
       const dateIso = new Date().toISOString();
 
       // Group questions strictly by their specific topic
       const topicMap = new Map<string, { topicObj: Topic; questions: Question[] }>();
 
       for (const q of quizQuestions) {
-        let matched = topics.find(t => t.id === q.topicId || (t.title && q.topic && t.title.toLowerCase().trim() === q.topic.toLowerCase().trim()));
+        let matched = topics.find(t => t.id === q.topicId || (t.title && q.topic && t.title.toLowerCase().trim() === q.topic.toLowerCase().trim()) || ((t as any).name && q.topic && (t as any).name.toLowerCase().trim() === q.topic.toLowerCase().trim()));
         if (!matched && q.topicId) {
-          matched = { id: q.topicId, title: q.topic || 'Tópico', subjectId: q.subjectId || 'geral' } as Topic;
+          const validQTopic = q.topic && !isGenericOrEmptyTopicName(q.topic) ? q.topic.trim() : '';
+          matched = { id: q.topicId, title: validQTopic, subjectId: q.subjectId || 'geral' } as Topic;
         }
         if (!matched && q.subjectId) {
           const subObj = subjects.find(s => s.id === q.subjectId);
-          matched = { id: `subject_${q.subjectId}`, title: subObj?.name || 'Tópico de Matéria', subjectId: q.subjectId } as Topic;
+          matched = { id: `subject_${q.subjectId}`, title: subObj?.name || '', subjectId: q.subjectId } as Topic;
         }
 
         const key = matched?.id || 'geral_topic';
         if (!topicMap.has(key)) {
+          const fallbackTitle = (q.topic && !isGenericOrEmptyTopicName(q.topic)) ? q.topic.trim() : '';
           topicMap.set(key, {
-            topicObj: matched || ({ id: key, title: q.topic || 'Tópico Geral', subjectId: q.subjectId || 'geral' } as Topic),
+            topicObj: matched || ({ id: key, title: fallbackTitle, subjectId: q.subjectId || 'geral' } as Topic),
             questions: []
           });
         }
@@ -629,21 +873,30 @@ export default function QuestionModule({
         }).length;
 
         const accuracyPct = Math.round((cCount / Math.max(1, qCount)) * 100);
-        const tTitle = tObj.title || (tObj as any).name || 'Tópico';
-        updatedTopicTitles.push(`${tTitle} (${cCount}/${qCount} acertos)`);
 
         const topicRef = doc(db, 'users', userId, 'topics', tObj.id);
         let currentReps = 0;
         let prevInterval = 0;
         let prevEase = 2.5;
+        let topicDocExists = false;
+        let existingPersistedName: string | null = null;
 
         try {
           const topicSnap = await getDoc(topicRef);
           if (topicSnap.exists()) {
+            topicDocExists = true;
             const data = topicSnap.data();
             currentReps = typeof data.repetitions === 'number' ? data.repetitions : 0;
             prevInterval = typeof data.interval === 'number' ? data.interval : 0;
             prevEase = typeof data.easinessFactor === 'number' ? data.easinessFactor : 2.5;
+
+            // Extract existing name from Firestore document (prefer data.name, then data.title)
+            const rawDocName = (typeof data.name === 'string' && data.name.trim()) 
+              || (typeof data.title === 'string' && data.title.trim()) 
+              || null;
+            if (rawDocName && !isGenericOrEmptyTopicName(rawDocName)) {
+              existingPersistedName = rawDocName;
+            }
           } else {
             currentReps = typeof tObj.repetitions === 'number' ? tObj.repetitions : 0;
             prevInterval = typeof tObj.interval === 'number' ? tObj.interval : 0;
@@ -667,8 +920,35 @@ export default function QuestionModule({
 
         lastNextDateStr = new Date(srsUpdate.nextReviewDate).toLocaleDateString('pt-BR');
 
-        // 1. Add individual studySession entry per topic
-        await addDoc(collection(db, 'users', userId, 'studySessions'), {
+        // Resolve candidate name from in-memory sources without generic fallbacks
+        let candidateName: string | null = null;
+        const rawCandidate = tObj.title || (tObj as any).name;
+        if (typeof rawCandidate === 'string' && !isGenericOrEmptyTopicName(rawCandidate)) {
+          candidateName = rawCandidate.trim();
+        }
+
+        if (!candidateName) {
+          const qWithTopic = topicQs.find(q => typeof q.topic === 'string' && !isGenericOrEmptyTopicName(q.topic));
+          if (qWithTopic && qWithTopic.topic) {
+            candidateName = qWithTopic.topic.trim();
+          }
+        }
+
+        if (!candidateName && Array.isArray(topics)) {
+          const propTopic = topics.find(t => t && t.id === tObj.id);
+          const propName = propTopic ? (propTopic.title || (propTopic as any).name) : null;
+          if (typeof propName === 'string' && !isGenericOrEmptyTopicName(propName)) {
+            candidateName = propName.trim();
+          }
+        }
+
+        // Display title for summary toast: prioritize persisted name, then candidate name, then fallback
+        const displayTitle = existingPersistedName || candidateName || (tObj.title && !isGenericOrEmptyTopicName(tObj.title) ? tObj.title : '') || 'Tópico';
+        updatedTopicTitles.push(`${displayTitle} (${cCount}/${qCount} acertos)`);
+
+        // 1. Add individual studySession entry per topic using idempotent ID
+        const sessionRef = doc(db, 'users', userId, 'studySessions', `${tObj.id}_${sessionId}`);
+        await setDoc(sessionRef, {
           topicId: tObj.id,
           subjectId: tObj.subjectId,
           date: dateIso,
@@ -676,15 +956,16 @@ export default function QuestionModule({
           correctCount: cCount,
           accuracyPercentage: accuracyPct,
           studyTimeMinutes: minutesPerTopic,
+          sessionId: sessionId,
+          originSessionId: sessionId,
           description: isFirstRegistration
             ? `Estudo Inicial por Questões: ${cCount}/${qCount} acertos (${accuracyPct}%)`
             : `Revisão por Questões: ${cCount}/${qCount} acertos (${accuracyPct}%)`
-        });
+        }, { merge: true });
 
         // 2. Update topic SM-2 spaced repetition and accuracy stats in MedRevise
-        await setDoc(topicRef, {
-          name: tTitle,
-          subjectId: tObj.subjectId,
+        const topicUpdateData: Record<string, any> = {
+          subjectId: tObj.subjectId || 'geral',
           completed: true,
           repetitions: srsUpdate.repetitions,
           interval: srsUpdate.interval,
@@ -696,7 +977,27 @@ export default function QuestionModule({
           lastAccuracyPercentage: accuracyPct,
           wasRescheduledOverdue: false,
           updatedAt: dateIso
-        }, { merge: true });
+        };
+
+        if (topicDocExists) {
+          // Document already exists in Firestore:
+          // If it already has a valid name, PRESERVE IT: do NOT include 'name' in update data.
+          // This ensures setDoc with { merge: true } leaves the existing name untouched.
+          // If the document had NO valid name (missing or generic placeholder) and we now have
+          // a validated non-generic candidate name, set it.
+          if (!existingPersistedName && candidateName && !isGenericOrEmptyTopicName(candidateName)) {
+            topicUpdateData.name = candidateName;
+          }
+        } else {
+          // New topic document being created:
+          // Use real validated name when available. Never persist "Tópico" or generic strings as a definitive name.
+          if (candidateName && !isGenericOrEmptyTopicName(candidateName)) {
+            topicUpdateData.name = candidateName;
+          }
+          topicUpdateData.createdAt = dateIso;
+        }
+
+        await setDoc(topicRef, topicUpdateData, { merge: true });
 
         // 3. Update userProgress.topicStats for precise dashboard tracking
         try {
@@ -730,6 +1031,7 @@ export default function QuestionModule({
       };
 
       setMedReviseResult(summaryObj);
+      await updateDoc(doc(db, 'quizAttempts', `${userId}_${sessionId}`), { syncStatus: 'completed' });
       return summaryObj;
     } catch (err) {
       console.error("Erro ao sincronizar com o MedRevise por tópico:", err);
@@ -813,12 +1115,8 @@ export default function QuestionModule({
       setBancaYearCounts(localCounts);
       setBancaYearAnsweredCounts(answeredCounts);
 
-      // 2. Audit AI / Official archive (cost: 5 credits)
-      const selectedTopicTitles = topics.filter(t => selectedTopicIds.includes(t.id)).map(t => t.title || (t as any).name || (t as any).titulo || t.id);
-      const selectedSubjectNames = subjects.filter(s => selectedSubjectIds.includes(s.id)).map(s => s.name);
-
-      const { availabilityMap } = await analyzeBancaYearAvailability(selectedTopicTitles, selectedSubjectNames);
-      setAiArchiveYearCounts(availabilityMap);
+      // 2. Auditoria de acervo local auditável (custo: 0 créditos, sem geração de dados sintéticos por IA)
+      setAiArchiveYearCounts({});
       setAuditExecuted(true);
     } catch (err: any) {
       console.error("Audit error:", err);
@@ -829,9 +1127,7 @@ export default function QuestionModule({
   };
 
   const getBancaYearTotalAvailable = (key: string) => {
-    const local = bancaYearCounts[key] || 0;
-    const ai = aiArchiveYearCounts[key] || 0;
-    return Math.max(local, ai);
+    return bancaYearCounts[key] || 0;
   };
 
   const getBancaYearUnanswered = (key: string) => {
@@ -1482,30 +1778,54 @@ export default function QuestionModule({
 
         fetched = cachedQuestions;
         
-        // Auto-generate fallback if no questions exist in Firestore for selected topics
-        if (fetched.length === 0 && selectedTopicIds.length > 0) {
-          const preset = (simuladoMode as string) === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
-          const targetExam = preset ? preset.name : undefined;
-          for (const tid of selectedTopicIds) {
-            const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
+        // Dynamic self-growing cache (Strategy 3): check if there are enough questions for each topic matching user's preferred bancas
+        const { residencyFocus } = await getUserFocusSettings(userId);
+        const userBancas = (residencyFocus || '').split(/[,;\/]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+        const targetQCount = numQuestionsPerTopic || 5;
+
+        for (const tid of selectedTopicIds) {
+          const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
+          const topicQuestions = fetched.filter(q => q.topicId === tid || String(q.topicId) === String(tid));
+          
+          // Identify questions from user's preferred bancas
+          const preferredQuestions = topicQuestions.filter(q => {
+            const sourceUpper = (q.source || '').toUpperCase();
+            return userBancas.some(banca => sourceUpper.includes(banca));
+          });
+
+          const needed = targetQCount - preferredQuestions.length;
+          if (needed > 0) {
+            console.log(`[Cache Strategy 3] Topic "${topicTitle}" has only ${preferredQuestions.length}/${targetQCount} matching preferred bancas. Fetching ${needed} more from Gemini/Google Search Grounding...`);
             try {
-              const newQuestions = await generateQuestions(topicTitle, subjectName, numQuestionsPerTopic || 5, [], userId, targetExam);
+              const existingTexts = topicQuestions.map(q => q.text);
+              const newQuestions = await generateQuestions(topicTitle, subjectName, needed, existingTexts, userId, undefined);
               if (newQuestions && Array.isArray(newQuestions)) {
+                const addedDocs: Question[] = [];
                 for (const qData of newQuestions) {
-                  const docRef = await addDoc(collection(db, 'questions'), {
-                    ...qData,
-                    topicId: topicId,
-                    subjectId: subjectId
-                  });
-                  fetched.push({ id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question);
+                  const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                  const newQ = { id: localId, ...qData, topicId: topicId, subjectId: subjectId } as Question;
+                  fetched.push(newQ);
+                  addedDocs.push(newQ);
                 }
-                safeLocalStorageRemove(`questions_topic_${topicId}`);
+                
+                // Update local storage cache for this topic to include the new ones
+                const updatedTopicQuestions = [...topicQuestions, ...addedDocs];
+                safeLocalStorageSet(`questions_topic_${topicId}`, JSON.stringify(updatedTopicQuestions));
               }
             } catch (genErr) {
-              console.warn('Auto AI question generation fallback failed in fetchQuestions:', genErr);
+              console.warn(`[Cache Strategy 3] Auto question fallback failed for topic ${topicTitle}:`, genErr);
             }
           }
         }
+
+        // Final sorting: sort questions such that questions matching the user's preferred bancas come first
+        fetched = fetched.sort((q1, q2) => {
+          const s1 = (q1.source || '').toUpperCase();
+          const s2 = (q2.source || '').toUpperCase();
+          const q1Pref = userBancas.some(b => s1.includes(b)) ? 1 : 0;
+          const q2Pref = userBancas.some(b => s2.includes(b)) ? 1 : 0;
+          return q2Pref - q1Pref || Math.random() - 0.5;
+        });
 
         if (userProgress) {
           const answeredIds = userProgress.answeredQuestionIds || [];
@@ -1602,7 +1922,24 @@ export default function QuestionModule({
         });
         
         const results = await Promise.all(promises);
-        fetched = results.flat();
+        let merged = results.flat();
+
+        try {
+          const { residencyFocus } = await getUserFocusSettings(userId);
+          const userBancas = (residencyFocus || '').split(/[,;\/]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+          if (userBancas.length > 0) {
+            merged = merged.sort((q1, q2) => {
+              const s1 = (q1.source || '').toUpperCase();
+              const s2 = (q2.source || '').toUpperCase();
+              const q1Pref = userBancas.some(b => s1.includes(b)) ? 1 : 0;
+              const q2Pref = userBancas.some(b => s2.includes(b)) ? 1 : 0;
+              return q2Pref - q1Pref;
+            });
+          }
+        } catch (e) {
+          console.warn('Error sorting subject questions by user focus:', e);
+        }
+        fetched = merged;
       } else if (simuladoMode === 'banca-year') {
         setGenerationStatus('Analisando matriz de bancas e anos solicitados...');
         setGenerationProgress(10);
@@ -1684,14 +2021,9 @@ export default function QuestionModule({
 
               if (newQuestions && Array.isArray(newQuestions)) {
                 for (const qData of newQuestions) {
-                  const docRef = await addDoc(collection(db, 'questions'), {
-                    ...qData,
-                    topicId: topicId || targetTid,
-                    subjectId: subjectId || targetSid,
-                    source: qData.source || `${spec.banca} (${spec.year})`
-                  });
+                  const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                   fetched.push({
-                    id: docRef.id,
+                    id: localId,
                     ...qData,
                     topicId: topicId || targetTid,
                     subjectId: subjectId || targetSid,
@@ -2043,65 +2375,34 @@ export default function QuestionModule({
       setIsAnswered(false);
       setAiExplanation(null);
     } else {
+      if (completedSessionIds.has(currentSessionId)) return;
+      markSessionCompleted(currentSessionId);
       setShowResults(true);
       setIsActive(false);
-      clearPausedSession();
       
-      // Save Quiz Attempt summary
-      const finalDuration = Math.max(15, seconds);
-      const quizAttempt = {
-        id: Math.random().toString(36).substr(2, 9),
-        userId,
-        subjectIds: selectedSubjectIds.length > 0 ? selectedSubjectIds : [...new Set(questions.map(q => q.subjectId).filter(Boolean) as string[])],
-        topicIds: selectedTopicIds,
+      const finalDuration = seconds;
+      const quizAttempt: QuizAttempt = {
+        id: `${userId || 'guest'}_${currentSessionId}`,
+        userId: userId || 'guest',
+        sessionId: currentSessionId,
+        subjectIds: Array.from(new Set(questions.map(q => q.subjectId).filter(Boolean))) as string[],
+        topicIds: Array.from(new Set(questions.map(q => q.topicId).filter(Boolean))) as string[],
         questions: currentQuizResults,
         score,
         totalQuestions: questions.length,
         timeSpentSeconds: finalDuration,
         timestamp: new Date().toISOString(),
-        type: selectedSubjectIds.length > 1 ? 'simulado' : 'individual' as any
+        type: quizMode === 'exam' ? 'simulado' : 'individual'
       };
-
       const studySessionEntry = {
-        id: Math.random().toString(36).substr(2, 9),
-        subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || 'geral',
-        startTime: new Date(Date.now() - finalDuration * 1000).toISOString(),
-        durationSeconds: finalDuration
+        id: currentSessionId,
+        date: new Date().toISOString(),
+        studyTimeMinutes: Math.max(1, Math.round(finalDuration / 60)),
+        questionsCount: questions.length,
+        correctCount: score,
+        type: 'simulado'
       };
-      
-      if (onProgressUpdate && userProgress) {
-        onProgressUpdate({
-          totalStudyTimeSeconds: (userProgress.totalStudyTimeSeconds || 0) + finalDuration,
-          quizHistory: [...(userProgress.quizHistory || []), quizAttempt],
-          studySessions: [...(userProgress.studySessions || []), studySessionEntry]
-        });
-      }
-
-      try {
-        await addDoc(collection(db, 'quizAttempts'), quizAttempt);
-        const progressRef = doc(db, 'userProgress', userId);
-        await updateDoc(progressRef, {
-          totalStudyTimeSeconds: increment(finalDuration),
-          quizHistory: arrayUnion(quizAttempt),
-          studySessions: arrayUnion(studySessionEntry)
-        });
-
-        // Sync tested/studied topics to MedRevise if automatic mode is enabled
-        let shouldSync = questionsSyncMode === 'auto';
-        if (questionsSyncMode === 'manual') {
-          const consent = window.confirm("Você concluiu a sua sequência de questões! Deseja salvar e sincronizar automaticamente o seu aproveitamento de cada tópico estudado no MedRevise para agendar as próximas repetições espaçadas?");
-          if (consent) {
-            shouldSync = true;
-            updateQuestionsSyncMode('auto');
-          }
-        }
-
-        if (shouldSync) {
-          await syncQuizResultToMedRevise(questions, score, finalDuration, undefined, currentQuizResults);
-        }
-      } catch (err) {
-        console.warn('Firestore write failed, saved in local-first cache:', err);
-      }
+      finalizeSession(currentSessionId, quizAttempt, studySessionEntry, finalDuration, currentQuizResults, score);
     }
   };
 
@@ -2121,64 +2422,34 @@ export default function QuestionModule({
     if (quizMode === 'exam') {
       await submitExam();
     } else {
+      if (completedSessionIds.has(currentSessionId)) return;
+      markSessionCompleted(currentSessionId);
       setShowResults(true);
       setIsActive(false);
-      clearPausedSession();
 
-      const finalDuration = Math.max(15, seconds);
-      const totalAnsweredSoFar = Math.max(1, currentQuizResults.length);
-      const quizAttempt = {
-        id: Math.random().toString(36).substr(2, 9),
-        userId,
-        subjectIds: selectedSubjectIds.length > 0 ? selectedSubjectIds : [...new Set(questions.map(q => q.subjectId).filter(Boolean) as string[])],
-        topicIds: selectedTopicIds,
+      const finalDuration = seconds;
+      const quizAttempt: QuizAttempt = {
+        id: `${userId || 'guest'}_${currentSessionId}`,
+        userId: userId || 'guest',
+        sessionId: currentSessionId,
+        subjectIds: Array.from(new Set(questions.map(q => q.subjectId).filter(Boolean))) as string[],
+        topicIds: Array.from(new Set(questions.map(q => q.topicId).filter(Boolean))) as string[],
         questions: currentQuizResults,
         score,
-        totalQuestions: totalAnsweredSoFar,
+        totalQuestions: questions.length,
         timeSpentSeconds: finalDuration,
         timestamp: new Date().toISOString(),
-        type: selectedSubjectIds.length > 1 ? 'simulado' : 'individual' as any
+        type: 'individual'
       };
-
       const studySessionEntry = {
-        id: Math.random().toString(36).substr(2, 9),
-        subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || 'geral',
-        startTime: new Date(Date.now() - finalDuration * 1000).toISOString(),
-        durationSeconds: finalDuration
+        id: currentSessionId,
+        date: new Date().toISOString(),
+        studyTimeMinutes: Math.max(1, Math.round(finalDuration / 60)),
+        questionsCount: currentQuizResults.length,
+        correctCount: score,
+        type: 'simulado'
       };
-
-      if (onProgressUpdate && userProgress) {
-        onProgressUpdate({
-          totalStudyTimeSeconds: (userProgress.totalStudyTimeSeconds || 0) + finalDuration,
-          quizHistory: [...(userProgress.quizHistory || []), quizAttempt],
-          studySessions: [...(userProgress.studySessions || []), studySessionEntry]
-        });
-      }
-
-      try {
-        await addDoc(collection(db, 'quizAttempts'), quizAttempt);
-        const progressRef = doc(db, 'userProgress', userId);
-        await updateDoc(progressRef, {
-          totalStudyTimeSeconds: increment(finalDuration),
-          quizHistory: arrayUnion(quizAttempt),
-          studySessions: arrayUnion(studySessionEntry)
-        });
-
-        let shouldSync = questionsSyncMode === 'auto';
-        if (questionsSyncMode === 'manual') {
-          const consent = window.confirm("Você finalizou o seu teste! Deseja salvar e sincronizar automaticamente o seu aproveitamento de cada tópico estudado no MedRevise para agendar as próximas repetições espaçadas?");
-          if (consent) {
-            shouldSync = true;
-            updateQuestionsSyncMode('auto');
-          }
-        }
-
-        if (shouldSync) {
-          await syncQuizResultToMedRevise(questions.slice(0, totalAnsweredSoFar), score, finalDuration, undefined, currentQuizResults);
-        }
-      } catch (err) {
-        console.warn('Firestore write failed on finish early:', err);
-      }
+      finalizeSession(currentSessionId, quizAttempt, studySessionEntry, finalDuration, currentQuizResults, score);
     }
   };
 
@@ -2190,6 +2461,10 @@ export default function QuestionModule({
   };
 
   const submitExam = async (overrideAnswers?: Record<string, number>) => {
+    if (completedSessionIds.has(currentSessionId)) return;
+    markSessionCompleted(currentSessionId);
+    setShowResults(true);
+    setIsActive(false);
     setLoading(true);
     try {
       const answersToUse = overrideAnswers || examAnswers;
@@ -2234,95 +2509,31 @@ export default function QuestionModule({
         updates.correctQuestionIds = arrayUnion(...correctIds);
       }
       
-      const finalExamDuration = Math.max(15, seconds);
-      const quizAttempt = {
-        id: Math.random().toString(36).substr(2, 9),
-        userId,
-        subjectIds: selectedSubjectIds.length > 0 ? selectedSubjectIds : [...new Set(questions.map(q => q.subjectId).filter(Boolean) as string[])],
-        topicIds: selectedTopicIds,
+      const finalExamDuration = timerType === 'down' ? Math.max(1, (countdownMinutes * 60) - secondsRemaining) : seconds;
+      const quizAttempt: QuizAttempt = {
+        id: `${userId || 'guest'}_${currentSessionId}`,
+        userId: userId || 'guest',
+        sessionId: currentSessionId,
+        subjectIds: Array.from(new Set(questions.map(q => q.subjectId).filter(Boolean))) as string[],
+        topicIds: Array.from(new Set(questions.map(q => q.topicId).filter(Boolean))) as string[],
         questions: quizResults,
         score: finalScore,
-        totalQuestions: quizResults.length,
+        totalQuestions: questions.length,
         timeSpentSeconds: finalExamDuration,
         timestamp: new Date().toISOString(),
-        type: 'simulado' as any
+        type: 'simulado'
       };
-
       const studySessionEntry = {
-        id: Math.random().toString(36).substr(2, 9),
-        subjectId: selectedSubjectIds[0] || questions[0]?.subjectId || 'geral',
-        startTime: new Date(Date.now() - finalExamDuration * 1000).toISOString(),
-        durationSeconds: finalExamDuration
+        id: currentSessionId,
+        date: new Date().toISOString(),
+        studyTimeMinutes: Math.max(1, Math.round(finalExamDuration / 60)),
+        questionsCount: questions.length,
+        correctCount: finalScore,
+        type: 'simulado'
       };
-      
-      updates.totalStudyTimeSeconds = increment(finalExamDuration);
-      updates.quizHistory = arrayUnion(quizAttempt);
-      updates.studySessions = arrayUnion(studySessionEntry);
-      
-      quizResults.forEach(r => {
-        if (r.subjectId) {
-          updates[`stats.subjectQuestions.${r.subjectId}`] = increment(1);
-        }
-      });
-
-      if (onProgressUpdate && userProgress) {
-        const localAttempts = { ...(userProgress.attempts || {}) };
-        quizResults.forEach(r => {
-          localAttempts[r.questionId] = r;
-        });
-        const localAnswered = Array.from(new Set([...(userProgress.answeredQuestionIds || []), ...answeredIds]));
-        const localCorrect = Array.from(new Set([...(userProgress.correctQuestionIds || []), ...correctIds]));
-        const localStats = { ...(userProgress.stats || {}) };
-        const subQ = { ...(localStats.subjectQuestions || {}) };
-        quizResults.forEach(r => {
-          if (r.subjectId) {
-            subQ[r.subjectId] = (subQ[r.subjectId] || 0) + 1;
-          }
-        });
-        localStats.subjectQuestions = subQ;
-
-        onProgressUpdate({
-          attempts: localAttempts,
-          answeredQuestionIds: localAnswered,
-          correctQuestionIds: localCorrect,
-          totalStudyTimeSeconds: (userProgress.totalStudyTimeSeconds || 0) + finalExamDuration,
-          quizHistory: [...(userProgress.quizHistory || []), quizAttempt],
-          studySessions: [...(userProgress.studySessions || []), studySessionEntry],
-          stats: localStats
-        });
-      }
-
-      setCurrentQuizResults(quizResults);
-      setScore(finalScore);
-      
-      try {
-        await addDoc(collection(db, 'quizAttempts'), quizAttempt);
-        await updateDoc(progressRef, updates);
-
-        // Sync tested/studied topics to MedRevise if automatic mode is enabled
-        let shouldSync = questionsSyncMode === 'auto';
-        if (questionsSyncMode === 'manual') {
-          const consent = window.confirm("Parabéns por concluir o simulado! Deseja salvar e sincronizar automaticamente o seu aproveitamento de cada tópico estudado no MedRevise para agendar as próximas repetições espaçadas?");
-          if (consent) {
-            shouldSync = true;
-            updateQuestionsSyncMode('auto');
-          }
-        }
-
-        if (shouldSync) {
-          await syncQuizResultToMedRevise(questions, finalScore, finalExamDuration, undefined, quizResults);
-        }
-      } catch (err) {
-        console.warn('Firestore write failed, saved in local-first cache:', err);
-      }
-      
-      setScore(finalScore);
-      setCurrentQuizResults(quizResults);
-      setShowResults(true);
-      setIsActive(false);
-      clearPausedSession();
-    } catch (err) {
-      console.error('Error submitting exam:', err);
+      finalizeSession(currentSessionId, quizAttempt, studySessionEntry, finalExamDuration, quizResults, finalScore);
+    } catch (e) {
+      console.error('Error submitting exam:', e);
     } finally {
       setLoading(false);
     }
@@ -2566,12 +2777,8 @@ export default function QuestionModule({
 
           if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
             for (const qData of newQuestions) {
-              const docRef = await addDoc(collection(db, 'questions'), {
-                ...qData,
-                topicId: topicId,
-                subjectId: subjectId
-              });
-              const qObj = { id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question;
+              const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              const qObj = { id: localId, ...qData, topicId: topicId, subjectId: subjectId } as Question;
               allAddedBatch.push(qObj);
             }
             safeLocalStorageRemove(`questions_topic_${topicId}`);
@@ -2651,12 +2858,8 @@ export default function QuestionModule({
 
         if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
           for (const qData of newQuestions) {
-            const docRef = await addDoc(collection(db, 'questions'), {
-              ...qData,
-              topicId: topicId,
-              subjectId: subjectId
-            });
-            initialBatch.push({ id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question);
+            const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            initialBatch.push({ id: localId, ...qData, topicId: topicId, subjectId: subjectId } as Question);
           }
           safeLocalStorageRemove(`questions_topic_${topicId}`);
           if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
@@ -2781,7 +2984,8 @@ export default function QuestionModule({
     setGeneratingTopicId(tid);
     try {
       const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
-      const existing = topicStatsMap[tid]?.questions?.map(q => q.text) || [];
+      const currentTopicQuestions = topicStatsMap[tid]?.questions || [];
+      const existing = currentTopicQuestions.map(q => q.text).filter(Boolean);
       const preset = (simuladoMode as string) === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
       const targetExam = preset ? preset.name : undefined;
 
@@ -2789,18 +2993,86 @@ export default function QuestionModule({
       if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
         const added: Question[] = [];
         for (const qData of newQuestions) {
-          const docRef = await addDoc(collection(db, 'questions'), {
+          const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const newQ: Question = {
+            id: localId,
             ...qData,
             topicId: topicId,
-            subjectId: subjectId
-          });
-          added.push({ id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question);
+            subjectId: subjectId,
+            source: qData.source || (targetExam ? `${targetExam} (Simulado)` : 'Questão Inédita (IA)')
+          } as Question;
+          added.push(newQ);
         }
-        safeLocalStorageRemove(`questions_topic_${topicId}`);
+
+        // Merge into local storage cache for this topic to preserve offline/session availability
+        const cached = safeLocalStorageGet(`questions_topic_${topicId}`);
+        let cachedList: Question[] = [];
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) cachedList = parsed;
+          } catch (e) {}
+        }
+        const previousTopicCount = currentTopicQuestions.length;
+        const mergedQuestions = deduplicateQuestions([...currentTopicQuestions, ...added]);
+        const effectivelyAdded = Math.max(0, mergedQuestions.length - previousTopicCount);
+
+        const updatedCache = deduplicateQuestions([...cachedList, ...mergedQuestions]);
+        safeLocalStorageSet(`questions_topic_${topicId}`, JSON.stringify(updatedCache));
         if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
-        
-        await loadSelectedTopicsStats([topicId]);
-        alert(`${added.length} novas questões foram geradas com sucesso para o tópico "${topicTitle}"!`);
+
+        // Update topicStatsMap directly with the new questions and recalculated metrics
+        setTopicStatsMap(prev => {
+          const currentData = prev[tid] || {
+            topicId,
+            topicTitle,
+            subjectName,
+            questions: [],
+            total: 0,
+            correct: 0,
+            incorrect: 0,
+            accuracy: 0,
+            loading: false
+          };
+          let correct = 0;
+          let incorrect = 0;
+          mergedQuestions.forEach(qDoc => {
+            const attempt = userProgress?.attempts?.[qDoc.id];
+            if (attempt) {
+              if (attempt.isCorrect) correct++;
+              else incorrect++;
+            }
+          });
+          const answeredTotal = correct + incorrect;
+          const accuracy = answeredTotal > 0 ? Math.round((correct / answeredTotal) * 100) : 0;
+
+          return {
+            ...prev,
+            [tid]: {
+              ...currentData,
+              questions: mergedQuestions,
+              total: mergedQuestions.length,
+              correct,
+              incorrect,
+              accuracy,
+              loading: false
+            }
+          };
+        });
+
+        // Also update the active questions pool if currently active or in selection
+        setQuestions(prev => {
+          if (prev.length > 0) {
+            return deduplicateQuestions([...prev, ...added]);
+          }
+          return prev;
+        });
+
+        if (effectivelyAdded > 0) {
+          alert(`${effectivelyAdded} nova(s) questão(ões) gerada(s) com sucesso para o tópico "${topicTitle}"!`);
+        } else {
+          alert(`As questões geradas já constavam no seu banco para o tópico "${topicTitle}". Nenhuma questão duplicada foi inserida.`);
+        }
       } else {
         alert('Não foi possível gerar mais questões para este tópico no momento.');
       }
@@ -2901,12 +3173,8 @@ export default function QuestionModule({
           if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
             const addedQuestions: Question[] = [];
             for (const qData of newQuestions) {
-              const docRef = await addDoc(collection(db, 'questions'), {
-                ...qData,
-                topicId: topicId,
-                subjectId: subjectId
-              });
-              addedQuestions.push({ id: docRef.id, ...qData, topicId: topicId, subjectId: subjectId } as Question);
+              const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              addedQuestions.push({ id: localId, ...qData, topicId: topicId, subjectId: subjectId } as Question);
             }
             allAdded.push(...addedQuestions);
             safeLocalStorageRemove(`questions_topic_${topicId}`);
@@ -3592,18 +3860,18 @@ export default function QuestionModule({
 
         <div className="bg-[#FBFBFA] p-8 rounded-2xl border border-[#E2E0D9] space-y-8">
           
-          {/* BANNER DE RIGOR E ORIGEM DAS QUESTÕES */}
-          <div className="bg-orange-50/50 border border-orange-100 rounded-2xl p-5 flex gap-4 items-start">
-            <div className="p-2 bg-orange-100/80 rounded-xl text-orange-600 shrink-0">
+          {/* BANNER INFORMATIVO SOBRE O BANCO DE ESTUDOS */}
+          <div className="bg-stone-50 border border-stone-200 rounded-2xl p-5 flex gap-4 items-start">
+            <div className="p-2 bg-stone-100 rounded-xl text-stone-700 shrink-0">
               <Sparkles className="w-5 h-5" />
             </div>
             <div className="space-y-1.5">
-              <h4 className="text-sm font-display font-bold text-orange-950">Rigor de Transcrição e Foco das Questões</h4>
-              <p className="text-xs text-orange-900/80 leading-relaxed font-medium">
-                As questões do nosso banco de simulados são transcritas <strong className="text-orange-950">integralmente e ipso litteris (ipsis litteris)</strong>, reproduzindo exatamente como caíram nas provas reais, sem qualquer abreviação, resumo ou simplificação didática.
+              <h4 className="text-sm font-display font-bold text-stone-900">Banco de Estudos e Prática de Questões</h4>
+              <p className="text-xs text-stone-700 leading-relaxed font-medium">
+                Este ambiente reúne questões do acervo e itens elaborados para treinamento e fixação pedagógica de conceitos médicos. Nem todas as questões correspondem a transcrições literais de exames oficiais históricos.
               </p>
-              <p className="text-xs text-orange-900/80 leading-relaxed font-medium">
-                Por diretriz pedagógica rigorosa, priorizamos de forma estrita questões dos últimos 5 anos de: <strong className="text-orange-950">SUS-GO, SES-DF, SES-GO, Hospital de Base de Brasília (HBDF) e ENARE</strong>. Questões de outras instituições nacionais recentes só serão incorporadas caso não haja questões suficientes destas cinco bancas prioritárias para o tema selecionado.
+              <p className="text-xs text-stone-600 leading-relaxed font-medium">
+                O módulo organiza o estudo priorizando bancas e temas de interesse clínico e de residência médica, com apoio às revisões espaçadas no MedRevise.
               </p>
             </div>
           </div>
@@ -4346,15 +4614,14 @@ export default function QuestionModule({
                       <Search className="w-4 h-4 text-amber-400" />
                     </span>
                     <h4 className="text-xs font-black uppercase tracking-wider text-stone-100">
-                      Auditoria de Disponibilidade do Acervo Oficial
+                      Disponibilidade no Acervo Local
                     </h4>
-                    <Badge className="bg-amber-500 text-[#1A1A1A] font-black text-[9px] px-2 py-0.5 gap-1">
-                      <Sparkles className="w-3 h-3 text-[#1A1A1A] fill-[#1A1A1A]" />
-                      5 Créditos
+                    <Badge className="bg-stone-700 text-stone-200 font-bold text-[9px] px-2 py-0.5">
+                      Contagem Local Auditável
                     </Badge>
                   </div>
                   <p className="text-[11px] text-stone-300 leading-relaxed font-normal">
-                    Realiza uma varredura rigorosa e mapeia a quantidade real de questões oficiais aplicadas de 2021 a 2026 nos temas selecionados.
+                    Mapeia as questões registradas localmente para os temas selecionados, sem custo de créditos e sem dados sintéticos.
                   </p>
                 </div>
 
@@ -4367,12 +4634,12 @@ export default function QuestionModule({
                   {runningAudit ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Auditando Acervo (5 cr)...
+                      Mapeando Acervo Local...
                     </>
                   ) : (
                     <>
                       <Search className="w-4 h-4" />
-                      {auditExecuted ? 'Refazer Auditoria (5 cr)' : 'Auditar Quantidade Disponível (5 cr)'}
+                      {auditExecuted ? 'Atualizar Contagem Local' : 'Mapear Acervo Local'}
                     </>
                   )}
                 </Button>
@@ -5498,6 +5765,12 @@ export default function QuestionModule({
                                           {q.source}
                                         </Badge>
                                       )}
+                                      {q.source && q.source.toLowerCase().includes('inédita') && (
+                                        <div className="text-[8.5px] bg-amber-50 border border-amber-200 text-amber-900 px-2 py-1 rounded-lg max-w-xs leading-tight flex items-start gap-1">
+                                          <AlertCircle className="w-3 h-3 text-amber-600 shrink-0 mt-0.5" />
+                                          <span>Não foram achadas questões oficiais nas bancas de preferência, então a IA criou uma semelhante.</span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
 
@@ -5527,6 +5800,22 @@ export default function QuestionModule({
                                     {q.text}
                                   </ReactMarkdown>
                                 </div>
+
+                                {/* Hierarchical Breadcrumb Tags */}
+                                {(() => {
+                                  const hierarchy = getQuestionHierarchy(q, subjects, topics);
+                                  return (
+                                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-[#8E8A82] bg-[#FAF9F6] border border-[#E2E0D9]/60 p-2.5 rounded-xl select-none">
+                                      <span className="text-pink-600 bg-pink-50/80 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-black">{hierarchy.subjectName}</span>
+                                      <span className="text-stone-300 font-normal">/</span>
+                                      <span className="text-purple-600 bg-purple-50/80 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-black">{hierarchy.subSubject}</span>
+                                      <span className="text-stone-300 font-normal">/</span>
+                                      <span className="text-primary bg-primary/5 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-black">{hierarchy.topicName}</span>
+                                      <span className="text-stone-300 font-normal">/</span>
+                                      <span className="text-amber-800 bg-amber-50/80 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-black">{hierarchy.subtopicTag}</span>
+                                    </div>
+                                  );
+                                })()}
 
                                 <div className="space-y-2.5 pt-2">
                                   {q.options.map((opt, optIdx) => {
@@ -5639,6 +5928,22 @@ export default function QuestionModule({
                                 QUESTÃO {idx + 1}
                               </Badge>
                               <h4 className="text-xl font-display font-bold leading-tight">{q.text}</h4>
+
+                              {/* Hierarchical Breadcrumb Tags */}
+                              {(() => {
+                                const hierarchy = getQuestionHierarchy(q, subjects, topics);
+                                return (
+                                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-[#8E8A82] bg-[#FAF9F6] border border-[#E2E0D9]/50 p-2.5 rounded-xl select-none mt-2">
+                                    <span className="text-pink-600 bg-pink-50/80 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-black">{hierarchy.subjectName}</span>
+                                    <span className="text-stone-300 font-normal">/</span>
+                                    <span className="text-purple-600 bg-purple-50/80 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-black">{hierarchy.subSubject}</span>
+                                    <span className="text-stone-300 font-normal">/</span>
+                                    <span className="text-primary bg-primary/5 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-black">{hierarchy.topicName}</span>
+                                    <span className="text-stone-300 font-normal">/</span>
+                                    <span className="text-amber-800 bg-amber-50/80 px-1.5 py-0.5 rounded-md text-[9px] uppercase font-black">{hierarchy.subtopicTag}</span>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -6327,17 +6632,36 @@ export default function QuestionModule({
 
                   const institutionStr = q.institution || q.exam || (instMatch || rawSource);
 
+                  const isAiGenerated = q.provenanceType === 'model_generated' || String(q.id || '').startsWith('gen_q_') || rawSource.toLowerCase().includes('inédita');
+
                   return (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary" className="bg-amber-500/10 text-amber-900 border border-amber-300/80 text-[10px] font-black uppercase tracking-wider px-3 py-1 flex items-center gap-1.5 shadow-xs">
-                        <Building2 className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Prova / Banca: <strong>{institutionStr}</strong></span>
-                      </Badge>
-                      {yearStr && (
-                        <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-900 border border-indigo-300/80 text-[10px] font-black uppercase tracking-wider px-3 py-1 flex items-center gap-1.5 shadow-xs">
-                          <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>Ano de Cobrança: <strong>{yearStr}</strong></span>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary" className="bg-amber-500/10 text-amber-900 border border-amber-300/80 text-[10px] font-black uppercase tracking-wider px-3 py-1 flex items-center gap-1.5 shadow-xs">
+                          <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                          <span>{isAiGenerated ? 'Estilo de Banca (IA): ' : 'Prova / Banca: '}<strong>{institutionStr}</strong></span>
                         </Badge>
+                        {yearStr && (
+                          <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-900 border border-indigo-300/80 text-[10px] font-black uppercase tracking-wider px-3 py-1 flex items-center gap-1.5 shadow-xs">
+                            <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>{isAiGenerated ? 'Ano Referência (IA): ' : 'Ano de Cobrança: '}<strong>{yearStr}</strong></span>
+                          </Badge>
+                        )}
+                        {isAiGenerated && (
+                          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-black uppercase tracking-wider px-3 py-1 flex items-center gap-1.5 shadow-xs">
+                            <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                            <span>Questão Inédita (IA)</span>
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      {isAiGenerated && (
+                        <div className="text-[10px] bg-amber-50 border border-amber-200 text-amber-950 px-3.5 py-2.5 rounded-xl mt-1 max-w-xl leading-relaxed flex items-start gap-2 shadow-2xs group relative cursor-help">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <strong>Questão Inédita Simulada por IA:</strong> Esta questão foi elaborada por inteligência artificial com base no perfil de cobrança da banca. Não representa uma questão oficial transcrita.
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
@@ -6387,7 +6711,11 @@ export default function QuestionModule({
             {/* Estatísticas de Incidência Regional & Termômetro de Calor */}
             <div className="px-4 sm:px-6 md:px-8 lg:px-12 py-4 sm:py-5 border-b border-[#E2E0D9] bg-[#FBFCFB] flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
               <div className="flex items-center gap-3">
-                <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Termômetro de Interest:</span>
+                <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
+                  {currentQuestion.provenanceType === 'model_generated' || String(currentQuestion.id || '').startsWith('gen_q_') 
+                    ? 'Termômetro de Interesse (Estimativa IA):' 
+                    : 'Termômetro de Interest:'}
+                </span>
                 <div className="flex items-center gap-1.5 bg-white border border-[#E2E0D9] px-3.5 py-1 rounded-full shadow-sm">
                   <span className={cn(
                     "inline-block w-2.5 h-2.5 rounded-full",
@@ -6402,21 +6730,19 @@ export default function QuestionModule({
               </div>
 
               <div className="flex flex-wrap gap-2 justify-start md:justify-end items-center">
-                <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Incidência Regional Estimada:</span>
-                {currentQuestion.regionalIncidenceStats ? (
+                <span className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">
+                  {currentQuestion.provenanceType === 'model_generated' || String(currentQuestion.id || '').startsWith('gen_q_') 
+                    ? 'Incidência Regional Estimada (IA):' 
+                    : 'Incidência Regional:'}
+                </span>
+                {currentQuestion.regionalIncidenceStats && Object.keys(currentQuestion.regionalIncidenceStats).length > 0 ? (
                   Object.entries(currentQuestion.regionalIncidenceStats).map(([banca, count], idx) => (
                     <Badge key={`reg-inc-${banca}-${idx}`} variant="outline" className="bg-white border-[#E2E0D9] text-[#1A1A1A] text-[9px] font-extrabold px-2 py-0.5 rounded-lg shadow-sm">
                       {banca}: <span className="text-primary font-black ml-1">+{count}x</span>
                     </Badge>
                   ))
                 ) : (
-                  <>
-                    {candidatePreferredBancas.slice(0, 3).map((b, bIdx) => (
-                      <Badge key={`dyn-banca-${b}-${bIdx}`} variant="outline" className="bg-white border-[#E2E0D9] text-[#1A1A1A] text-[9px] font-extrabold px-2 py-0.5 rounded-lg shadow-2xs">
-                        {b}: <span className="text-amber-600 font-black ml-1">+{12 - bIdx * 3}x</span>
-                      </Badge>
-                    ))}
-                  </>
+                  <span className="text-[10px] font-semibold text-[#8E8A82] italic">Não disponível</span>
                 )}
               </div>
             </div>
@@ -6467,8 +6793,36 @@ export default function QuestionModule({
                 </ReactMarkdown>
               </div>
 
+              {/* Hierarchical Breadcrumb Tags */}
+              {(() => {
+                const hierarchy = getQuestionHierarchy(currentQuestion, subjects, topics);
+                return (
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-[#8E8A82] bg-stone-50 border border-[#E2E0D9]/70 p-4 rounded-xl mb-6 select-none shadow-2xs">
+                    <span className="text-pink-600 bg-pink-50/80 px-2.5 py-1 rounded-lg text-[10px] uppercase font-black tracking-wider border border-pink-100">{hierarchy.subjectName}</span>
+                    <span className="text-stone-300 font-normal">/</span>
+                    <span className="text-purple-600 bg-purple-50/80 px-2.5 py-1 rounded-lg text-[10px] uppercase font-black tracking-wider border border-purple-100">{hierarchy.subSubject}</span>
+                    <span className="text-stone-300 font-normal">/</span>
+                    <span className="text-primary bg-primary/5 px-2.5 py-1 rounded-lg text-[10px] uppercase font-black tracking-wider border border-primary/10">{hierarchy.topicName}</span>
+                    <span className="text-stone-300 font-normal">/</span>
+                    <span className="text-amber-800 bg-amber-50/80 px-2.5 py-1 rounded-lg text-[10px] uppercase font-black tracking-wider border border-amber-100">{hierarchy.subtopicTag}</span>
+                  </div>
+                );
+              })()}
+
               {/* Casos Especiais de Gabarito: Divergência, Discordância ou Recursos */}
-              {currentQuestion.gabaritoConflict ? (
+              {currentQuestion.provenanceType === 'model_generated' || String(currentQuestion.id || '').startsWith('gen_q_') ? (
+                <div className="p-4 rounded-xl text-xs border bg-slate-50 border-slate-200 text-slate-700 flex items-start gap-3 mb-4">
+                  <Sparkles className="w-4.5 h-4.5 shrink-0 mt-0.5 text-purple-600" />
+                  <div className="space-y-0.5">
+                    <div className="font-black uppercase tracking-wider text-[8px] text-slate-500">
+                      GABARITO SUGERIDO PELA IA
+                    </div>
+                    <p className="text-xs leading-relaxed text-slate-600">
+                      Questão inédita gerada por inteligência artificial — o gabarito é uma sugestão técnica do modelo e não representa consenso oficial de banca.
+                    </p>
+                  </div>
+                </div>
+              ) : currentQuestion.gabaritoConflict ? (
                 <div className={cn(
                   "p-5 rounded-2xl text-xs border flex items-start gap-4 mb-6",
                   currentQuestion.gabaritoConflict.hasConflict
@@ -6487,12 +6841,20 @@ export default function QuestionModule({
                     </p>
                   </div>
                 </div>
-              ) : (
+              ) : currentQuestion.provenanceType === 'verified_official' ? (
                 <div className="p-4 rounded-xl text-xs border bg-green-50/30 border-green-100 text-green-900 flex items-start gap-3 mb-4">
                   <Brain className="w-4.5 h-4.5 shrink-0 mt-0.5 text-green-600" />
                   <div className="space-y-0.5">
-                    <div className="font-black uppercase tracking-wider text-[8px] text-[#8E8A82]">GABARITO PRINCIPAL</div>
-                    <p className="text-xs leading-relaxed text-[#5C5954]">Questão oficial consolidada, com gabarito oficial consensual e mantido na fase pós-recursos.</p>
+                    <div className="font-black uppercase tracking-wider text-[8px] text-[#8E8A82]">GABARITO PRINCIPAL VERIFICADO</div>
+                    <p className="text-xs leading-relaxed text-[#5C5954]">Questão oficial consolidada, com gabarito oficial mantido pela banca examinadora.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl text-xs border bg-stone-50 border-stone-200 text-stone-700 flex items-start gap-3 mb-4">
+                  <Brain className="w-4.5 h-4.5 shrink-0 mt-0.5 text-stone-500" />
+                  <div className="space-y-0.5">
+                    <div className="font-black uppercase tracking-wider text-[8px] text-stone-500">ORIGEM OFICIAL NÃO VERIFICADA</div>
+                    <p className="text-xs leading-relaxed text-stone-600">Questão cadastrada no acervo. Origem oficial não confirmada documentalmente.</p>
                   </div>
                 </div>
               )}

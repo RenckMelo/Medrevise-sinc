@@ -56,7 +56,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 4, initia
   throw lastError;
 }
 
-async function getUserFocusSettings(userId?: string) {
+export async function getUserFocusSettings(userId?: string) {
   let residencyFocus = "ENARE, USP-SP, UNICAMP, PSU-MG, SES-DF, AMRIGS";
   let isCustom = false;
   
@@ -93,14 +93,14 @@ async function getUserFocusSettings(userId?: string) {
   return { residencyFocus, isCustom };
 }
 
-async function callGemini(action: 'generateContent' | 'generateJson', prompt: string, model: string = "gemini-3.1-flash-lite", parts?: any[]) {
+async function callGeminiWithMetadata(action: 'generateContent' | 'generateJson', prompt: string, model: string = "gemini-3.1-flash-lite", parts?: any[], tools?: any[]) {
   return withRetry(async () => {
     try {
       const endpoint = '/api/gemini';
       const userEmail = auth.currentUser?.email || '';
       const preferredProvider = safeLocalStorageGet('user_preferred_ai_provider') || 'auto';
       
-      let response = await fetch(endpoint, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -112,30 +112,11 @@ async function callGemini(action: 'generateContent' | 'generateJson', prompt: st
             prompt,
             model,
             parts,
-            preferredProvider
+            preferredProvider,
+            tools
           }
         })
       });
-
-      // Special handling for 404: try direct function path as fallback on Netlify
-      if (response.status === 404) {
-        console.warn('[Gemini] Proxy endpoint 404. Attempting direct Netlify function call...');
-        const directEndpoint = '/.netlify/functions/gemini';
-        response = await fetch(directEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            action,
-            payload: {
-              prompt,
-              model,
-              parts
-            }
-          })
-        });
-      }
 
       const responseText = await response.text();
       const trimmedText = (responseText || '').trim();
@@ -176,7 +157,11 @@ async function callGemini(action: 'generateContent' | 'generateJson', prompt: st
       }
 
       const data = JSON.parse(responseText);
-      return data.result;
+      return {
+        result: data.result,
+        groundingMetadata: data.groundingMetadata || null,
+        providerInfo: data.providerInfo || null
+      };
     } catch (error: any) {
       console.error('Gemini Proxy Error Details:', {
         message: error.message,
@@ -192,6 +177,11 @@ async function callGemini(action: 'generateContent' | 'generateJson', prompt: st
       throw error;
     }
   });
+}
+
+async function callGemini(action: 'generateContent' | 'generateJson', prompt: string, model: string = "gemini-3.1-flash-lite", parts?: any[], tools?: any[]) {
+  const res = await callGeminiWithMetadata(action, prompt, model, parts, tools);
+  return res.result;
 }
 
 function getTodayDateString(): string {
@@ -1248,15 +1238,22 @@ export async function generateQuestions(
     const currentChunkSize = Math.min(chunkSize, remaining);
     
     const chunkPrompt = `Você é uma autoridade em concursos de residência médica no Brasil e um banco de dados de exames de seleção médica.
-    Sua tarefa é recuperar e fornecer exatamente ${currentChunkSize} questões autênticas, completas e de alto nível para exames de residência médica sobre o tema "${topicTitle}" (${area}).
+    Sua tarefa é usar a sua ferramenta de busca GOOGLE SEARCH para encontrar exatamente ${currentChunkSize} questões autênticas, reais e oficiais de residência médica sobre o tema "${topicTitle}" (${area}).
     ${targetExam && targetExam !== 'all' ? `BANCA ESPECÍFICA SOLICITADA: **${targetExam}** ${targetYear ? `(ANO ${targetYear})` : ''}` : ''}
     
+    DIRETRIZES DE ENGENHARIA DE BUSCA (ESTRATÉGIA 2):
+    - Você DEVE formular buscas altamente eficientes na internet para recuperar as questões idênticas, como por exemplo:
+      - site:questoes.grancursosonline.com.br "${targetExam || bancasToUse[0]}" "${topicTitle}"
+      - site:tecconcursos.com.br "${targetExam || bancasToUse[0]}" "${topicTitle}" "residência"
+      - "${targetExam || bancasToUse[0]}" "${targetYear || '2024'}" "caso clínico" "${topicTitle}" "Alternativa"
+    - Examine os resultados da busca para extrair e recompor as questões exatamente como elas foram aplicadas no vestibular.
+
     EXIGÊNCIA DE REPRODUÇÃO 100% VERBATIM E RIGOROSAMENTE IDÊNTICA À PROVA OFICIAL:
     - As questões recuperadas DEVEM ser rigorosamente IDÊNTICAS e NA ÍNTEGRA às questões reais que efetivamente caíram na prova oficial de residência médica da banca e ano solicitados.
     - O enunciado ("text"), as dados do paciente, sinais vitais, comorbidades, achados de exames laboratoriais/imagem, a pergunta e cada uma das alternativas em "options" (A, B, C, D) DEVEM SER COPIADOS PALAVRA POR PALAVRA do gabarito/caderno de prova oficial.
     - GARANTIA DE BUSCA POSTERIOR: Se o aluno copiar qualquer trecho do enunciado ou das alternativas e pesquisar na internet ou em PDFs oficiais da banca, ele DEVE encontrar exatamente a mesma questão idêntica com as mesmas opções.
 
-    REGRA RÍGIDA DE ROTATIVIDADE E CASCATA DE BANCAS (CAMPO "source"):
+    REGRA RÍGIDA DE CASCATA DE BANCAS (ESTRATÉGIA 1):
     ${targetExam && targetExam !== 'all' 
       ? `Todas as questões geradas neste lote devem ser obrigatoriamente da banca **${targetExam}** ${targetYear ? `(ano ${targetYear})` : '(anos 2021 a 2026)'}.` 
       : `1ª PRIORIDADE OBRIGATÓRIA - ROTATIVIDADE ENTRE AS BANCAS DO CANDIDATO (${bancasToUse.join(', ')}):
@@ -1271,7 +1268,7 @@ export async function generateQuestions(
     - Se e somente se a soma de TODAS as bancas selecionadas pelo candidato não possuir questões reais suficientes do tema "${topicTitle}", busque questões reais de outras grandes bancas oficiais do Brasil (ex: ENARE, USP-SP, UNICAMP, UNIFESP, PSU-MG, SUS-SP, AMRIGS, AMP, SURCE, UFG, UnB). Indique a banca real no campo "source".
 
     4ª PRIORIDADE - QUESTÃO INÉDITA NO ESTILO DA BANCA (ÚLTIMO RECURSO ABSOLUTO):
-    - Apenas se não existir nenhuma questão real de concurso público sobre este tema em nenhuma banca reconhecida no Brasil, elabore uma questão inédita no estilo exato da banca prioritária e identifique o "source" como "Inédita Estilo [BANCA] (2026)".`}
+    - Apenas se não existir nenhuma questão real de concurso público sobre este tema em nenhuma banca reconhecida no Brasil, elabore uma questão inédita no estilo exato da banca prioritária e identifique o "source" como "Inédita Estilo [BANCA] (2026)" (onde BANCA é preferencialmente uma das bancas de interesse). NUNCA invente que uma questão inédita caiu em uma prova real! Se não for real, ela DEVE ser rotulada como "Inédita".`}
 
     ATENÇÃO ABSOLUTA DE IDIOMA E ESTRUTURA:
     - TODO o conteúdo gerado (enunciado "text", alternativas "options", explicação "explanation", "frequentMistakesExplanation", etc.) DEVE estar rigorosamente escrito em PORTUGUÊS DO BRASIL.
@@ -1298,6 +1295,8 @@ export async function generateQuestions(
         "correctOptionIndex": 0,
         "explanation": "Comentário técnico minucioso e fundamentado em português...",
         "source": "${targetExam ? `${targetExam} (${targetYear || 2024})` : 'BANCA_SELECIONADA (ANO)'}",
+        "subSubject": "Sub-especialidade ou Sub-área detalhada (ex: Gastroenterologia Pediátrica, Obstetrícia Patológica, Traumatologia, etc.) em português...",
+        "subtopicTag": "Conceito específico e ultra-focado abordado (ex: Plano A, B e C, Sulfato de Magnésio, Diretrizes SBP) em português...",
         "regionalIncidenceStats": {
           "${bancasToUse[0] || 'ENARE'}": 12,
           "${bancasToUse[1] || 'USP-SP'}": 8,
@@ -1313,7 +1312,10 @@ export async function generateQuestions(
     ]`;
 
     try {
-      let result = await callGemini('generateJson', chunkPrompt);
+      let geminiRes = await callGeminiWithMetadata('generateJson', chunkPrompt, 'gemini-3.1-flash-lite', undefined, [{ googleSearch: {} }]);
+      let result = geminiRes.result;
+      let chunkGroundingMetadata = geminiRes.groundingMetadata;
+      let chunkProviderInfo = geminiRes.providerInfo;
       
       // Helper to normalize JSON objects into flat question array if provider returns wrapped object
       const normalizeQuestionArray = (resData: any): any[] => {
@@ -1335,14 +1337,29 @@ export async function generateQuestions(
       if (normalizedQuestions.length === 0) {
         // Fallback retry with simplified prompt
         const retryPrompt = `Gere exatamente ${currentChunkSize} questões de residência médica sobre "${topicTitle}" (${area}) em formato de array JSON estrito [...].\n` + chunkPrompt;
-        const retryResult = await callGemini('generateJson', retryPrompt);
-        normalizedQuestions = normalizeQuestionArray(retryResult);
+        const retryRes = await callGeminiWithMetadata('generateJson', retryPrompt);
+        normalizedQuestions = normalizeQuestionArray(retryRes.result);
+        if (retryRes.groundingMetadata) chunkGroundingMetadata = retryRes.groundingMetadata;
+        if (retryRes.providerInfo) chunkProviderInfo = retryRes.providerInfo;
       }
 
       if (normalizedQuestions.length > 0) {
         for (const q of normalizedQuestions) {
           if (q && q.text && q.options && Array.isArray(q.options)) {
-            allQuestions.push(q);
+            const rawSource = String(q.source || '').trim();
+            // Structurally enforce model_generated for all AI-generated questions per Rule B.2 & B.4
+            const provenanceType: 'verified_official' | 'unverified_real' | 'model_generated' | 'unknown' = 'model_generated';
+            const formattedSource = rawSource ? (rawSource.toLowerCase().includes('inédita') || rawSource.toLowerCase().includes('ia') ? rawSource : `Inédita (IA): ${rawSource}`) : 'Questão Inédita (IA)';
+
+            const enhancedQ = {
+              ...q,
+              source: formattedSource,
+              provenanceType,
+              groundingMetadata: chunkGroundingMetadata || undefined,
+              providerInfo: chunkProviderInfo || undefined
+            };
+
+            allQuestions.push(enhancedQ);
             currentExisting.push((q.text || '').substring(0, 70));
           }
         }
@@ -1370,58 +1387,12 @@ export async function generateQuestions(
 }
 
 export async function analyzeBancaYearAvailability(
-  topicTitles: string[] = [],
-  subjectNames: string[] = []
+  _topicTitles: string[] = [],
+  _subjectNames: string[] = []
 ): Promise<{ availabilityMap: Record<string, number>; cost: number }> {
-  const auditCost = 5;
-  await checkUsageLimit(auditCost);
-
-  const topicsStr = topicTitles.length > 0 ? topicTitles.join(', ') : 'Geral (Todos os Tópicos Selecionados)';
-  const subjectsStr = subjectNames.length > 0 ? subjectNames.join(', ') : 'Grandes Áreas da Medicina';
-
-  const prompt = `Você é um auditor sênior dos arquivos e acervos oficiais de provas de residência médica no Brasil.
-Sua missão é auditar a quantidade ESTIMADA REALISTA de questões oficiais da prova de residência médica aplicadas entre 2021 e 2026 para os temas:
-Temas Selecionados: ${topicsStr}
-Áreas: ${subjectsStr}
-
-Bancas a Auditar:
-ENARE, SES-DF, SES-GO, USP, UNIFESP, UNICAMP, SUS-SP, PSU-MG, AMRIGS, AMP, SURCE, UFG, UnB, HBDF, UERJ, IAMSPE.
-
-REGRA RÍGIDA DE REALISMO E TETO MÁXIMO POR ANO:
-- Numa prova oficial de residência de 100 questões divididas entre 5 grandes áreas, a quantidade de questões de um único assunto em um ano específico varia de 2 a 8 questões.
-- Se o usuário selecionou uma área inteira (ex: Pediatria), a quantidade nessa prova varia de 12 a 20 questões no máximo.
-- NUNCA retorne números inflados ou irreais (como +50 ou +100 questões por ano para uma única banca e tema). O valor por chave DEVE ESTAR ESTRITAMENTE ENTRE 1 E 20.
-
-Retorne APENAS um objeto JSON em que cada chave é no formato exatamente "SIGLA_ANO" (exemplo: "ENARE_2025", "SES-DF_2024", "USP_2024") e o valor é um número inteiro realista entre 1 e 20.
-
-Exemplo de formato de resposta JSON:
-{
-  "ENARE_2026": 8,
-  "ENARE_2025": 10,
-  "ENARE_2024": 9,
-  "SES-DF_2025": 7,
-  "SES-DF_2024": 8,
-  "SES-GO_2025": 6,
-  "USP_2024": 12
-}`;
-
-  try {
-    const response = await callGemini('generateJson', prompt);
-    let availabilityMap: Record<string, number> = {};
-    if (response && typeof response === 'object' && !Array.isArray(response)) {
-      for (const [key, val] of Object.entries(response)) {
-        if (typeof val === 'number' && !isNaN(val)) {
-          // Strictly cap realistic estimates between 1 and 20 per banca/year
-          availabilityMap[key] = Math.max(1, Math.min(20, Math.round(val)));
-        }
-      }
-    }
-    await recordUsage(auditCost);
-    return { availabilityMap, cost: auditCost };
-  } catch (err: any) {
-    console.error("Error analyzing banca year availability:", err);
-    throw new Error(err?.message || "Erro ao realizar auditoria de acervo de bancas.");
-  }
+  // Fase 1 de Contenção: Interrompida a geração sintética de contagens de acervo por LLM.
+  // Nenhum crédito é debitado da conta do usuário. A disponibilidade deve refletir estritamente dados locais auditáveis.
+  return { availabilityMap: {}, cost: 0 };
 }
 
 export function calculateFlashcardCreditCost(cardsCount: number): number {

@@ -1,24 +1,22 @@
 import React, { useState } from 'react';
-import { 
-  BookOpen, 
-  Layers, 
-  HelpCircle, 
-  Compass, 
-  FileText, 
-  Calendar, 
-  Brain, 
-  Target, 
-  Zap, 
-  CheckCircle2, 
-  Sparkles, 
-  ArrowRight, 
-  ShieldCheck, 
-  Lock, 
-  GraduationCap,
-  MousePointer,
-  ChevronDown,
-  X
-} from 'lucide-react';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import Compass from 'lucide-react/dist/esm/icons/compass.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import Target from 'lucide-react/dist/esm/icons/target.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import Lock from 'lucide-react/dist/esm/icons/lock.js';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap.js';
+import MousePointer from 'lucide-react/dist/esm/icons/mouse-pointer.js';
+import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface HowToUseViewProps {

@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Check, ArrowRight, ArrowLeft, BookOpen, Stethoscope, AlertTriangle, ShieldCheck, Trash2, Plus, CheckCircle2, Loader2, Award } from 'lucide-react';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Stethoscope from 'lucide-react/dist/esm/icons/stethoscope.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';

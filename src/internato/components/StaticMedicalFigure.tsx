@@ -1,5 +1,12 @@
 import React from 'react';
-import { Search, ExternalLink, Eye, RotateCw, Trash2, Link, BookOpen, AlertCircle } from 'lucide-react';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import ExternalLink from 'lucide-react/dist/esm/icons/external-link.js';
+import Eye from 'lucide-react/dist/esm/icons/eye.js';
+import RotateCw from 'lucide-react/dist/esm/icons/rotate-cw.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Link from 'lucide-react/dist/esm/icons/link.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
 
 interface StaticMedicalFigureProps {
   description: string;

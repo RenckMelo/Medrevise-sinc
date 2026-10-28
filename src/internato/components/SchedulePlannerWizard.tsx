@@ -1,28 +1,26 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  Sparkles, 
-  Check, 
-  ArrowRight, 
-  ArrowLeft, 
-  BookOpen, 
-  GraduationCap, 
-  Award, 
-  Clock, 
-  Calendar as CalendarIcon, 
-  CheckCircle2, 
-  RotateCw, 
-  Layers, 
-  ListOrdered, 
-  Plus, 
-  Trash2, 
-  FileText, 
-  Zap, 
-  AlertCircle,
-  X,
-  Search,
-  Eye,
-  ListFilter
-} from 'lucide-react';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import CalendarIcon from 'lucide-react/dist/esm/icons/calendar.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import RotateCw from 'lucide-react/dist/esm/icons/rotate-cw.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import ListOrdered from 'lucide-react/dist/esm/icons/list-ordered.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import Eye from 'lucide-react/dist/esm/icons/eye.js';
+import ListFilter from 'lucide-react/dist/esm/icons/list-filter.js';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';

@@ -1,9 +1,9 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { 
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
-  signOut, 
+  signOut as realSignOut, 
   signInAnonymously, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -20,18 +20,224 @@ import {
   query as realQuery,
   where as realWhere
 } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize standard client-side Firebase for Authentication and Firestore migration
-const app = initializeApp(firebaseConfig);
+// Carregamento estático da configuração do applet via macro de compilação do Vite
+// Sem verificação em runtime de import.meta.glob, garantindo que o bundle resolva estaticamente o JSON
+const appletConfigs: Record<string, any> = (import.meta as any).glob('../firebase-applet-config.json', { eager: true });
+const rawAppletConfig = appletConfigs['../firebase-applet-config.json'];
+const firebaseConfig: Record<string, any> | null = (rawAppletConfig && (rawAppletConfig.default || rawAppletConfig)) || null;
+export { firebaseConfig };
+
+// Validacao estrita de ambiente de execucao
+const metaEnv = (import.meta as any).env || (typeof process !== 'undefined' ? process.env : {});
+const appEnv = metaEnv.VITE_APP_ENV;
+
+const TEST_FIREBASE_PROJECT_ID = 'teste-migracao-e7027';
+const TEST_SUPABASE_URL = 'https://xoijnmpadomzxoftjune.supabase.co';
+
+const PROD_FIREBASE_PROJECT_ID = 'gen-lang-client-0128984368';
+const PROD_SUPABASE_URL = 'https://jhttjndhjzpfphqxjiao.supabase.co';
+const PROD_FIRESTORE_DATABASE_ID = 'ai-studio-91f1d7eb-cec1-4159-8148-4ba7d6a63b82';
+
+interface ActiveFirebaseConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  appId: string;
+  firestoreDatabaseId?: string;
+}
+
+let activeFirebaseConfig: ActiveFirebaseConfig;
+let activeSupabaseUrl: string;
+let activeSupabaseAnonKey: string;
+
+const isTestConfigured = metaEnv.VITE_TEST_FIREBASE_API_KEY && 
+                        metaEnv.VITE_TEST_FIREBASE_AUTH_DOMAIN && 
+                        metaEnv.VITE_TEST_FIREBASE_PROJECT_ID && 
+                        metaEnv.VITE_TEST_FIREBASE_APP_ID;
+
+if (appEnv === 'test') {
+  if (!isTestConfigured) {
+    throw new Error('[Environment Error] VITE_APP_ENV="test" configurado, mas as credenciais de teste (VITE_TEST_FIREBASE_*) não foram fornecidas. Fallback para produção bloqueado.');
+  }
+  const testApiKey = metaEnv.VITE_TEST_FIREBASE_API_KEY;
+  const testAuthDomain = metaEnv.VITE_TEST_FIREBASE_AUTH_DOMAIN;
+  const testProjectId = metaEnv.VITE_TEST_FIREBASE_PROJECT_ID;
+  const testAppId = metaEnv.VITE_TEST_FIREBASE_APP_ID;
+  const testDbId = metaEnv.VITE_TEST_FIREBASE_DATABASE_ID;
+  const testSupaUrl = metaEnv.VITE_TEST_SUPABASE_URL;
+  const testSupaAnonKey = metaEnv.VITE_TEST_SUPABASE_ANON_KEY;
+
+  if (testProjectId !== TEST_FIREBASE_PROJECT_ID) {
+    throw new Error('[Environment Error] Test Firebase Project ID mismatch. Expected "teste-migracao-e7027".');
+  }
+
+  if (!testSupaUrl || testSupaUrl !== TEST_SUPABASE_URL) {
+    throw new Error('[Environment Error] Test Supabase URL mismatch. Expected "https://xoijnmpadomzxoftjune.supabase.co".');
+  }
+
+  if (!testSupaAnonKey) {
+    throw new Error('[Environment Error] Missing required test Supabase anon key.');
+  }
+
+  const trimmedTestDbId = typeof testDbId === 'string' ? testDbId.trim() : '';
+  if (!trimmedTestDbId) {
+    throw new Error('[Environment Error] Missing or empty required test Firestore database ID (VITE_TEST_FIREBASE_DATABASE_ID).');
+  }
+
+  activeFirebaseConfig = {
+    apiKey: testApiKey,
+    authDomain: testAuthDomain,
+    projectId: testProjectId,
+    appId: testAppId,
+    firestoreDatabaseId: trimmedTestDbId
+  };
+  activeSupabaseUrl = testSupaUrl;
+  activeSupabaseAnonKey = testSupaAnonKey;
+} else if (appEnv === 'production') {
+  const prodApiKey = metaEnv.VITE_FIREBASE_API_KEY;
+  const prodAuthDomain = metaEnv.VITE_FIREBASE_AUTH_DOMAIN;
+  const prodProjectId = metaEnv.VITE_FIREBASE_PROJECT_ID;
+  const prodAppId = metaEnv.VITE_FIREBASE_APP_ID;
+  const prodDbId = metaEnv.VITE_FIREBASE_DATABASE_ID;
+  const prodSupaUrl = metaEnv.VITE_SUPABASE_URL;
+  const prodSupaAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY;
+
+  if (!prodApiKey || !prodAuthDomain || !prodProjectId || !prodAppId) {
+    throw new Error('[Environment Error] Missing required production Firebase configuration (API key, authDomain, projectId, appId).');
+  }
+
+  if (typeof prodApiKey === 'string' && prodApiKey.startsWith('GOCSPX-')) {
+    throw new Error('[Security Error] Invalid production Firebase API Key: Detected Google OAuth Client Secret ("GOCSPX-..."). A Firebase Web API Key must start with "AIzaSy".');
+  }
+
+  if (prodProjectId !== PROD_FIREBASE_PROJECT_ID) {
+    throw new Error('[Environment Error] Production Firebase Project ID mismatch. Expected "gen-lang-client-0128984368".');
+  }
+
+  if (!prodDbId) {
+    throw new Error('[Environment Error] Missing required production Firestore database ID (VITE_FIREBASE_DATABASE_ID).');
+  }
+
+  if (prodDbId !== PROD_FIRESTORE_DATABASE_ID) {
+    throw new Error('[Environment Error] Production Firestore Database ID mismatch. Expected "ai-studio-91f1d7eb-cec1-4159-8148-4ba7d6a63b82".');
+  }
+
+  if (!prodSupaUrl || prodSupaUrl !== PROD_SUPABASE_URL) {
+    throw new Error('[Environment Error] Production Supabase URL mismatch. Expected "https://jhttjndhjzpfphqxjiao.supabase.co".');
+  }
+
+  if (!prodSupaAnonKey) {
+    throw new Error('[Environment Error] Missing required production Supabase anon key.');
+  }
+
+  activeFirebaseConfig = {
+    apiKey: prodApiKey,
+    authDomain: prodAuthDomain,
+    projectId: prodProjectId,
+    appId: prodAppId,
+    firestoreDatabaseId: prodDbId
+  };
+  activeSupabaseUrl = prodSupaUrl;
+  activeSupabaseAnonKey = prodSupaAnonKey;
+} else {
+  // Safe Preview Mode (AI Studio): utiliza a infraestrutura de produção definida
+  const appletApiKey = firebaseConfig?.apiKey || firebaseConfig?.default?.apiKey;
+  const appletProjectId = firebaseConfig?.projectId || firebaseConfig?.default?.projectId;
+  const appletAuthDomain = firebaseConfig?.authDomain || firebaseConfig?.default?.authDomain;
+  const appletAppId = firebaseConfig?.appId || firebaseConfig?.default?.appId;
+  const appletDbId = firebaseConfig?.firestoreDatabaseId || firebaseConfig?.default?.firestoreDatabaseId;
+
+  const candidateProjectId = appletProjectId
+    ? appletProjectId
+    : (metaEnv.VITE_FIREBASE_PROJECT_ID === PROD_FIRESTORE_DATABASE_ID ? PROD_FIREBASE_PROJECT_ID : (metaEnv.VITE_FIREBASE_PROJECT_ID || ''));
+  const candidateSupaUrl = metaEnv.VITE_SUPABASE_URL || PROD_SUPABASE_URL;
+
+  // Verificação estrita de divergência no Preview
+  if (candidateSupaUrl !== PROD_SUPABASE_URL) {
+    throw new Error('[Environment Error] Divergência no Preview: VITE_SUPABASE_URL não corresponde ao Supabase esperado.');
+  }
+
+  if (candidateProjectId && candidateProjectId !== PROD_FIREBASE_PROJECT_ID) {
+    throw new Error('[Environment Error] Divergência no Preview: Firebase Project ID não corresponde ao projeto esperado.');
+  }
+
+  if (appletApiKey && typeof appletApiKey === 'string' && !appletApiKey.startsWith('GOCSPX-')) {
+    activeFirebaseConfig = {
+      apiKey: appletApiKey,
+      authDomain: appletAuthDomain || `${PROD_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+      projectId: appletProjectId || PROD_FIREBASE_PROJECT_ID,
+      appId: appletAppId || '',
+      firestoreDatabaseId: appletDbId || PROD_FIRESTORE_DATABASE_ID
+    };
+  } else if (metaEnv.VITE_FIREBASE_API_KEY && (metaEnv.VITE_FIREBASE_PROJECT_ID || metaEnv.VITE_FIREBASE_AUTH_DOMAIN)) {
+    if (typeof metaEnv.VITE_FIREBASE_API_KEY === 'string' && metaEnv.VITE_FIREBASE_API_KEY.startsWith('GOCSPX-')) {
+      throw new Error('[Security Error] Invalid Firebase Web API Key in VITE_FIREBASE_API_KEY: Detected Google OAuth Client Secret ("GOCSPX-..."). A Firebase Web API Key must start with "AIzaSy".');
+    }
+    activeFirebaseConfig = {
+      apiKey: metaEnv.VITE_FIREBASE_API_KEY,
+      authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || `${PROD_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+      projectId: (metaEnv.VITE_FIREBASE_PROJECT_ID === PROD_FIRESTORE_DATABASE_ID || !metaEnv.VITE_FIREBASE_PROJECT_ID) ? PROD_FIREBASE_PROJECT_ID : metaEnv.VITE_FIREBASE_PROJECT_ID,
+      appId: metaEnv.VITE_FIREBASE_APP_ID || '',
+      firestoreDatabaseId: metaEnv.VITE_FIREBASE_DATABASE_ID || PROD_FIRESTORE_DATABASE_ID
+    };
+  } else {
+    throw new Error(
+      '[Environment Error] Missing Firebase configuration. For production, set VITE_APP_ENV="production" and configure all required VITE_FIREBASE_* variables.'
+    );
+  }
+
+  activeSupabaseUrl = PROD_SUPABASE_URL;
+  activeSupabaseAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY || '';
+}
+
+function getOrInitializeFirebaseApp(config: ActiveFirebaseConfig): FirebaseApp {
+  if (typeof config.apiKey === 'string' && config.apiKey.startsWith('GOCSPX-')) {
+    throw new Error('[Security Error] Refusing to initialize Firebase with Google OAuth Client Secret (starts with "GOCSPX-"). A Firebase Web API Key starting with "AIzaSy" is required.');
+  }
+  const existingApps = getApps();
+  if (existingApps.length === 0) {
+    return initializeApp(config);
+  }
+
+  if (existingApps.length > 1) {
+    throw new Error(
+      `[Security Error] Multiple Firebase app instances detected (${existingApps.length}). Ambiguous state, initialization aborted.`
+    );
+  }
+
+  const singleApp = existingApps[0];
+  if (singleApp.name !== '[DEFAULT]') {
+    throw new Error(
+      `[Security Error] Pre-existing Firebase app is not the default instance (name: "${singleApp.name}"). Expected "[DEFAULT]".`
+    );
+  }
+
+  const defaultOptions = singleApp.options;
+
+  if (
+    defaultOptions.projectId !== config.projectId ||
+    defaultOptions.apiKey !== config.apiKey ||
+    defaultOptions.authDomain !== config.authDomain ||
+    defaultOptions.appId !== config.appId
+  ) {
+    throw new Error(
+      `[Security Error] Existing Firebase app instance does not match active environment configuration for project "${config.projectId}". Initialization aborted.`
+    );
+  }
+
+  return singleApp;
+}
+
+// Inicializa a aplicacao Firebase estritamente isolada
+const app = getOrInitializeFirebaseApp(activeFirebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Initialize Supabase client
-const metaEnv = (import.meta as any).env || {};
-export const supabaseUrl = metaEnv.VITE_SUPABASE_URL || 'https://jhttjndhjzpfphqxjiao.supabase.co';
-export const supabaseAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY || 'sb_publishable_8LJFpXcEqbr4qkbPaC-jmw_wjmwuaN9';
+// Inicializa o cliente Supabase isolado e exporta valores compativeis
+export const supabaseUrl = activeSupabaseUrl;
+export const supabaseAnonKey = activeSupabaseAnonKey;
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export const db = { type: 'firestore_db' }; // Placeholder for DB reference
@@ -132,12 +338,39 @@ const CACHE_TTL_MS = 25000; // 25 seconds cache for static content (topics, seme
 function isUserStateCollection(collectionName: string): boolean {
   if (!collectionName) return false;
   return collectionName === 'userProgress' ||
+         collectionName === 'users' ||
          collectionName.startsWith('users/') ||
          collectionName === 'quizAttempts' ||
          collectionName === 'flashcardSessions';
 }
 
+function isAdminContentCollection(collectionName: string): boolean {
+  if (!collectionName) return false;
+  return [
+    'questions',
+    'topics',
+    'subjects',
+    'semesters',
+    'sourceDocuments',
+    'source_documents',
+    'examSets',
+    'simulados',
+    'imported_exams'
+  ].includes(collectionName);
+}
+
 function invalidateCacheForDoc(collectionName: string, id: string) {
+  if (id) {
+    docCache.delete(`${collectionName}/${id}`);
+  }
+  for (const key of queryCache.keys()) {
+    if (key.startsWith(`${collectionName}:`)) {
+      queryCache.delete(key);
+    }
+  }
+}
+
+export function clearDataCache(): void {
   docCache.clear();
   queryCache.clear();
 }
@@ -158,16 +391,52 @@ export async function getDoc(docRef: any): Promise<any> {
       data: () => cached.data
     };
   }
-  
-  let { data, error } = await supabase
-    .from('firestore_documents')
-    .select('*')
-    .eq('collection', collectionName)
-    .eq('id', id)
-    .maybeSingle();
-    
-  if (error) {
-    console.warn(`[Supabase] Note on loading doc ${collectionName}/${id}:`, error?.message || error);
+
+  let data: any = null;
+
+  if (isUserMutable && (collectionName !== 'users' || (auth.currentUser && id === auth.currentUser.uid))) {
+    if (!auth.currentUser) {
+      return { id, exists: () => false, data: () => null };
+    }
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const resp = await fetch('/api/user-documents/get-doc', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ collection: collectionName, id })
+      });
+      if (resp.ok) {
+        const body = await resp.json();
+        data = body.exists ? { data: body.data } : null;
+      } else {
+        // Fallback for reading public fields if doc is outside current user
+        let { data: supaRes } = await supabase
+          .from('firestore_documents')
+          .select('*')
+          .eq('collection', collectionName)
+          .eq('id', id)
+          .maybeSingle();
+        data = supaRes;
+      }
+    } catch (apiErr) {
+      console.warn(`[UserDoc API Get Note]:`, apiErr);
+      return { id, exists: () => false, data: () => null };
+    }
+  } else {
+    let { data: supaRes, error } = await supabase
+      .from('firestore_documents')
+      .select('*')
+      .eq('collection', collectionName)
+      .eq('id', id)
+      .maybeSingle();
+      
+    if (error) {
+      console.warn(`[Supabase] Note on loading doc ${collectionName}/${id}:`, error?.message || error);
+    }
+    data = supaRes;
   }
 
   // Merging legacy progress records if userProgress is loaded
@@ -245,14 +514,55 @@ export async function getDocFromServer(docRef: any): Promise<any> {
   return getDoc(docRef);
 }
 
+function serializeQueryValue(val: any, seen?: Set<any>): string {
+  if (val === undefined) return 'undefined';
+  if (val === null) return 'null';
+  if (typeof val !== 'object') return JSON.stringify(val);
+  if (val instanceof Date) return `Date(${val.toISOString()})`;
+  if (typeof val.toISOString === 'function') {
+    try {
+      return `time(${val.toISOString()})`;
+    } catch {
+      // fallback
+    }
+  }
+  if (typeof val.id === 'string' && val.collectionName) {
+    return `ref(${val.collectionName}/${val.id})`;
+  }
+  if (!seen) seen = new Set();
+  if (seen.has(val)) return '[Circular]';
+  seen.add(val);
+  try {
+    if (Array.isArray(val)) {
+      return `[${val.map(item => serializeQueryValue(item, seen)).join(',')}]`;
+    }
+    const keys = Object.keys(val).sort();
+    return '{' + keys.map(k => `${JSON.stringify(k)}:${serializeQueryValue(val[k], seen)}`).join(',') + '}';
+  } catch {
+    return String(val);
+  } finally {
+    seen.delete(val);
+  }
+}
+
 export async function getDocs(queryOrColl: any): Promise<any> {
   const collectionName = queryOrColl.collectionName;
   const constraints = queryOrColl.constraints || [];
-  const isUserMutable = isUserStateCollection(collectionName);
+  const isUserMutable = isUserStateCollection(collectionName) && collectionName !== 'users';
   
   // Construct a deterministic query cache key
   const safeConstraintsKey = constraints.map((c: any) => {
-    return `${c.type}_${c.fieldPath}_${c.opStr}_${typeof c.value === 'object' ? (c.value?.id || String(c.value)) : c.value}`;
+    if (!c || typeof c !== 'object') return String(c);
+    if (c.type === 'where') {
+      return `where:${c.fieldPath}:${c.opStr}:${serializeQueryValue(c.value)}`;
+    }
+    if (c.type === 'orderBy') {
+      return `orderBy:${c.fieldPath}:${c.directionStr || 'asc'}`;
+    }
+    if (c.type === 'limit') {
+      return `limit:${c.limitValue}`;
+    }
+    return `${c.type || 'unknown'}:${serializeQueryValue(c)}`;
   }).join('|');
   const queryKey = `${collectionName}:${safeConstraintsKey}`;
   if (!isUserMutable) {
@@ -274,10 +584,65 @@ export async function getDocs(queryOrColl: any): Promise<any> {
     }
   }
 
+  if (isUserMutable) {
+    if (!auth.currentUser) {
+      return { docs: [], size: 0, empty: true, forEach: () => {} };
+    }
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const resp = await fetch('/api/user-documents/get-docs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ collection: collectionName })
+      });
+      if (resp.ok) {
+        const body = await resp.json();
+        const mappedDocs = (body.docs || []).map((row: any) => ({
+          id: row.id,
+          data: () => row.data
+        }));
+        return {
+          docs: mappedDocs,
+          size: mappedDocs.length,
+          empty: mappedDocs.length === 0,
+          forEach: (callback: any) => mappedDocs.forEach(callback)
+        };
+      }
+      return { docs: [], size: 0, empty: true, forEach: () => {} };
+    } catch (apiErr) {
+      console.warn(`[UserDoc API GetDocs Note]:`, apiErr);
+      return { docs: [], size: 0, empty: true, forEach: () => {} };
+    }
+  }
+
   let supaQuery = supabase
     .from('firestore_documents')
-    .select('*')
+    .select('id, data')
     .eq('collection', collectionName);
+
+  let hasClientOnlyConstraint = false;
+  let limitValue: number | null = null;
+
+  for (const constraint of constraints) {
+    if (constraint.type === 'where') {
+      const { opStr, value } = constraint;
+      if (opStr !== '==' && opStr !== '===' && opStr !== 'in') {
+        hasClientOnlyConstraint = true;
+      } else if (opStr === 'in' && (!Array.isArray(value) || value.length === 0)) {
+        hasClientOnlyConstraint = true;
+      } else if (value === undefined || value === null) {
+        hasClientOnlyConstraint = true;
+      }
+    } else if (constraint.type === 'orderBy') {
+      // Order is processed in JavaScript; remote limit before sort would corrupt result order
+      hasClientOnlyConstraint = true;
+    } else if (constraint.type === 'limit') {
+      limitValue = constraint.limitValue;
+    }
+  }
 
   // Push server-side filters to Supabase query to minimize Egress
   for (const constraint of constraints) {
@@ -302,22 +667,17 @@ export async function getDocs(queryOrColl: any): Promise<any> {
       }
     }
   }
+
+  // Apply server-side limit safely only when no client-only constraints could exclude rows
+  if (limitValue !== null && !hasClientOnlyConstraint) {
+    supaQuery = supaQuery.limit(limitValue);
+  }
   
   let { data: primaryData, error: primaryError } = await supaQuery;
     
   if (primaryError) {
-    console.warn(`[Supabase] Note on loading docs for ${collectionName}:`, primaryError?.message || primaryError);
-  }
-
-  // Safety net: ONLY fallback if an actual server-side query error occurred
-  if (primaryError && constraints.length > 0) {
-    const { data: fallbackData } = await supabase
-      .from('firestore_documents')
-      .select('*')
-      .eq('collection', collectionName);
-    if (fallbackData && fallbackData.length > 0) {
-      primaryData = fallbackData;
-    }
+    console.error(`[Supabase] Error loading docs for ${collectionName}:`, primaryError);
+    throw primaryError;
   }
 
   let data = primaryData || [];
@@ -404,9 +764,55 @@ export async function getDocs(queryOrColl: any): Promise<any> {
 export async function setDoc(docRef: any, docData: any, options?: { merge?: boolean }): Promise<void> {
   const collectionName = docRef.collectionName;
   const id = docRef.id;
+  const isUserMutable = isUserStateCollection(collectionName);
+  const isAdminContent = isAdminContentCollection(collectionName);
   
   let mergedData = docData;
-  
+
+  if (isUserMutable) {
+    if (!auth.currentUser) {
+      throw new Error('[Security] Usuário não autenticado para gravar documento privado.');
+    }
+    const token = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/user-documents/set-doc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ collection: collectionName, id, docData, merge: options?.merge })
+    });
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      throw new Error(errBody.error || '[Security] Falha ao gravar documento privado.');
+    }
+    invalidateCacheForDoc(collectionName, id);
+    docCache.set(`${collectionName}/${id}`, { data: mergedData, timestamp: Date.now() });
+    return;
+  }
+
+  if (isAdminContent) {
+    if (!auth.currentUser) {
+      throw new Error('[Admin Security] Autenticação de administrador necessária para alterar conteúdo educacional.');
+    }
+    const token = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/admin/content/set-doc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ collection: collectionName, id, docData, merge: options?.merge })
+    });
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      throw new Error(errBody.error || '[Admin Security] Falha ao gravar conteúdo administrativo.');
+    }
+    invalidateCacheForDoc(collectionName, id);
+    docCache.set(`${collectionName}/${id}`, { data: mergedData, timestamp: Date.now() });
+    return;
+  }
+
   if (options?.merge) {
     const { data: existing, error: loadError } = await supabase
       .from('firestore_documents')
@@ -449,14 +855,61 @@ export async function setDoc(docRef: any, docData: any, options?: { merge?: bool
   if (error) {
     console.warn(`[Supabase] Note on setDoc for ${collectionName}/${id}:`, error?.message || error);
   } else {
+    invalidateCacheForDoc(collectionName, id);
     docCache.set(`${collectionName}/${id}`, { data: mergedData, timestamp: Date.now() });
   }
 }
 
 export async function addDoc(collRef: any, docData: any): Promise<any> {
   const collectionName = collRef.collectionName;
+  const isUserMutable = isUserStateCollection(collectionName);
+  const isAdminContent = isAdminContentCollection(collectionName);
+
+  if (isUserMutable) {
+    if (!auth.currentUser) {
+      throw new Error('[Security] Usuário não autenticado para criar documento privado.');
+    }
+    const token = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/user-documents/add-doc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ collection: collectionName, docData })
+    });
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      throw new Error(errBody.error || '[Security] Falha ao adicionar documento.');
+    }
+    const body = await resp.json();
+    invalidateCacheForDoc(collectionName, body.id);
+    return { id: body.id };
+  }
+
+  if (isAdminContent) {
+    if (!auth.currentUser) {
+      throw new Error('[Admin Security] Autenticação de administrador necessária para criar conteúdo educacional.');
+    }
+    const token = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/admin/content/add-doc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ collection: collectionName, docData })
+    });
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      throw new Error(errBody.error || '[Admin Security] Falha ao criar conteúdo administrativo.');
+    }
+    const body = await resp.json();
+    invalidateCacheForDoc(collectionName, body.id);
+    return { id: body.id };
+  }
+
   const id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-  
   const { error } = await supabase
     .from('firestore_documents')
     .insert({
@@ -478,6 +931,50 @@ export async function addDoc(collRef: any, docData: any): Promise<any> {
 export async function updateDoc(docRef: any, updateFields: any): Promise<void> {
   const collectionName = docRef.collectionName;
   const id = docRef.id;
+  const isUserMutable = isUserStateCollection(collectionName);
+  const isAdminContent = isAdminContentCollection(collectionName);
+
+  if (isUserMutable) {
+    if (!auth.currentUser) {
+      throw new Error('[Security] Usuário não autenticado para atualizar documento privado.');
+    }
+    const token = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/user-documents/update-doc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ collection: collectionName, id, updateFields })
+    });
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      throw new Error(errBody.error || '[Security] Falha ao atualizar documento privado.');
+    }
+    invalidateCacheForDoc(collectionName, id);
+    return;
+  }
+
+  if (isAdminContent) {
+    if (!auth.currentUser) {
+      throw new Error('[Admin Security] Autenticação de administrador necessária para atualizar conteúdo educacional.');
+    }
+    const token = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/admin/content/update-doc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ collection: collectionName, id, updateFields })
+    });
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      throw new Error(errBody.error || '[Admin Security] Falha ao atualizar conteúdo administrativo.');
+    }
+    invalidateCacheForDoc(collectionName, id);
+    return;
+  }
   
   let { data: existing, error: loadError } = await supabase
     .from('firestore_documents')
@@ -561,6 +1058,7 @@ export async function updateDoc(docRef: any, updateFields: any): Promise<void> {
   if (error) {
     console.warn(`[Supabase] Note on updateDoc for ${collectionName}/${id}:`, error?.message || error);
   } else {
+    invalidateCacheForDoc(collectionName, id);
     docCache.set(`${collectionName}/${id}`, { data: mergedData, timestamp: Date.now() });
   }
 }
@@ -568,7 +1066,51 @@ export async function updateDoc(docRef: any, updateFields: any): Promise<void> {
 export async function deleteDoc(docRef: any): Promise<void> {
   const collectionName = docRef.collectionName;
   const id = docRef.id;
-  
+  const isUserMutable = isUserStateCollection(collectionName);
+  const isAdminContent = isAdminContentCollection(collectionName);
+
+  if (isUserMutable) {
+    if (!auth.currentUser) {
+      throw new Error('[Security] Usuário não autenticado para excluir documento privado.');
+    }
+    const token = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/user-documents/delete-doc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ collection: collectionName, id })
+    });
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      throw new Error(errBody.error || '[Security] Falha ao excluir documento.');
+    }
+    invalidateCacheForDoc(collectionName, id);
+    return;
+  }
+
+  if (isAdminContent) {
+    if (!auth.currentUser) {
+      throw new Error('[Admin Security] Autenticação de administrador necessária para excluir conteúdo educacional.');
+    }
+    const token = await auth.currentUser.getIdToken();
+    const resp = await fetch('/api/admin/content/delete-doc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ collection: collectionName, id })
+    });
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      throw new Error(errBody.error || '[Admin Security] Falha ao excluir conteúdo administrativo.');
+    }
+    invalidateCacheForDoc(collectionName, id);
+    return;
+  }
+
   const { error } = await supabase
     .from('firestore_documents')
     .delete()
@@ -654,6 +1196,37 @@ export function onSnapshot(docRefOrQuery: any, callback: (snapshot: any) => void
   };
 }
 
+
+export async function runTransaction(dbInstance: any, updateFunction: (transaction: any) => Promise<any>): Promise<any> {
+  const readOperations: Map<string, any> = new Map();
+  const writeOperations: Array<() => Promise<void>> = [];
+
+  const transaction = {
+    get: async (docRef: any) => {
+      const snap = await getDoc(docRef);
+      readOperations.set(`${docRef.collectionName}/${docRef.id}`, snap);
+      return snap;
+    },
+    set: (docRef: any, data: any, options?: any) => {
+      writeOperations.push(() => setDoc(docRef, data, options));
+    },
+    update: (docRef: any, data: any) => {
+      writeOperations.push(() => updateDoc(docRef, data));
+    },
+    delete: (docRef: any) => {
+      writeOperations.push(() => deleteDoc(docRef));
+    }
+  };
+
+  const result = await updateFunction(transaction);
+
+  for (const op of writeOperations) {
+    await op();
+  }
+
+  return result;
+}
+
 export function writeBatch(dbInstance: any): any {
   const operations: Array<() => Promise<void>> = [];
   return {
@@ -674,7 +1247,17 @@ export function writeBatch(dbInstance: any): any {
   };
 }
 
-const realDb = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
+function getFirestoreInstance(firebaseApp: FirebaseApp, databaseId?: string) {
+  if (!databaseId || databaseId === '(default)') {
+    if (appEnv === 'production') {
+      throw new Error('[Security Error] Default Firestore database "(default)" is not authorized for production environment.');
+    }
+    return getFirestore(firebaseApp);
+  }
+  return getFirestore(firebaseApp, databaseId);
+}
+
+const realDb = getFirestoreInstance(app, activeFirebaseConfig.firestoreDatabaseId);
 
 async function migrateUserProfile(sourceUid: string, targetUid: string) {
   try {
@@ -1140,6 +1723,9 @@ export async function syncSurplusFirestoreToSupabase(userId?: string) {
 
 export function onAuthStateChanged(authInstance: any, callback: (user: User | null) => void, ...args: any[]): () => void {
   const customCallback = (firebaseUser: User | null) => {
+    if (!firebaseUser) {
+      clearDataCache();
+    }
     // Notify application immediately so UI loads instantly
     callback(firebaseUser);
 
@@ -1155,10 +1741,14 @@ export function onAuthStateChanged(authInstance: any, callback: (user: User | nu
   return realOnAuthStateChanged(authInstance, customCallback, ...args);
 }
 
+export async function signOut(authInstance: any): Promise<void> {
+  clearDataCache();
+  return realSignOut(authInstance);
+}
+
 export {
   GoogleAuthProvider,
   signInWithPopup,
-  signOut,
   signInAnonymously,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,

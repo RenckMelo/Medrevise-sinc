@@ -1,21 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  X, 
-  Cpu, 
-  Zap, 
-  CheckCircle2, 
-  ShieldCheck, 
-  AlertTriangle, 
-  Sparkles, 
-  RefreshCw,
-  HelpCircle,
-  FileText,
-  BookOpen,
-  Calendar,
-  Check,
-  Info,
-  RotateCcw
-} from 'lucide-react';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Cpu from 'lucide-react/dist/esm/icons/cpu.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import Info from 'lucide-react/dist/esm/icons/info.js';
+import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw.js';
 import { Button } from '@/components/ui/button';
 import { getGlobalUsage, resetSpecialUsage } from '../services/geminiService';
 import { safeLocalStorageGet, safeLocalStorageSet } from '../utils/storageUtils';

@@ -58,6 +58,9 @@ export interface Question {
   id: string;
   topicId?: string;
   subjectId?: string;
+  topic?: string;
+  subSubject?: string;
+  subtopicTag?: string;
   text: string;
   options: string[];
   correctOptionIndex: number;
@@ -70,6 +73,9 @@ export interface Question {
     hasConflict: boolean;
     description: string;
   };
+  provenanceType?: 'verified_official' | 'unverified_real' | 'model_generated' | 'unknown';
+  groundingMetadata?: any;
+  providerInfo?: { provider: 'gemini' | 'groq'; model: string };
 }
 
 export interface Flashcard {
@@ -105,6 +111,7 @@ export interface QuestionAttempt {
 export interface QuizAttempt {
   id: string;
   userId: string;
+  sessionId?: string;
   subjectIds: string[];
   topicIds: string[];
   questions: QuestionAttempt[];
@@ -117,6 +124,7 @@ export interface QuizAttempt {
 
 export interface PausedQuestionSession {
   id: string;
+  sessionId?: string;
   userId?: string;
   title: string;
   questions: Question[];
@@ -131,10 +139,13 @@ export interface PausedQuestionSession {
   selectedTopicIds: string[];
   selectedSubjectIds: string[];
   timestamp: string;
+  status?: 'in_progress' | 'completed' | 'abandoned';
+  completedAt?: string;
 }
 
 export interface StudySession {
   id: string;
+  sessionId?: string;
   subjectId: string | 'multidisciplinary';
   startTime: string;
   durationSeconds: number;

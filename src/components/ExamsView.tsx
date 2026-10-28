@@ -6,22 +6,20 @@ import { useStudyData } from '../hooks/useStudyData';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
 import UpgradeModal from './UpgradeModal';
 import ReactMarkdown from 'react-markdown';
-import { 
-  Plus, 
-  Trash2, 
-  TrendingUp, 
-  FileText, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
-  Brain, 
-  ChevronDown, 
-  ChevronUp, 
-  BookOpen, 
-  Sparkles, 
-  Activity,
-  AlertCircle
-} from 'lucide-react';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import TrendingUp from 'lucide-react/dist/esm/icons/trending-up.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import CheckCircle from 'lucide-react/dist/esm/icons/check-circle.js';
+import XCircle from 'lucide-react/dist/esm/icons/x-circle.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down.js';
+import ChevronUp from 'lucide-react/dist/esm/icons/chevron-up.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Activity from 'lucide-react/dist/esm/icons/activity.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
 import { 
   LineChart, 
   Line, 
@@ -122,20 +120,24 @@ export default function ExamsView() {
     // Clean performance breakdown to save only active entries
     const performanceToSave = subjectBreakdowns.filter(item => item.total > 0);
 
+    const cleanTotal = Math.floor(Math.max(1, Number(totalQuestions) || 1));
+    const cleanCorrect = Math.floor(Math.max(0, Math.min(cleanTotal, Number(correctAnswers) || 0)));
+    const cleanTime = Math.max(1, Number(timeSpentMinutes) || 1);
+
     const payload: Omit<MockExam, 'id'> = {
-      title,
+      title: title.trim(),
       date: new Date(date + 'T12:00:00').toISOString(),
-      totalQuestions: Number(totalQuestions),
-      correctAnswers: Number(correctAnswers),
-      timeSpentMinutes: Number(timeSpentMinutes),
+      totalQuestions: cleanTotal,
+      correctAnswers: cleanCorrect,
+      timeSpentMinutes: cleanTime,
       tag,
       conditions,
       notes,
       errorsByReason: {
-        lackOfContent: Number(lackOfContent),
-        carelessness: Number(carelessness),
-        timePressure: Number(timePressure),
-        misinterpretation: Number(misinterpretation)
+        lackOfContent: Math.floor(Math.max(0, Number(lackOfContent) || 0)),
+        carelessness: Math.floor(Math.max(0, Number(carelessness) || 0)),
+        timePressure: Math.floor(Math.max(0, Number(timePressure) || 0)),
+        misinterpretation: Math.floor(Math.max(0, Number(misinterpretation) || 0))
       },
       performanceBySubject: performanceToSave
     };

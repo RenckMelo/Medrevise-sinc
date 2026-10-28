@@ -6,19 +6,17 @@ import {
   logSystemError, 
   SystemErrorLog 
 } from '../internato/services/errorLogger';
-import { 
-  AlertTriangle, 
-  Search, 
-  RefreshCw, 
-  Trash2, 
-  Eye, 
-  X, 
-  Loader2, 
-  Sparkles, 
-  CheckCircle2,
-  Bug,
-  Shield
-} from 'lucide-react';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Eye from 'lucide-react/dist/esm/icons/eye.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import Bug from 'lucide-react/dist/esm/icons/bug.js';
+import Shield from 'lucide-react/dist/esm/icons/shield.js';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 

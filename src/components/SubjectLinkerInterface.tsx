@@ -2,25 +2,23 @@ import React, { useState, useMemo } from 'react';
 import { Subject, Topic } from '../types';
 import { useSubjectLinks } from '../hooks/useSubjectLinks';
 import { useStudyData } from '../hooks/useStudyData';
-import { 
-  Link2, 
-  Unlink, 
-  Sparkles, 
-  CheckCircle2, 
-  BookOpen, 
-  ArrowRight,
-  Plus,
-  Search,
-  ArrowLeftRight,
-  Layers,
-  Activity,
-  Zap,
-  Check,
-  ExternalLink,
-  ShieldCheck,
-  X,
-  AlertCircle
-} from 'lucide-react';
+import Link2 from 'lucide-react/dist/esm/icons/link-2.js';
+import Unlink from 'lucide-react/dist/esm/icons/unlink.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import ArrowLeftRight from 'lucide-react/dist/esm/icons/arrow-left-right.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import Activity from 'lucide-react/dist/esm/icons/activity.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import ExternalLink from 'lucide-react/dist/esm/icons/external-link.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SubjectLinkerInterfaceProps {

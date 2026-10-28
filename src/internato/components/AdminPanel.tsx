@@ -3,18 +3,21 @@ import { Subject, Topic, Question, Semester } from '../types';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar, Book, Plus, HelpCircle, ShieldAlert, Sparkles, Database, AlertTriangle, LayoutDashboard, Users } from 'lucide-react';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Book from 'lucide-react/dist/esm/icons/book.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import ShieldAlert from 'lucide-react/dist/esm/icons/shield-alert.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Database from 'lucide-react/dist/esm/icons/database.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import LayoutDashboard from 'lucide-react/dist/esm/icons/layout-dashboard.js';
+import Users from 'lucide-react/dist/esm/icons/users.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { db, supabase, collection, addDoc, deleteDoc, doc, updateDoc, query, setDoc, getDocs, where, limit } from '../firebase';
+import { db, collection, addDoc, deleteDoc, doc, updateDoc, query, setDoc, getDocs, where, limit } from '../firebase';
 import { seedDatabase } from '../seed';
-import firebaseConfig from '../../../firebase-applet-config.json';
-// @ts-ignore
-import { initializeApp as initRealApp, getApps as getRealApps } from '../../../node_modules/firebase/app/dist/index.mjs';
-// @ts-ignore
-import { getFirestore as getRealFirestore, collection as realCollection, getDocs as realGetDocs } from '../../../node_modules/firebase/firestore/dist/index.mjs';
-// @ts-ignore
-import { getAuth as getRealAuth, signInAnonymously as realSignInAnonymously, signInWithPopup as realSignInWithPopup, GoogleAuthProvider as RealGoogleAuthProvider } from '../../../node_modules/firebase/auth/dist/index.mjs';
 
 import { generateTopicContent } from '../services/geminiService';
 import { safeLocalStorageSet } from '../utils/storageUtils';
@@ -26,7 +29,8 @@ import {
   QuestionManager, 
   ModerationManager,
   AdminDashboard,
-  ReferralLogsManager
+  ReferralLogsManager,
+  PdfUploadManager
 } from './admin/AdminComponents';
 
 interface AdminPanelProps {
@@ -53,8 +57,6 @@ export default function AdminPanel({
   const [newSemester, setNewSemester] = useState({ number: '', name: '' });
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
-  const [isMigrating, setIsMigrating] = useState(false);
-  const [migrationMessage, setMigrationMessage] = useState<string | null>(null);
 
   const [newSubject, setNewSubject] = useState({ name: '', icon: 'BookOpen', color: 'bg-blue-100 text-blue-600', semesterId: '' });
   const [newTopic, setNewTopic] = useState({ 
@@ -729,278 +731,7 @@ export default function AdminPanel({
     }
   };
 
-  const handleAuthAndMigrate = async () => {
-    setIsMigrating(true);
-    setMigrationMessage('Conectando ao Firebase Firestore original...');
-    try {
-      let appReal;
-      const apps = getRealApps();
-      if (!apps.length) {
-        appReal = initRealApp(firebaseConfig);
-      } else {
-        appReal = apps[0];
-      }
-      
-      const authReal = getRealAuth(appReal);
-      let currentUser = authReal.currentUser;
-      
-      if (!currentUser) {
-        setMigrationMessage('Tentando autenticação silenciosa no Firebase (Sem popups)...');
-        try {
-          const result = await realSignInAnonymously(authReal);
-          currentUser = result.user;
-          console.log('Autenticado anonimamente com sucesso para migração.');
-        } catch (anonErr: any) {
-          console.warn('Login anônimo não disponível ou desativado. Tentando login com Google...', anonErr);
-          setMigrationMessage('Aviso: Login silencioso desativado. Tentando autenticação do Google (por favor, permita popups se solicitado)...');
-          try {
-            const provider = new RealGoogleAuthProvider();
-            const result = await realSignInWithPopup(authReal, provider);
-            currentUser = result.user;
-          } catch (popupErr: any) {
-            if (popupErr.code === 'auth/popup-blocked' || popupErr.message?.includes('popup')) {
-              throw new Error('O seu navegador bloqueou a janela de login (popup). Para resolver: \n\n1. Ative a permissão de popups para este site nas configurações do seu navegador.\n2. OU clique no botão "Abrir em nova aba" no canto superior direito para executar a migração em tela cheia.\n3. OU ative o provedor "Anônimo" nas configurações de Authentication do console do seu Firebase.');
-            }
-            throw popupErr;
-          }
-        }
-      }
-      
-      if (!currentUser) {
-        throw new Error('Não foi possível autenticar no Firebase. Verifique se o serviço está configurado corretamente.');
-      }
-      
-      const userIdent = currentUser.isAnonymous ? 'Sessão Segura Anônima' : currentUser.email;
-      setMigrationMessage(`Autenticado com sucesso (${userIdent})! Iniciando leitura das coleções do Firebase Firestore antigo...`);
-      
-      const dbReal = getRealFirestore(appReal, (firebaseConfig as any).firestoreDatabaseId);
-      const dbDefault = getRealFirestore(appReal);
-      
-      const fetchCol = async (name: string) => {
-        setMigrationMessage(`Lendo coleção "${name}" do Firebase...`);
-        const documentsMap = new Map<string, any>();
 
-        // 1. Fetch from named database
-        try {
-          const snap = await realGetDocs(realCollection(dbReal, name));
-          snap.docs.forEach(doc => {
-            documentsMap.set(doc.id, doc.data());
-          });
-          console.log(`Coleção "${name}" lida da named database. Encontrados: ${snap.docs.length}`);
-        } catch (error: any) {
-          console.warn(`Aviso: não foi possível ler a coleção "${name}" da named database:`, error.message);
-        }
-
-        // 2. Fetch from default database
-        try {
-          const snap = await realGetDocs(realCollection(dbDefault, name));
-          snap.docs.forEach(doc => {
-            documentsMap.set(doc.id, doc.data());
-          });
-          console.log(`Coleção "${name}" lida da default database. Encontrados: ${snap.docs.length}`);
-        } catch (error: any) {
-          console.warn(`Aviso: não foi possível ler a coleção "${name}" da default database:`, error.message);
-        }
-
-        return Array.from(documentsMap.entries()).map(([id, data]) => ({ id, data }));
-      };
-      
-      const semestersCol = await fetchCol('semesters');
-      const subjectsCol = await fetchCol('subjects');
-      const topicsCol = await fetchCol('topics');
-      const questionsCol = await fetchCol('questions');
-      const flashcardsCol = await fetchCol('flashcards');
-      
-      const totalDocsRaw = semestersCol.length + subjectsCol.length + topicsCol.length + questionsCol.length + flashcardsCol.length;
-      if (totalDocsRaw === 0) {
-        throw new Error('Nenhum dado encontrado no seu Firebase Firestore antigo para migrar. Verifique se as coleções existem no banco do Firebase configurado.');
-      }
-      
-      setMigrationMessage(`Extração concluída! Encontrados ${totalDocsRaw} registros brutos. Iniciando mapeamento e deduplicação inteligente para garantir integridade...`);
-
-      // 1. Unified and deduplicated Semesters
-      const uniqueSemesters: Array<{ id: string, data: any }> = [];
-      const semesterIdMap: Record<string, string> = {}; // oldSemId -> uniqueSemId
-
-      for (const sem of semestersCol) {
-        const semName = (sem.data?.name || '').trim().toLowerCase();
-        const semNum = Number(sem.data?.number);
-        // Look for an existing semester in our unique list
-        const existingSem = uniqueSemesters.find(s => 
-          (s.data?.name || '').trim().toLowerCase() === semName || 
-          Number(s.data?.number) === semNum
-        );
-
-        if (existingSem) {
-          semesterIdMap[sem.id] = existingSem.id;
-        } else {
-          uniqueSemesters.push(sem);
-          semesterIdMap[sem.id] = sem.id;
-        }
-      }
-
-      // 2. Unified and deduplicated Subjects
-      const uniqueSubjects: Array<{ id: string, data: any }> = [];
-      const subjectIdMap: Record<string, string> = {}; // oldSubId -> uniqueSubId
-
-      for (const sub of subjectsCol) {
-        // Map its semesterId
-        const oldSemId = sub.data?.semesterId;
-        const mappedSemId = semesterIdMap[oldSemId] || oldSemId;
-        if (sub.data) {
-          sub.data.semesterId = mappedSemId;
-        }
-
-        const subName = (sub.data?.name || '').trim().toLowerCase();
-        // Look for an existing subject in our unique list with same name and mapped semesterId
-        const existingSub = uniqueSubjects.find(s => 
-          (s.data?.name || '').trim().toLowerCase() === subName && 
-          s.data?.semesterId === mappedSemId
-        );
-
-        if (existingSub) {
-          subjectIdMap[sub.id] = existingSub.id;
-        } else {
-          uniqueSubjects.push(sub);
-          subjectIdMap[sub.id] = sub.id;
-        }
-      }
-
-      // 3. Map Topics
-      const resolvedTopics: Array<{ id: string, data: any }> = [];
-      const topicIdMap: Record<string, string> = {}; // oldTopicId -> uniqueTopicId
-
-      for (const top of topicsCol) {
-        if (top.data) {
-          // Map its subjectId
-          const oldSubId = top.data.subjectId;
-          const mappedSubId = subjectIdMap[oldSubId] || oldSubId;
-          top.data.subjectId = mappedSubId;
-
-          // Map its semesterId
-          if (top.data.semesterId) {
-            top.data.semesterId = semesterIdMap[top.data.semesterId] || top.data.semesterId;
-          }
-        }
-        
-        // Deduplicate topics if they have the exact same title and subjectId
-        const topTitle = (top.data?.title || '').trim().toLowerCase();
-        const existingTop = resolvedTopics.find(t => 
-          (t.data?.title || '').trim().toLowerCase() === topTitle && 
-          t.data?.subjectId === top.data?.subjectId
-        );
-
-        if (existingTop) {
-          topicIdMap[top.id] = existingTop.id;
-        } else {
-          resolvedTopics.push(top);
-          topicIdMap[top.id] = top.id;
-        }
-      }
-
-      // 4. Map Questions
-      const resolvedQuestions = questionsCol.map(q => {
-        if (q.data) {
-          if (q.data.subjectId) {
-            q.data.subjectId = subjectIdMap[q.data.subjectId] || q.data.subjectId;
-          }
-          if (q.data.topicId) {
-            q.data.topicId = topicIdMap[q.data.topicId] || q.data.topicId;
-          }
-        }
-        return q;
-      });
-
-      // 5. Map Flashcards
-      const resolvedFlashcards = flashcardsCol.map(f => {
-        if (f.data) {
-          if (f.data.subjectId) {
-            f.data.subjectId = subjectIdMap[f.data.subjectId] || f.data.subjectId;
-          }
-          if (f.data.topicId) {
-            f.data.topicId = topicIdMap[f.data.topicId] || f.data.topicId;
-          }
-        }
-        return f;
-      });
-
-      const totalDocs = uniqueSemesters.length + uniqueSubjects.length + resolvedTopics.length + resolvedQuestions.length + resolvedFlashcards.length;
-      
-      setMigrationMessage(`Extração concluída! Encontrados ${totalDocs} registros totais. Iniciando mesclagem segura no Supabase (apenas adicionando/atualizando excedentes sem apagar nada)...`);
-      
-      let countSuccess = 0;
-      const saveToSupabase = async (collectionName: string, id: string, data: any) => {
-        const { error } = await supabase
-          .from('firestore_documents')
-          .upsert({
-            collection: collectionName,
-            id: id,
-            data: data,
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'collection,id'
-          });
-        if (error) {
-          console.error(`Erro ao salvar no Supabase [${collectionName}/${id}]:`, error.message);
-        } else {
-          countSuccess++;
-          setMigrationMessage(`Migrando para o Supabase: ${countSuccess}/${totalDocs} documentos salvos...`);
-        }
-      };
-      
-      // Salvar todos os semestres
-      for (const sem of uniqueSemesters) {
-        await saveToSupabase('semesters', sem.id, sem.data);
-      }
-      
-      // Salvar todas as matérias
-      for (const sub of uniqueSubjects) {
-        await saveToSupabase('subjects', sub.id, sub.data);
-      }
-      
-      // Salvar todos os tópicos
-      for (const top of resolvedTopics) {
-        await saveToSupabase('topics', top.id, top.data);
-      }
-      
-      // Salvar todas as questões
-      for (const q of resolvedQuestions) {
-        await saveToSupabase('questions', q.id, q.data);
-      }
-      
-      // Salvar todos os flashcards
-      for (const f of resolvedFlashcards) {
-        await saveToSupabase('flashcards', f.id, f.data);
-      }
-      
-      // Limpar todos os caches locais para forçar o download dos novos dados migrados do Supabase
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const storage = window.localStorage;
-        Object.keys(storage).forEach(k => {
-          if (
-            k.startsWith('local_cache_') || 
-            k.startsWith('cache_') || 
-            k.includes('_cache_') || 
-            k === 'cache_subjects' ||
-            k === 'cache_semesters' ||
-            k === 'cache_total_topics' ||
-            k === 'cache_topics_initial'
-          ) {
-            storage.removeItem(k);
-          }
-        });
-      }
-      
-      setMigrationMessage(`MIGRAÇÃO DE SUCESSO! ${countSuccess} de ${totalDocs} documentos foram importados perfeitamente para o seu Supabase atual (incluindo todos os semestres, matérias e tópicos cadastrados)!`);
-      alert('Seus dados de todos os semestres, matérias e tópicos cadastrados foram migrados com sucesso do Firebase para o Supabase! O aplicativo será recarregado automaticamente agora para aplicar as alterações.');
-      window.location.reload();
-    } catch (err: any) {
-      console.error(err);
-      setMigrationMessage(`Erro durante a migração: ${err.message}`);
-    } finally {
-      setIsMigrating(false);
-    }
-  };
 
   return (
     <div className="space-y-10 min-h-screen pb-16 bg-[#FDFDFD]">
@@ -1114,20 +845,11 @@ export default function AdminPanel({
               >
                 {isSeeding ? 'Sincronizando...' : 'Recarregar Seed'}
               </Button>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={handleAuthAndMigrate}
-                disabled={isMigrating}
-                className="flex-1 md:flex-initial text-[9px] uppercase tracking-widest font-black text-neutral-900 border-neutral-900/25 hover:bg-neutral-900 hover:text-white transition-all cursor-pointer h-9 px-4 rounded-xl"
-              >
-                {isMigrating ? 'Migrando...' : 'Migrar Supabase'}
-              </Button>
             </div>
             
-            {(seedMessage || migrationMessage) && (
+            {seedMessage && (
               <div className="w-full text-center text-[10px] font-mono text-neutral-900 font-black bg-white border border-[#E2E0D9] p-3 rounded-xl mt-2 animate-pulse">
-                {seedMessage || migrationMessage}
+                {seedMessage}
               </div>
             )}
           </div>
@@ -1138,12 +860,20 @@ export default function AdminPanel({
           <div className="flex justify-center mb-8">
             <TabsList className="w-full max-w-7xl h-12 flex bg-[#F0EEE9]/75 p-1 rounded-xl gap-1 border border-[#E2E0D9]/50 shadow-xs select-none">
               {isAdmin && (
-                <TabsTrigger 
-                  value="dashboard" 
-                  className="flex-1 flex items-center justify-center gap-2 text-[9.5px] md:text-[10px] uppercase tracking-widest font-black rounded-lg text-[#8E8A82] data-[state=active]:bg-white data-[state=active]:text-neutral-950 data-[state=active]:shadow-sm transition-all cursor-pointer hover:text-neutral-950"
-                >
-                  <LayoutDashboard className="w-4 h-4 shrink-0" /> Painel Geral
-                </TabsTrigger>
+                <>
+                  <TabsTrigger 
+                    value="dashboard" 
+                    className="flex-1 flex items-center justify-center gap-2 text-[9.5px] md:text-[10px] uppercase tracking-widest font-black rounded-lg text-[#8E8A82] data-[state=active]:bg-white data-[state=active]:text-neutral-950 data-[state=active]:shadow-sm transition-all cursor-pointer hover:text-neutral-950"
+                  >
+                    <LayoutDashboard className="w-4 h-4 shrink-0" /> Painel Geral
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="pdf-upload" 
+                    className="flex-1 flex items-center justify-center gap-2 text-[9.5px] md:text-[10px] uppercase tracking-widest font-black rounded-lg text-[#8E8A82] data-[state=active]:bg-white data-[state=active]:text-neutral-950 data-[state=active]:shadow-sm transition-all cursor-pointer hover:text-neutral-950"
+                  >
+                    <FileText className="w-4 h-4 shrink-0" /> Importar PDF
+                  </TabsTrigger>
+                </>
               )}
               <TabsTrigger 
                 value="semesters" 
@@ -1267,6 +997,9 @@ export default function AdminPanel({
 
           {isAdmin && (
             <>
+              <TabsContent value="pdf-upload" className="focus-visible:outline-none">
+                <PdfUploadManager subjects={subjects} topics={topics} />
+              </TabsContent>
               <TabsContent value="moderation" className="focus-visible:outline-none">
                 <ModerationManager
                   searchEmail={searchEmail}

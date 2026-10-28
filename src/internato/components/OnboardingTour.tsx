@@ -1,32 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Sparkles, 
-  ArrowRight, 
-  ArrowLeft, 
-  X, 
-  BookOpen, 
-  LayoutDashboard, 
-  Calendar, 
-  Clock, 
-  Award, 
-  Search, 
-  Check,
-  Zap,
-  Brain,
-  GraduationCap,
-  HelpCircle,
-  RotateCcw,
-  RefreshCw,
-  ListFilter,
-  CheckCircle2,
-  FileText,
-  Target,
-  Layers,
-  Cpu,
-  BookmarkCheck,
-  CalendarDays
-} from 'lucide-react';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import LayoutDashboard from 'lucide-react/dist/esm/icons/layout-dashboard.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw.js';
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.js';
+import ListFilter from 'lucide-react/dist/esm/icons/list-filter.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Target from 'lucide-react/dist/esm/icons/target.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import Cpu from 'lucide-react/dist/esm/icons/cpu.js';
+import BookmarkCheck from 'lucide-react/dist/esm/icons/bookmark-check.js';
+import CalendarDays from 'lucide-react/dist/esm/icons/calendar-days.js';
 
 interface OnboardingTourProps {
   isOpen: boolean;
@@ -211,21 +209,21 @@ export default function OnboardingTour({ isOpen, onClose, activeTab, onSwitchTab
     {
       id: 'calendarExport',
       tab: 'cronograma',
-      title: '8. Sincronização com Google Calendar & iCal 🗓️',
-      subtitle: 'Exportação Direta de Compromissos para sua Agenda',
-      description: 'Sincronize todo o seu cronograma semanal de estudos com seu Google Calendar, Apple Calendar ou iCal com desduplicação automática e atualização em massa.',
+      title: '8. Cronograma e Calendário de Estudos 🗓️',
+      subtitle: 'Organização Visual e Acompanhamento Semanal',
+      description: 'Acompanhe todo o seu cronograma semanal de estudos estruturado por matérias, horários e ciclos de revisão com visualização integrada.',
       accent: 'border-sky-500/30 bg-sky-500/5 text-sky-950',
       badgeBg: 'bg-sky-600 text-white',
       badge: 'PASSO 08 DE 10',
       icon: <CalendarDays className="text-sky-600" size={28} />,
-      keyBenefit: 'Seus compromissos de estudo integrados com seus alarmes e agenda pessoal no celular.',
+      keyBenefit: 'Seus compromissos de estudo centralizados de forma clara e metódica na plataforma.',
       howItWorks: [
-        'No Cronograma, clique em "Sincronizar com Calendário".',
-        'O sistema varre os eventos e insere compromissos com horários e títulos claros.',
-        'Utiliza desduplicação por chave única para evitar eventos repetidos.',
-        'Receba notificações nativas do Google Calendar no seu celular antes das sessões.'
+        'Acesse a aba Cronograma ou Calendário para visualizar os blocos de estudo.',
+        'O sistema organiza as matérias e tarefas com horários e títulos claros.',
+        'Acompanhe o cumprimento das sessões e o status de cada atividade planejada.',
+        'Reorganize revisões atrasadas com priorização inteligente de repetição espaçada.'
       ],
-      goldenTip: 'Mantenha a sincronização em dia a cada nova semana de cronograma gerada!'
+      goldenTip: 'Mantenha seus estudos atualizados a cada nova semana para consolidar a curva de retenção!'
     },
     {
       id: 'crossApp',

@@ -20,13 +20,7 @@ import { getGlobalUsage } from './services/geminiService';
 
 // Components
 import Dashboard from './components/Dashboard';
-import Cronograma from './components/Cronograma';
 import SubjectList from './components/SubjectList';
-import TopicDetail from './components/TopicDetail';
-import QuestionModule from './components/QuestionModule';
-import FlashcardModule from './components/FlashcardModule';
-import AdminPanel from './components/AdminPanel';
-import QuestionReview from './components/QuestionReview';
 import OnboardingTour from './components/OnboardingTour';
 import AiProviderStatusModal from './components/AiProviderStatusModal';
 import FloatingPreceptorChat from './components/FloatingPreceptorChat';
@@ -35,22 +29,27 @@ import FaqModal from '../components/FaqModal';
 import HowToUseView from '../components/HowToUseView';
 import ActionGuidedTour from '../components/ActionGuidedTour';
 
-import { 
-  LayoutDashboard, 
-  Calendar as CalendarIcon, 
-  BookOpen, 
-  Brain, 
-  HelpCircle, 
-  Shield, 
-  ArrowLeftRight,
-  LogOut,
-  Sparkles,
-  Award,
-  Cpu,
-  Lightbulb,
-  Moon,
-  Compass
-} from 'lucide-react';
+const Cronograma = React.lazy(() => import('./components/Cronograma'));
+const TopicDetail = React.lazy(() => import('./components/TopicDetail'));
+const QuestionModule = React.lazy(() => import('./components/QuestionModule'));
+const FlashcardModule = React.lazy(() => import('./components/FlashcardModule'));
+const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
+const QuestionReview = React.lazy(() => import('./components/QuestionReview'));
+
+import LayoutDashboard from 'lucide-react/dist/esm/icons/layout-dashboard.js';
+import CalendarIcon from 'lucide-react/dist/esm/icons/calendar.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import Shield from 'lucide-react/dist/esm/icons/shield.js';
+import ArrowLeftRight from 'lucide-react/dist/esm/icons/arrow-left-right.js';
+import LogOut from 'lucide-react/dist/esm/icons/log-out.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import Cpu from 'lucide-react/dist/esm/icons/cpu.js';
+import Lightbulb from 'lucide-react/dist/esm/icons/lightbulb.js';
+import Moon from 'lucide-react/dist/esm/icons/moon.js';
+import Compass from 'lucide-react/dist/esm/icons/compass.js';
 import { Button } from '@/components/ui/button';
 
 interface InternatoAppProps {
@@ -619,6 +618,11 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8 pb-28 2xl:pb-8 max-w-7xl w-full mx-auto overflow-x-hidden min-w-0">
+        <React.Suspense fallback={
+          <div className="p-8 font-mono text-xs text-stone-500 animate-pulse flex items-center justify-center min-h-[300px]">
+            CARREGANDO MÓDULO...
+          </div>
+        }>
         {currentView === 'cronograma' && (
           <Cronograma
             user={user}
@@ -779,6 +783,7 @@ export default function InternatoApp({ onToggleAppMode }: InternatoAppProps) {
             isAdmin={isSpecialUser}
           />
         )}
+        </React.Suspense>
 
         {/* Bottom Footer Section */}
         <footer className="pt-8 pb-12 mt-12 border-t-2 border-[#141414]/15 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">

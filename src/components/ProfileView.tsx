@@ -2,35 +2,49 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, doc, updateDoc, collection, getDocs, deleteDoc, serverTimestamp, getDoc, query, where, addDoc, setDoc } from '../firebase';
 import { safeLocalStorageGet, safeLocalStorageSet } from '../internato/utils/storageUtils';
-import { 
-  User, 
-  Mail, 
-  Calendar, 
-  Target, 
-  Shield, 
-  Save, 
-  RefreshCw, 
-  AlertTriangle, 
-  Sparkles, 
-  ShieldCheck, 
-  Scale, 
-  Cpu, 
-  Brain, 
-  AlertCircle,
-  QrCode,
-  Copy,
-  Check,
-  CreditCard,
-  Zap,
-  CheckCircle2,
-  Hourglass,
-  ExternalLink,
-  Trash2
-} from 'lucide-react';
+import User from 'lucide-react/dist/esm/icons/user.js';
+import Mail from 'lucide-react/dist/esm/icons/mail.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Target from 'lucide-react/dist/esm/icons/target.js';
+import Shield from 'lucide-react/dist/esm/icons/shield.js';
+import Save from 'lucide-react/dist/esm/icons/save.js';
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import Scale from 'lucide-react/dist/esm/icons/scale.js';
+import Cpu from 'lucide-react/dist/esm/icons/cpu.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import QrCode from 'lucide-react/dist/esm/icons/qr-code.js';
+import Copy from 'lucide-react/dist/esm/icons/copy.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import CreditCard from 'lucide-react/dist/esm/icons/credit-card.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import Hourglass from 'lucide-react/dist/esm/icons/hourglass.js';
+import ExternalLink from 'lucide-react/dist/esm/icons/external-link.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
 import { format, parseISO } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 
-export default function ProfileView() {
+const userDeletedSubjectIds = new Map<string, Set<string>>();
+
+function getUserDeletedSet(uid: string): Set<string> {
+  let set = userDeletedSubjectIds.get(uid);
+  if (!set) {
+    set = new Set<string>();
+    userDeletedSubjectIds.set(uid, set);
+  }
+  return set;
+}
+
+interface ProfileViewProps {
+  subjects?: any[];
+  loadingSubjects?: boolean;
+}
+
+export default function ProfileView({ subjects: externalSubjects, loadingSubjects: externalLoadingSubjects }: ProfileViewProps = {}) {
   const { user, profile } = useAuth();
   const isLucas = profile?.email === 'lucas1renck2melo@gmail.com' || profile?.role === 'admin';
   const [dailyGoal, setDailyGoal] = useState<number>(() => profile?.settings?.dailyGoalMinutes || 60);
@@ -40,29 +54,47 @@ export default function ProfileView() {
   const [isResetting, setIsResetting] = useState(false);
 
   // Selective subjects cleanup state
-  const [subjects, setSubjects] = useState<any[]>([]);
-  const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [localSubjects, setLocalSubjects] = useState<any[]>([]);
+  const [deletedSubjectIds, setDeletedSubjectIds] = useState<string[]>(() => 
+    user?.uid ? Array.from(getUserDeletedSet(user.uid)) : []
+  );
+  const [internalLoadingSubjects, setInternalLoadingSubjects] = useState(false);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [isCleaning, setIsCleaning] = useState(false);
   const [showCleanupManager, setShowCleanupManager] = useState(false);
 
-  // Load subjects
+  // Sync deleted IDs if active user changes
   useEffect(() => {
-    if (user) {
+    if (user?.uid) {
+      setDeletedSubjectIds(Array.from(getUserDeletedSet(user.uid)));
+      setSelectedSubjectIds([]);
+    } else {
+      setDeletedSubjectIds([]);
+      setSelectedSubjectIds([]);
+    }
+  }, [user?.uid]);
+
+  const loadingSubjects = externalLoadingSubjects !== undefined ? externalLoadingSubjects : internalLoadingSubjects;
+  const baseSubjects = externalSubjects !== undefined ? externalSubjects : localSubjects;
+  const subjects = baseSubjects.filter(s => !deletedSubjectIds.includes(s.id));
+
+  // Load subjects if not passed externally
+  useEffect(() => {
+    if (externalSubjects === undefined && user) {
       const loadSubjects = async () => {
-        setLoadingSubjects(true);
+        setInternalLoadingSubjects(true);
         try {
           const snap = await getDocs(collection(db, 'users', user.uid, 'subjects'));
-          setSubjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          setLocalSubjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         } catch (err) {
           console.error('[ProfileView] Error loading subjects:', err);
         } finally {
-          setLoadingSubjects(false);
+          setInternalLoadingSubjects(false);
         }
       };
       loadSubjects();
     }
-  }, [user]);
+  }, [user, externalSubjects]);
 
   const handleToggleSubjectSelect = (subId: string) => {
     setSelectedSubjectIds(prev => 
@@ -87,6 +119,9 @@ export default function ProfileView() {
     }
 
     setIsCleaning(true);
+    const successfullyDeleted: string[] = [];
+    const failedDeletions: string[] = [];
+
     try {
       // 1. Load all topics and studySessions for the user to filter in memory and delete
       const topicsSnap = await getDocs(collection(db, 'users', user.uid, 'topics'));
@@ -95,31 +130,70 @@ export default function ProfileView() {
       const userTopics = topicsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       const userSessions = sessionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
-      // 2. Delete associated topics
-      const topicsToDelete = userTopics.filter(t => selectedSubjectIds.includes(t.subjectId));
-      for (const topic of topicsToDelete) {
-        await deleteDoc(doc(db, 'users', user.uid, 'topics', topic.id));
-      }
-
-      // 3. Delete associated sessions
-      const sessionsToDelete = userSessions.filter(s => selectedSubjectIds.includes(s.subjectId));
-      for (const session of sessionsToDelete) {
-        await deleteDoc(doc(db, 'users', user.uid, 'studySessions', session.id));
-      }
-
-      // 4. Delete the subjects
+      // 2. Process deletion per subject to handle partial failures accurately
       for (const subId of selectedSubjectIds) {
-        await deleteDoc(doc(db, 'users', user.uid, 'subjects', subId));
+        try {
+          // Delete associated topics
+          const topicsToDelete = userTopics.filter(t => t.subjectId === subId);
+          for (const topic of topicsToDelete) {
+            await deleteDoc(doc(db, 'users', user.uid, 'topics', topic.id));
+          }
+
+          // Delete associated sessions
+          const sessionsToDelete = userSessions.filter(s => s.subjectId === subId);
+          for (const session of sessionsToDelete) {
+            await deleteDoc(doc(db, 'users', user.uid, 'studySessions', session.id));
+          }
+
+          // Delete the subject itself
+          await deleteDoc(doc(db, 'users', user.uid, 'subjects', subId));
+          successfullyDeleted.push(subId);
+        } catch (subErr) {
+          console.error(`[ProfileView] Error deleting subject ${subId}:`, subErr);
+          failedDeletions.push(subId);
+        }
       }
 
-      alert(`Sucesso! ${count} matérias e todo o seu respectivo histórico de revisões e acertos foram completamente excluídos.`);
-      
-      // Update local state
-      setSubjects(prev => prev.filter(s => !selectedSubjectIds.includes(s.id)));
-      setSelectedSubjectIds([]);
+      // 3. Immediately reflect successfully deleted subjects in the interface
+      if (successfullyDeleted.length > 0) {
+        if (user?.uid) {
+          const userSet = getUserDeletedSet(user.uid);
+          successfullyDeleted.forEach(id => userSet.add(id));
+          setDeletedSubjectIds(Array.from(userSet));
+        } else {
+          setDeletedSubjectIds(prev => Array.from(new Set([...prev, ...successfullyDeleted])));
+        }
+        if (externalSubjects === undefined) {
+          setLocalSubjects(prev => prev.filter(s => !successfullyDeleted.includes(s.id)));
+        }
+        // Update user-isolated local cache so tab switch or reload does not resurrect deleted items from stale cache
+        if (user?.uid) {
+          try {
+            const cacheKey = `cache_medrevise_subjects_${user.uid}`;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+              const list = JSON.parse(cached);
+              if (Array.isArray(list)) {
+                localStorage.setItem(cacheKey, JSON.stringify(list.filter((s: any) => !successfullyDeleted.includes(s.id))));
+              }
+            }
+          } catch (_) {}
+        }
+        // Only uncheck successfully deleted subjects; failed ones remain checked
+        setSelectedSubjectIds(prev => prev.filter(id => !successfullyDeleted.includes(id)));
+      }
+
+      // 4. Report feedback based on actual results
+      if (failedDeletions.length === 0) {
+        alert(`Sucesso! ${successfullyDeleted.length} matérias e todo o seu respectivo histórico de revisões e acertos foram completamente excluídos.`);
+      } else if (successfullyDeleted.length > 0) {
+        alert(`Exclusão parcial: ${successfullyDeleted.length} matérias foram excluídas com sucesso, mas ${failedDeletions.length} matéria(s) falharam na exclusão.`);
+      } else {
+        alert('Erro ao realizar a limpeza das matérias selecionadas. Nenhuma matéria foi excluída.');
+      }
     } catch (err) {
       console.error('[ProfileView] Error cleaning subjects:', err);
-      alert('Erro ao realizar a limpeza das matérias selecionadas.');
+      alert('Erro inesperado ao consultar dependências para limpeza das matérias selecionadas.');
     } finally {
       setIsCleaning(false);
     }

@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
-import { Stethoscope, CheckCircle2, XCircle, HelpCircle, X, ChevronRight, Sparkles, BookOpen } from 'lucide-react';
+import Stethoscope from 'lucide-react/dist/esm/icons/stethoscope.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import XCircle from 'lucide-react/dist/esm/icons/x-circle.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
 import ReactMarkdown from 'react-markdown';
 
 interface InteractiveClinicalCaseProps {

@@ -1,43 +1,41 @@
 import { ManualLinkingModal } from './ManualLinkingModal';
 ﻿import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Calendar as CalendarIcon, 
-  Clock, 
-  Sparkles, 
-  AlertTriangle, 
-  CheckCircle2, 
-  RotateCw, 
-  Award, 
-  BookOpen, 
-  BarChart3, 
-  ChevronRight, 
-  ChevronLeft, 
-  Lightbulb, 
-  Settings, 
-  Check, 
-  AlertCircle,
-  HelpCircle,
-  SlidersHorizontal,
-  ArrowRight,
-  ArrowLeftRight,
-  FileText,
-  UploadCloud,
-  Brain,
-  PieChart,
-  Loader2,
-  Download,
-  Zap,
-  Layers,
-  RefreshCw,
-  Link as LinkIcon,
-  Trash2,
-  X,
-  GraduationCap,
-  Building2,
-  Search
-} from 'lucide-react';
+import CalendarIcon from 'lucide-react/dist/esm/icons/calendar.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import RotateCw from 'lucide-react/dist/esm/icons/rotate-cw.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import BarChart3 from 'lucide-react/dist/esm/icons/bar-chart-3.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left.js';
+import Lightbulb from 'lucide-react/dist/esm/icons/lightbulb.js';
+import Settings from 'lucide-react/dist/esm/icons/settings.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import SlidersHorizontal from 'lucide-react/dist/esm/icons/sliders-horizontal.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import ArrowLeftRight from 'lucide-react/dist/esm/icons/arrow-left-right.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import UploadCloud from 'lucide-react/dist/esm/icons/upload-cloud.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import PieChart from 'lucide-react/dist/esm/icons/pie-chart.js';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2.js';
+import Download from 'lucide-react/dist/esm/icons/download.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.js';
+import LinkIcon from 'lucide-react/dist/esm/icons/link.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap.js';
+import Building2 from 'lucide-react/dist/esm/icons/building-2.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, collection, doc, addDoc, updateDoc, getDocs, getDoc, where, query, limit, deleteDoc, writeBatch, onSnapshot } from '../firebase';
+import { db, collection, doc, addDoc, updateDoc, setDoc, getDocs, getDoc, where, query, limit, deleteDoc, writeBatch, onSnapshot } from '../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStudyData } from '../../hooks/useStudyData';
 import { accuracyToQuality, calculateNextReview } from '../../utils/srs';
@@ -5581,7 +5579,7 @@ export default function Cronograma({
         title: 'Cronograma do Internato - Faculdade de Medicina',
         isActive: true,
         ...updatedData
-      } as StudySchedule;
+      } as unknown as StudySchedule;
 
       // Save to all target Ysabelle UIDs so her UI updates no matter which login she uses
       const targetUids = new Set([yUserId, 'LqqE7ghZbEXzqX0yTIhKTzJuv8x1', 'w65SLwunOHbn9IXaJW61LzB0TZO2']);

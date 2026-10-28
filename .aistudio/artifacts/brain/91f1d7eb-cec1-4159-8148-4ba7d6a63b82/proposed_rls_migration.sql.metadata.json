@@ -1,0 +1,5 @@
+{
+  "summary": "Proposta técnica do script SQL transacional para revisão humana, contemplando public.app_admins e políticas RLS para public.firestore_documents.",
+  "updatedAt": "2026-10-19T17:15:49.280520053Z",
+  "userFacing": true
+}

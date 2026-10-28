@@ -1,56 +1,57 @@
 // MedRevise Core Application - Updated
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, db, signInWithPopup, signOut, doc, updateDoc, signInAnonymously } from './firebase';
-import InternatoApp from './internato/InternatoApp';
-import { 
-  LayoutDashboard, 
-  BookOpen, 
-  Calendar as CalendarIcon, 
-  LogOut, 
-  BarChart3, 
-  Clock, 
-  User as UserIcon, 
-  Menu, 
-  X as CloseIcon, 
-  Award, 
-  Shield, 
-  Scale,
-  Sparkles,
-  Link2,
-  HelpCircle,
-  Lightbulb,
-  ArrowLeftRight,
-  Moon,
-  AlertTriangle,
-  Bug
-} from 'lucide-react';
+import LayoutDashboard from 'lucide-react/dist/esm/icons/layout-dashboard.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import CalendarIcon from 'lucide-react/dist/esm/icons/calendar.js';
+import LogOut from 'lucide-react/dist/esm/icons/log-out.js';
+import BarChart3 from 'lucide-react/dist/esm/icons/bar-chart-3.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import UserIcon from 'lucide-react/dist/esm/icons/user.js';
+import Menu from 'lucide-react/dist/esm/icons/menu.js';
+import CloseIcon from 'lucide-react/dist/esm/icons/x.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import Shield from 'lucide-react/dist/esm/icons/shield.js';
+import Scale from 'lucide-react/dist/esm/icons/scale.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Link2 from 'lucide-react/dist/esm/icons/link-2.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import Lightbulb from 'lucide-react/dist/esm/icons/lightbulb.js';
+import ArrowLeftRight from 'lucide-react/dist/esm/icons/arrow-left-right.js';
+import Moon from 'lucide-react/dist/esm/icons/moon.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import Bug from 'lucide-react/dist/esm/icons/bug.js';
+import FileCheck from 'lucide-react/dist/esm/icons/file-check.js';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useAuth } from './contexts/AuthContext';
 
-// Components
+// Components (Core eager, Secondary lazy loaded for memory efficiency and bundle performance)
 import Dashboard from './components/Dashboard';
 import SubjectList from './components/SubjectList';
-import CalendarView from './components/CalendarView';
 import ProfileView from './components/ProfileView';
-import CollegeSchedule from './components/CollegeSchedule';
-import PerformanceStats from './components/PerformanceStats';
-import WeeklyView from './components/WeeklyView';
-import ExamsView from './components/ExamsView';
-import AdminPanel from './components/AdminPanel';
-import ErrorLogsManager from './components/ErrorLogsManager';
-import LegalTerms from './components/LegalTerms';
 import LandingPage from './components/LandingPage';
 import OnboardingTour from './components/OnboardingTour';
-import SubjectLinkerInterface from './components/SubjectLinkerInterface';
 import FaqModal from './components/FaqModal';
 import SuggestionsBox from './internato/components/SuggestionsBox';
-import HowToUseView from './components/HowToUseView';
 import ActionGuidedTour from './components/ActionGuidedTour';
-import { Compass } from 'lucide-react';
+import Compass from 'lucide-react/dist/esm/icons/compass.js';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useStudyData } from './hooks/useStudyData';
+
+const InternatoApp = React.lazy(() => import('./internato/InternatoApp'));
+const CalendarView = React.lazy(() => import('./components/CalendarView'));
+const CollegeSchedule = React.lazy(() => import('./components/CollegeSchedule'));
+const PerformanceStats = React.lazy(() => import('./components/PerformanceStats'));
+const WeeklyView = React.lazy(() => import('./components/WeeklyView'));
+const ExamsView = React.lazy(() => import('./components/ExamsView'));
+const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
+const ErrorLogsManager = React.lazy(() => import('./components/ErrorLogsManager'));
+const LegalTerms = React.lazy(() => import('./components/LegalTerms'));
+const SubjectLinkerInterface = React.lazy(() => import('./components/SubjectLinkerInterface'));
+const HowToUseView = React.lazy(() => import('./components/HowToUseView'));
+const RealExamImporterView = React.lazy(() => import('./modules/realExamImporter/RealExamImporterView'));
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -58,7 +59,7 @@ function cn(...inputs: ClassValue[]) {
 
 export default function App() {
   const { user, profile, loading, globalStats } = useAuth();
-  const { sessions, subjects, topics, mockExams } = useStudyData();
+  const { sessions, subjects, topics, mockExams, loading: studyLoading, metrics } = useStudyData();
   
   const isLucas = user?.email === 'lucas1renck2melo@gmail.com';
   const isAdmin = isLucas || 
@@ -103,10 +104,10 @@ export default function App() {
     }
   }, [appMode]);
 
-  const totalCombinedQuestions = globalStats.questions + (mockExams || []).reduce((acc, e) => acc + (e.totalQuestions || 0), 0);
-  const totalCombinedTime = globalStats.time + (mockExams || []).reduce((acc, e) => acc + (e.timeSpentMinutes || 0), 0);
+  const totalCombinedQuestions = metrics?.totalQuestions ?? 0;
+  const totalCombinedTime = metrics?.totalStudyMinutes ?? 0;
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'subjects' | 'calendar' | 'profile' | 'schedule' | 'stats' | 'weekly' | 'exams' | 'admin' | 'terms' | 'linker' | 'howToUse' | 'errors'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'subjects' | 'calendar' | 'profile' | 'schedule' | 'stats' | 'weekly' | 'exams' | 'admin' | 'terms' | 'linker' | 'howToUse' | 'errors' | 'realExams'>('dashboard');
   const [activeActionTourId, setActiveActionTourId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
@@ -317,10 +318,16 @@ export default function App() {
   if (appMode === 'internato') {
     return (
       <ErrorBoundary>
-        <InternatoApp onToggleAppMode={() => {
-          setAppMode('revise');
-          localStorage.setItem('app_mode', 'revise');
-        }} />
+        <React.Suspense fallback={
+          <div className="min-h-screen bg-[#F4F3EF] flex items-center justify-center">
+            <div className="font-mono text-xs animate-pulse text-stone-600">CARREGANDO MEDINTERNATO...</div>
+          </div>
+        }>
+          <InternatoApp onToggleAppMode={() => {
+            setAppMode('revise');
+            localStorage.setItem('app_mode', 'revise');
+          }} />
+        </React.Suspense>
       </ErrorBoundary>
     );
   }
@@ -414,12 +421,20 @@ export default function App() {
             label="PERFIL"
           />
           {isAdmin && (
-            <NavButton 
-              active={activeTab === 'admin'} 
-              onClick={() => { setActiveTab('admin'); setIsSidebarOpen(false); }}
-              icon={<Shield size={18} className="text-indigo-600" />}
-              label="ADMIN PANEL"
-            />
+            <>
+              <NavButton 
+                active={activeTab === 'realExams'} 
+                onClick={() => { setActiveTab('realExams'); setIsSidebarOpen(false); }}
+                icon={<FileCheck size={18} className="text-[#D44E3D]" />}
+                label="PROVAS REAIS (PDF)"
+              />
+              <NavButton 
+                active={activeTab === 'admin'} 
+                onClick={() => { setActiveTab('admin'); setIsSidebarOpen(false); }}
+                icon={<Shield size={18} className="text-indigo-600" />}
+                label="ADMIN PANEL"
+              />
+            </>
           )}
           {isLucas && (
             <NavButton 
@@ -553,38 +568,45 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeTab === 'dashboard' && <Dashboard />}
-              {activeTab === 'subjects' && <SubjectList onSwitchMode={setAppMode} />}
-              {activeTab === 'calendar' && <CalendarView />}
-              {activeTab === 'weekly' && <WeeklyView />}
-              {activeTab === 'exams' && <ExamsView />}
-              {activeTab === 'schedule' && <CollegeSchedule />}
-              {activeTab === 'stats' && <PerformanceStats sessions={sessions} subjects={subjects} mockExams={mockExams} />}
-              {activeTab === 'profile' && <ProfileView />}
-              {activeTab === 'admin' && isAdmin && <AdminPanel />}
-              {activeTab === 'errors' && isLucas && <ErrorLogsManager />}
-              {activeTab === 'terms' && <LegalTerms />}
-              {activeTab === 'linker' && <SubjectLinkerInterface onSwitchMode={setAppMode} />}
-              {activeTab === 'howToUse' && (
-                <HowToUseView 
-                  onStartActionTour={(tourId, module) => {
-                    localStorage.setItem('active_action_tour_id', tourId);
-                    if (module === 'medinternato') {
-                      setAppMode('internato');
-                      setTimeout(() => {
-                        window.dispatchEvent(new CustomEvent('start-internato-action-tour', { detail: tourId }));
-                      }, 100);
-                    } else {
-                      setAppMode('revise');
-                      setActiveTab('subjects');
-                      setActiveActionTourId(tourId);
-                    }
-                  }}
-                  onNavigateToProfile={() => setActiveTab('profile')}
-                  userProfile={profile}
-                  isAdmin={isAdmin}
-                />
-              )}
+              <React.Suspense fallback={
+                <div className="p-8 font-mono text-xs text-stone-500 animate-pulse flex items-center justify-center min-h-[300px]">
+                  CARREGANDO MÓDULO...
+                </div>
+              }>
+                {activeTab === 'dashboard' && <Dashboard />}
+                {activeTab === 'subjects' && <SubjectList onSwitchMode={setAppMode} />}
+                {activeTab === 'calendar' && <CalendarView />}
+                {activeTab === 'weekly' && <WeeklyView />}
+                {activeTab === 'exams' && <ExamsView />}
+                {activeTab === 'schedule' && <CollegeSchedule />}
+                {activeTab === 'stats' && <PerformanceStats sessions={sessions} subjects={subjects} mockExams={mockExams} />}
+                {activeTab === 'profile' && <ProfileView subjects={subjects} loadingSubjects={studyLoading} />}
+                {activeTab === 'realExams' && isAdmin && <RealExamImporterView />}
+                {activeTab === 'admin' && isAdmin && <AdminPanel />}
+                {activeTab === 'errors' && isLucas && <ErrorLogsManager />}
+                {activeTab === 'terms' && <LegalTerms />}
+                {activeTab === 'linker' && <SubjectLinkerInterface onSwitchMode={setAppMode} />}
+                {activeTab === 'howToUse' && (
+                  <HowToUseView 
+                    onStartActionTour={(tourId, module) => {
+                      localStorage.setItem('active_action_tour_id', tourId);
+                      if (module === 'medinternato') {
+                        setAppMode('internato');
+                        setTimeout(() => {
+                          window.dispatchEvent(new CustomEvent('start-internato-action-tour', { detail: tourId }));
+                        }, 100);
+                      } else {
+                        setAppMode('revise');
+                        setActiveTab('subjects');
+                        setActiveActionTourId(tourId);
+                      }
+                    }}
+                    onNavigateToProfile={() => setActiveTab('profile')}
+                    userProfile={profile}
+                    isAdmin={isAdmin}
+                  />
+                )}
+              </React.Suspense>
             </motion.div>
           </AnimatePresence>
 

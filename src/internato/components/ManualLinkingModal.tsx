@@ -1,6 +1,6 @@
 import React from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Link as LinkIcon } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import LinkIcon from 'lucide-react/dist/esm/icons/link.js';
 import { Button } from '@/components/ui/button';
 
 interface ManualLinkingModalProps {

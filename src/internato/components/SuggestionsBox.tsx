@@ -1,17 +1,15 @@
 import React, { useState } from 'react';
 import { db, collection, addDoc } from '../firebase';
-import { 
-  Lightbulb, 
-  Send, 
-  X, 
-  CheckCircle2, 
-  Loader2, 
-  MessageSquare, 
-  AlertCircle,
-  Stethoscope,
-  Bug,
-  Sparkles
-} from 'lucide-react';
+import Lightbulb from 'lucide-react/dist/esm/icons/lightbulb.js';
+import Send from 'lucide-react/dist/esm/icons/send.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2.js';
+import MessageSquare from 'lucide-react/dist/esm/icons/message-square.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import Stethoscope from 'lucide-react/dist/esm/icons/stethoscope.js';
+import Bug from 'lucide-react/dist/esm/icons/bug.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
 import { Button } from '@/components/ui/button';
 
 interface SuggestionsBoxProps {

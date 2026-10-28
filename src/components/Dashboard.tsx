@@ -23,7 +23,18 @@ import {
   ComposedChart,
   Line
 } from 'recharts';
-import { BarChart3, Clock, Target, TrendingUp, Award, Brain, Sparkles, Check, HelpCircle, AlertTriangle, ShieldCheck, Cpu } from 'lucide-react';
+import BarChart3 from 'lucide-react/dist/esm/icons/bar-chart-3.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Target from 'lucide-react/dist/esm/icons/target.js';
+import TrendingUp from 'lucide-react/dist/esm/icons/trending-up.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import Cpu from 'lucide-react/dist/esm/icons/cpu.js';
 import { calculateNextReview } from '../utils/srs';
 
 import { useStudyData } from '../hooks/useStudyData';

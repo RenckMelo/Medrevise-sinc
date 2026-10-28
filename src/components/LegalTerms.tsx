@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, ScrollText, Scale, Eye, AlertCircle, FileLock, AlertTriangle, X as CloseIcon } from 'lucide-react';
+import Shield from 'lucide-react/dist/esm/icons/shield.js';
+import ScrollText from 'lucide-react/dist/esm/icons/scroll-text.js';
+import Scale from 'lucide-react/dist/esm/icons/scale.js';
+import Eye from 'lucide-react/dist/esm/icons/eye.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import FileLock from 'lucide-react/dist/esm/icons/file-lock.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import CloseIcon from 'lucide-react/dist/esm/icons/x.js';
 
 interface LegalTermsProps {
   initialSection?: 'terms' | 'privacy';
@@ -184,9 +191,9 @@ export default function LegalTerms({ initialSection = 'terms', onClose }: LegalT
             </section>
 
             <section className="space-y-2">
-              <h5 className="font-mono text-[10px] font-bold uppercase text-neutral-800">3. Uso de Escopos do Google Calendar</h5>
+              <h5 className="font-mono text-[10px] font-bold uppercase text-neutral-800">3. Calendário e Agendamento Interno</h5>
               <p className="text-neutral-600">
-                O sistema oferece sincronização opcional com o Google Calendário. O token de autorização gerado é criptografado e mantido em um banco de segredos inacessível ao cliente comum, sendo requisitado exclusivamente para injetar as tarefas de matérias de forma pontual no seu calendário Google pessoal.
+                A gestão de horários, ciclos de revisão e cronogramas de estudo é processada diretamente na plataforma MedRevise. O sistema não realiza sincronização externa ativa com serviços de calendário de terceiros nem solicita escopos adicionais de agendas externas.
               </p>
             </section>
 

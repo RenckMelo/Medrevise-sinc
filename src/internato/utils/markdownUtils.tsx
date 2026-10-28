@@ -4,14 +4,48 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
-import mermaid from 'mermaid';
-import { 
-  Image as ImageIcon, ExternalLink, AlertCircle, Search, ImageOff, Heart, RotateCw, RotateCcw,
-  Upload, Trash2, Link, Activity, Stethoscope, CheckCircle2, ShieldAlert, Sparkles, 
-  Brain, Zap, FileText, Lightbulb, Pill, UserCheck, GitBranch, ChevronDown, ArrowDown, Award,
-  ChevronRight, Home, ArrowRight, Play, HelpCircle, ZoomIn, ZoomOut, Maximize2, Minimize2, Bookmark,
-  Sun, Moon, Terminal, X, LayoutGrid, RefreshCw
-} from 'lucide-react';
+import ImageIcon from 'lucide-react/dist/esm/icons/image.js';
+import ExternalLink from 'lucide-react/dist/esm/icons/external-link.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import ImageOff from 'lucide-react/dist/esm/icons/image-off.js';
+import Heart from 'lucide-react/dist/esm/icons/heart.js';
+import RotateCw from 'lucide-react/dist/esm/icons/rotate-cw.js';
+import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw.js';
+import Upload from 'lucide-react/dist/esm/icons/upload.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Link from 'lucide-react/dist/esm/icons/link.js';
+import Activity from 'lucide-react/dist/esm/icons/activity.js';
+import Stethoscope from 'lucide-react/dist/esm/icons/stethoscope.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import ShieldAlert from 'lucide-react/dist/esm/icons/shield-alert.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Lightbulb from 'lucide-react/dist/esm/icons/lightbulb.js';
+import Pill from 'lucide-react/dist/esm/icons/pill.js';
+import UserCheck from 'lucide-react/dist/esm/icons/user-check.js';
+import GitBranch from 'lucide-react/dist/esm/icons/git-branch.js';
+import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down.js';
+import ArrowDown from 'lucide-react/dist/esm/icons/arrow-down.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import Home from 'lucide-react/dist/esm/icons/home.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import Play from 'lucide-react/dist/esm/icons/play.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import ZoomIn from 'lucide-react/dist/esm/icons/zoom-in.js';
+import ZoomOut from 'lucide-react/dist/esm/icons/zoom-out.js';
+import Maximize2 from 'lucide-react/dist/esm/icons/maximize-2.js';
+import Minimize2 from 'lucide-react/dist/esm/icons/minimize-2.js';
+import Bookmark from 'lucide-react/dist/esm/icons/bookmark.js';
+import Sun from 'lucide-react/dist/esm/icons/sun.js';
+import Moon from 'lucide-react/dist/esm/icons/moon.js';
+import Terminal from 'lucide-react/dist/esm/icons/terminal.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import LayoutGrid from 'lucide-react/dist/esm/icons/layout-grid.js';
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.js';
 import { StaticMedicalFigure } from '../components/StaticMedicalFigure';
 import { InteractiveClinicalCase } from '../components/InteractiveClinicalCase';
 
@@ -5382,23 +5416,36 @@ export const TreeBranchRenderer = ({ text }: { text: string }) => {
   );
 };
 
-// Initialize Mermaid once globally
-try {
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: 'neutral',
-    securityLevel: 'loose',
-    fontFamily: 'system-ui, sans-serif',
-    flowchart: {
-      htmlLabels: true,
-      curve: 'basis',
-      padding: 16,
-      nodeSpacing: 45,
-      rankSpacing: 50,
-      useMaxWidth: true
+let mermaidInitialized = false;
+const getMermaidInstance = async () => {
+  const mermaidModule = await import('mermaid');
+  const instance = (mermaidModule.default || mermaidModule) as unknown as {
+    initialize: (config: any) => void;
+    render: (id: string, text: string) => Promise<{ svg: string }>;
+  };
+  if (!mermaidInitialized) {
+    try {
+      instance.initialize({
+        startOnLoad: false,
+        theme: 'neutral',
+        securityLevel: 'loose',
+        fontFamily: 'system-ui, sans-serif',
+        flowchart: {
+          htmlLabels: true,
+          curve: 'basis',
+          padding: 16,
+          nodeSpacing: 45,
+          rankSpacing: 50,
+          useMaxWidth: true
+        }
+      });
+      mermaidInitialized = true;
+    } catch (e) {
+      console.warn('Mermaid initialize warning:', e);
     }
-  });
-} catch (e) {}
+  }
+  return instance;
+};
 
 // Preprocesses and sanitizes Mermaid syntax to prevent node text overflow or unescaped character crashes
 const sanitizeMermaidCode = (code: string): string => {
@@ -5467,8 +5514,9 @@ export const MermaidVisualFlowchart = ({ code }: { code: string }) => {
     const renderDiagram = async () => {
       try {
         setHasError(false);
+        const mermaidInstance = await getMermaidInstance();
         const uniqueId = `mermaid-id-${Math.random().toString(36).substring(2, 9)}`;
-        const { svg } = await mermaid.render(uniqueId, sanitized);
+        const { svg } = await mermaidInstance.render(uniqueId, sanitized);
         if (isMounted) {
           setSvgContent(svg);
         }

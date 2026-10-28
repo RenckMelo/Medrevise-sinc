@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  ArrowRight, 
-  ArrowLeft, 
-  CheckCircle2, 
-  Sparkles, 
-  Target, 
-  MousePointer,
-  AlertCircle
-} from 'lucide-react';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Target from 'lucide-react/dist/esm/icons/target.js';
+import MousePointer from 'lucide-react/dist/esm/icons/mouse-pointer.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
 import { motion, AnimatePresence } from 'motion/react';
 
 export interface TourStepDefinition {

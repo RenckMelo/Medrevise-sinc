@@ -2,7 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy } from '../firebase';
 import { CollegeClass } from '../types';
-import { Plus, Trash2, Clock, MapPin, Calendar, GripVertical, Edit2, AlertTriangle } from 'lucide-react';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import MapPin from 'lucide-react/dist/esm/icons/map-pin.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import GripVertical from 'lucide-react/dist/esm/icons/grip-vertical.js';
+import Edit2 from 'lucide-react/dist/esm/icons/edit-2.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
 import { 
   DndContext, 
   DragOverlay, 

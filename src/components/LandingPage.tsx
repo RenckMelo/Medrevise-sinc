@@ -1,30 +1,28 @@
 import React, { useState } from 'react';
-import { 
-  Sparkles, 
-  BookOpen, 
-  Calendar, 
-  ArrowRight, 
-  Lock, 
-  CheckCircle2, 
-  HelpCircle, 
-  Brain, 
-  TrendingUp, 
-  Award, 
-  Clock, 
-  Check,
-  FileText,
-  Layers,
-  ListChecks,
-  XCircle,
-  AlertTriangle,
-  X,
-  ShieldCheck,
-  Zap,
-  FlaskConical,
-  QrCode,
-  CreditCard,
-  RefreshCw
-} from 'lucide-react';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import Lock from 'lucide-react/dist/esm/icons/lock.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import TrendingUp from 'lucide-react/dist/esm/icons/trending-up.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import ListChecks from 'lucide-react/dist/esm/icons/list-checks.js';
+import XCircle from 'lucide-react/dist/esm/icons/x-circle.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import FlaskConical from 'lucide-react/dist/esm/icons/flask-conical.js';
+import QrCode from 'lucide-react/dist/esm/icons/qr-code.js';
+import CreditCard from 'lucide-react/dist/esm/icons/credit-card.js';
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.js';
 import { motion, AnimatePresence } from 'motion/react';
 import LegalTerms from './LegalTerms';
 

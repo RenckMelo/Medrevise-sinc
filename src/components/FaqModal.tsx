@@ -1,27 +1,25 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  HelpCircle, 
-  Search, 
-  X, 
-  Calendar, 
-  Brain, 
-  ArrowLeftRight, 
-  Sparkles, 
-  CheckCircle2, 
-  ChevronDown, 
-  BookOpen, 
-  BarChart3, 
-  ShieldCheck,
-  Zap,
-  GraduationCap,
-  Layers,
-  FileText,
-  Target,
-  Compass,
-  ArrowRight,
-  RotateCcw,
-  Check
-} from 'lucide-react';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import ArrowLeftRight from 'lucide-react/dist/esm/icons/arrow-left-right.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import BarChart3 from 'lucide-react/dist/esm/icons/bar-chart-3.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Target from 'lucide-react/dist/esm/icons/target.js';
+import Compass from 'lucide-react/dist/esm/icons/compass.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface FaqModalProps {

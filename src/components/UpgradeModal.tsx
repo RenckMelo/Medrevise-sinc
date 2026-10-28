@@ -1,5 +1,8 @@
 import React from 'react';
-import { X, Sparkles, AlertCircle, ArrowRight } from 'lucide-react';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
 
 interface UpgradeModalProps {
   isOpen: boolean;

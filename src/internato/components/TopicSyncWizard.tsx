@@ -1,24 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Topic, Subject, Semester } from '../types';
-import { 
-  Sparkles, 
-  ArrowLeft, 
-  BookOpen, 
-  Plus, 
-  Info, 
-  Check, 
-  Layers, 
-  GraduationCap, 
-  AlertCircle, 
-  FileText, 
-  Settings, 
-  Activity,
-  Shield,
-  HelpCircle,
-  Trash2,
-  Lock,
-  Crown
-} from 'lucide-react';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Info from 'lucide-react/dist/esm/icons/info.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Settings from 'lucide-react/dist/esm/icons/settings.js';
+import Activity from 'lucide-react/dist/esm/icons/activity.js';
+import Shield from 'lucide-react/dist/esm/icons/shield.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Lock from 'lucide-react/dist/esm/icons/lock.js';
+import Crown from 'lucide-react/dist/esm/icons/crown.js';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   analyzeSummaryNeeds, 

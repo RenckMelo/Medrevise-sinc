@@ -14,7 +14,10 @@ import {
 } from 'recharts';
 import { StudySession, Subject, MockExam } from '../types';
 import { format, parseISO, subDays, isSameDay } from 'date-fns';
-import { Award, AlertTriangle, CheckCircle, ChevronRight } from 'lucide-react';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import CheckCircle from 'lucide-react/dist/esm/icons/check-circle.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
 
 interface PerformanceStatsProps {
   sessions: StudySession[];

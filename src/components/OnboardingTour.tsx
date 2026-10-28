@@ -1,30 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Sparkles, 
-  ArrowRight, 
-  ArrowLeft, 
-  X, 
-  BookOpen, 
-  LayoutDashboard, 
-  Calendar, 
-  Clock, 
-  Award, 
-  BarChart3, 
-  User, 
-  Check,
-  Zap,
-  Brain,
-  Search,
-  Layers,
-  GraduationCap,
-  ShieldCheck,
-  RotateCcw,
-  ListFilter,
-  CheckCircle2,
-  FileText,
-  Target
-} from 'lucide-react';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import LayoutDashboard from 'lucide-react/dist/esm/icons/layout-dashboard.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import BarChart3 from 'lucide-react/dist/esm/icons/bar-chart-3.js';
+import User from 'lucide-react/dist/esm/icons/user.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw.js';
+import ListFilter from 'lucide-react/dist/esm/icons/list-filter.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Target from 'lucide-react/dist/esm/icons/target.js';
 
 interface OnboardingTourProps {
   isOpen: boolean;

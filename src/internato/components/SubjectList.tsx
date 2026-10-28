@@ -2,8 +2,50 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Subject, Semester, UserProgress, Topic } from '../types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import * as Icons from 'lucide-react';
-import { ChevronRight, Plus, X, Edit2, AlertCircle, Search, Layers, BookOpen, Filter, Globe, Sparkles, Link2, ArrowLeft, Check, Trash2, History, Clock, Brain } from 'lucide-react';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Edit2 from 'lucide-react/dist/esm/icons/edit-2.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Filter from 'lucide-react/dist/esm/icons/filter.js';
+import Globe from 'lucide-react/dist/esm/icons/globe.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Link2 from 'lucide-react/dist/esm/icons/link-2.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import History from 'lucide-react/dist/esm/icons/history.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import Baby from 'lucide-react/dist/esm/icons/baby.js';
+import Stethoscope from 'lucide-react/dist/esm/icons/stethoscope.js';
+import Users from 'lucide-react/dist/esm/icons/users.js';
+import Activity from 'lucide-react/dist/esm/icons/activity.js';
+import Heart from 'lucide-react/dist/esm/icons/heart.js';
+import ShieldAlert from 'lucide-react/dist/esm/icons/shield-alert.js';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap.js';
+import Book from 'lucide-react/dist/esm/icons/book.js';
+import Pill from 'lucide-react/dist/esm/icons/pill.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+
+const SUBJECT_ICON_MAP: Record<string, React.ComponentType<{ className?: string; size?: number | string }>> = {
+  BookOpen,
+  Baby,
+  Stethoscope,
+  Users,
+  Globe,
+  Activity,
+  Heart,
+  ShieldAlert,
+  Brain,
+  GraduationCap,
+  Book,
+  Pill,
+  FileText,
+};
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -448,7 +490,7 @@ export default function SubjectList({
   }, [subjects, semesterFilter, semesters, sourceFilter, searchQuery, topics, links, subjectModulesMap]);
 
   if (selectedSubject) {
-    const IconComponent = (Icons as any)[selectedSubject.icon] || Icons.BookOpen;
+    const IconComponent = SUBJECT_ICON_MAP[selectedSubject.icon] || BookOpen;
     const semesterLabel = getSemesterLabel(selectedSubject.semesterId, semesters, selectedSubject.name);
     const badgeStyle = getSubjectBadgeStyle(selectedSubject);
 
@@ -963,7 +1005,7 @@ export default function SubjectList({
       {/* Grid of Subjects - Responsive for Mobile/Tablet */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-5 lg:gap-8">
         {filteredSubjects.map((subject, subIdx) => {
-          const IconComponent = (Icons as any)[subject.icon] || Icons.BookOpen;
+          const IconComponent = SUBJECT_ICON_MAP[subject.icon] || BookOpen;
           const semesterLabel = getSemesterLabel(subject.semesterId, semesters, subject.name);
           const badgeStyle = getSubjectBadgeStyle(subject);
           

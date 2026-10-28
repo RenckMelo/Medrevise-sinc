@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { db, collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc, writeBatch, where, getDocs } from '../firebase';
+import { db, collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch, getDocs } from '../firebase';
 import { CalendarEvent, Topic, CollegeClass, StudySession, Subject } from '../types';
 import { 
   format, 
@@ -16,29 +16,27 @@ import {
   parseISO,
   isToday
 } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Plus, 
-  RefreshCw, 
-  GripVertical, 
-  X, 
-  Edit2, 
-  Trash2, 
-  AlertTriangle, 
-  Clock, 
-  CheckCircle, 
-  Sparkles,
-  Info,
-  Calendar,
-  BookOpen,
-  Brain,
-  Eye,
-  EyeOff,
-  Check,
-  Undo2
-} from 'lucide-react';
+import { ptBR } from 'date-fns/locale/pt-BR';
+import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.js';
+import GripVertical from 'lucide-react/dist/esm/icons/grip-vertical.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Edit2 from 'lucide-react/dist/esm/icons/edit-2.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import CheckCircle from 'lucide-react/dist/esm/icons/check-circle.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Info from 'lucide-react/dist/esm/icons/info.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import Eye from 'lucide-react/dist/esm/icons/eye.js';
+import EyeOff from 'lucide-react/dist/esm/icons/eye-off.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import Undo2 from 'lucide-react/dist/esm/icons/undo-2.js';
 import { useStudyData } from '../hooks/useStudyData';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
 import { accuracyToQuality, calculateNextReview } from '../utils/srs';
@@ -687,49 +685,6 @@ export default function CalendarView() {
     );
   };
 
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [hasGoogleConnection, setHasGoogleConnection] = useState(false);
-  const [isCleaning, setIsCleaning] = useState(false);
-
-  useEffect(() => {
-    if (!user) return;
-    const credRef = doc(db, 'users', user.uid, 'googleCredentials', 'default');
-    const unsub = onSnapshot(credRef, (docSnap) => {
-      setHasGoogleConnection(docSnap.exists());
-    }, (error) => {
-      console.error('Error fetching google connection state:', error);
-    });
-    return () => unsub();
-  }, [user]);
-
-  const handleClearSync = async () => {
-    if (!user) return;
-    setIsCleaning(true);
-    try {
-      const batch = writeBatch(db);
-      const syncedEvents = events.filter(e => e.googleEventId);
-      console.log(`Cleaning up ${syncedEvents.length} synchronized Google Calendar events...`);
-
-      syncedEvents.forEach(e => {
-        batch.delete(doc(db, 'users', user.uid, 'calendarEvents', e.id));
-      });
-
-      const credRef = doc(db, 'users', user.uid, 'googleCredentials', 'default');
-      batch.delete(credRef);
-
-      await batch.commit();
-      triggerNotification(
-        'Sincronização Desfeita', 
-        'A conexão foi encerrada e todos os compromissos criados via Google Calendar foram removidos de seu estudo.', 
-        'success'
-      );
-    } catch (error: any) {
-      console.error('Error clearing synchronization:', error);
-      triggerNotification('Falha ao Desconectar', `Ocorreu um erro: ${error.message || error}`, 'error');
-    } finally {
-      setIsCleaning(false);
-    }
-  };
 
   const handleRescheduleOverdue = () => {
     const overdueList = topics.filter(t => {
@@ -825,229 +780,7 @@ export default function CalendarView() {
     }
   };
 
-  const saveGoogleCredentials = async (tokens: any) => {
-    if (!user) return;
-    try {
-      await setDoc(doc(db, 'users', user.uid, 'googleCredentials', 'default'), {
-        tokens,
-        updatedAt: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error('Error saving credentials to Firestore:', error);
-    }
-  };
 
-  const handleSync = async () => {
-    if (!user) {
-      console.log('Sync aborted: user is not defined.');
-      return;
-    }
-    setIsSyncing(true);
-    console.log('Starting handleSync diagnostic flow for user:', user.uid);
-    try {
-      // 1. Fetch credentials from Firestore
-      console.log('Step 1: Fetching google credentials...');
-      let credSnap;
-      try {
-        const credRef = doc(db, 'users', user.uid, 'googleCredentials', 'default');
-        credSnap = await getDoc(credRef);
-        console.log('Step 1 success! Credentials document exists:', credSnap.exists());
-      } catch (err: any) {
-        console.error('Step 1 error (Fetching credentials):', err);
-        throw new Error(`Step 1 (Fetch credentials) failed: ${err.message || err}`);
-      }
- 
-      if (!credSnap.exists()) {
-        console.log('No credentials found. Fetching auth URL...');
-        try {
-          const urlRes = await fetch(`/api/auth/google/url?userId=${user.uid}`);
-          if (!urlRes.ok) {
-            const errData = await urlRes.json().catch(() => ({}));
-            const msg = errData.error || 'Não foi possível obter a URL de autenticação.';
-            triggerNotification('Erro de Autenticação', `Erro na configuração do Google Calendar:\n\n${msg}`, 'error');
-            setIsSyncing(false);
-            return;
-          }
-          const { url, redirectUri } = await urlRes.json();
-          console.log('Google Auth URL:', url);
-          console.log('Google Auth Configured redirectUri:', redirectUri);
-          
-          console.log('Opening auth popup window...');
-          const authWindow = window.open(url, 'google_auth', 'width=600,height=700');
-          if (!authWindow) {
-            triggerNotification('Bloqueador Ativo', 'Por favor, permita popups para conseguir conectar ao Google Calendar.', 'info');
-          }
-        } catch (err: any) {
-          console.error('Error opening auth URL:', err);
-          triggerNotification('Erro de Conexão', 'Erro ao obter URL de autenticação com o Google.', 'error');
-        }
-        setIsSyncing(false);
-        return;
-      }
- 
-      const { tokens } = credSnap.data();
-      console.log('Step 1: Retrieved tokens from database successfully.');
- 
-      // 2. Fetch Google Calendar events using stateless server proxy
-      console.log('Step 2: Fetching calendar events from Google proxy...');
-      let googleEvents;
-      try {
-        const fetchRes = await fetch('/api/calendar/fetch-events', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tokens })
-        });
- 
-        if (!fetchRes.ok) {
-          const errMsg = await fetchRes.text();
-          throw new Error(`Server returned status ${fetchRes.status}: ${errMsg}`);
-        }
- 
-        const result = await fetchRes.json();
-        googleEvents = result.items;
-        console.log(`Step 2 success! Fetched ${googleEvents?.length || 0} events from Google.`);
-      } catch (err: any) {
-        console.error('Step 2 error (Fetching calendar events from Google API):', err);
-        throw new Error(`Step 2 (Fetch from Google Calendar) failed: ${err.message || err}`);
-      }
- 
-      // 3. Save incoming Google Calendar events to local Firestore
-      console.log('Step 3: Processing incoming google events...');
-      const batch = writeBatch(db);
-      const eventsCol = collection(db, 'users', user.uid, 'calendarEvents');
- 
-      for (const gEvent of googleEvents || []) {
-        if (!gEvent.id) continue;
- 
-        console.log(`Step 3.1: Querying local event for googleEventId: ${gEvent.id}...`);
-        let qSnap;
-        try {
-          const q = query(eventsCol, where('googleEventId', '==', gEvent.id));
-          qSnap = await getDocs(q);
-        } catch (err: any) {
-          console.error(`Step 3.1 error querying googleEventId ${gEvent.id}:`, err);
-          throw new Error(`Step 3.1 (Query existing event ${gEvent.id}) failed: ${err.message || err}`);
-        }
- 
-        const eventData = {
-          title: gEvent.summary || 'Sem título',
-          description: gEvent.description || '',
-          start: gEvent.start?.dateTime || gEvent.start?.date || '',
-          end: gEvent.end?.dateTime || gEvent.end?.date || '',
-          googleEventId: gEvent.id,
-          updatedAt: new Date().toISOString()
-        };
- 
-        if (qSnap.empty) {
-          const newDocRef = doc(eventsCol);
-          console.log(`Step 3.2: Queued batch SET for new event: ${eventData.title}`);
-          batch.set(newDocRef, eventData);
-        } else {
-          const existingDocRef = doc(db, 'users', user.uid, 'calendarEvents', qSnap.docs[0].id);
-          console.log(`Step 3.2: Queued batch UPDATE for existing local document: ${qSnap.docs[0].id}`);
-          batch.update(existingDocRef, eventData);
-        }
-      }
- 
-      // 4. Find local events without googleEventId which need to be pushed to Google Calendar
-      console.log('Step 4: Fetching local events to push to Google...');
-      let localSnap;
-      try {
-        localSnap = await getDocs(query(eventsCol));
-      } catch (err: any) {
-        console.error('Step 4 error (Querying local events):', err);
-        throw new Error(`Step 4 (Query local events) failed: ${err.message || err}`);
-      }
-      
-      const localToSync = localSnap.docs.filter(doc => !doc.data().googleEventId);
-      console.log(`Found ${localToSync.length} local events to sync to Google Calendar.`);
- 
-      for (const lDoc of localToSync) {
-        const lData = lDoc.data();
-        console.log(`Syncing local event "${lData.title}" to Google...`);
-        try {
-          const createRes = await fetch('/api/calendar/create-event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              tokens,
-              event: {
-                title: lData.title,
-                description: lData.description || '',
-                start: lData.start,
-                end: lData.end
-              }
-            })
-          });
- 
-          if (createRes.ok) {
-            const gCreatedEvent = await createRes.json();
-            console.log(`Successfully created event on Google with ID: ${gCreatedEvent.id}. Queuing batch update...`);
-            batch.update(doc(db, 'users', user.uid, 'calendarEvents', lDoc.id), {
-              googleEventId: gCreatedEvent.id
-            });
-          } else {
-            const errMsg = await createRes.text();
-            console.warn(`Failed to create event "${lData.title}" in Google: ${errMsg}`);
-          }
-        } catch (err: any) {
-          console.error(`Error syncing local event "${lData.title}":`, err);
-        }
-      }
- 
-      console.log('Step 5: Committing the batch modification to Firestore...');
-      try {
-        await batch.commit();
-        console.log('Step 5 batch commit success!');
-      } catch (err: any) {
-        console.error('Step 5 batch commit failure:', err);
-        throw new Error(`Step 5 (Batch Commit) failed: ${err.message || err}`);
-      }
- 
-      triggerNotification('Agenda Sincronizada', 'A sincronização com o Google Calendar foi finalizada com êxito!', 'success');
-    } catch (error: any) {
-      console.error('Full Sync error details:', error);
-      triggerNotification('Erro ao Sincronizar', `Erro ao sincronizar com o Google Calendar: ${error.message || error}`, 'error');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Listen to postMessage authentications (from popup flow)
-  useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        if (event.data.tokens) {
-          await saveGoogleCredentials(event.data.tokens);
-        }
-        handleSync();
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [user]);
-
-  // Handle Hash redirect sync token storage (from same-window flow fallback)
-  useEffect(() => {
-    const checkHashAndSave = async () => {
-      if (!user) return;
-      const hash = window.location.hash;
-      if (hash && hash.startsWith('#tokens=')) {
-        try {
-          const tokensStr = decodeURIComponent(hash.substring(8));
-          const tokens = JSON.parse(tokensStr);
-          await saveGoogleCredentials(tokens);
-          // Clear URL hash securely
-          window.history.replaceState(null, '', window.location.pathname + window.location.search);
-          // Trigger sync operation
-          handleSync();
-        } catch (err) {
-          console.error('Error parsing token hash:', err);
-        }
-      }
-    };
-    checkHashAndSave();
-  }, [user]);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);

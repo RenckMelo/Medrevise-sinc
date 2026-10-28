@@ -2,24 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, collection, getDocs, doc, updateDoc, setDoc, deleteDoc, query, onSnapshot, syncSurplusFirestoreToSupabase } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
-import { 
-  User, 
-  Shield, 
-  Search, 
-  Sparkles, 
-  UserPlus, 
-  Trash2, 
-  Mail, 
-  Check, 
-  X,
-  Users,
-  Award,
-  ShieldCheck,
-  Calendar,
-  Zap,
-  Lock,
-  ChevronRight
-} from 'lucide-react';
+import User from 'lucide-react/dist/esm/icons/user.js';
+import Shield from 'lucide-react/dist/esm/icons/shield.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import UserPlus from 'lucide-react/dist/esm/icons/user-plus.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Mail from 'lucide-react/dist/esm/icons/mail.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Users from 'lucide-react/dist/esm/icons/users.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import Lock from 'lucide-react/dist/esm/icons/lock.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
 import { motion } from 'motion/react';
 
 export type PlanType = 
@@ -503,6 +501,27 @@ export default function AdminPanel() {
         <p className="text-[#8E8A82] italic font-display text-sm leading-relaxed">
           Gerenciamento centralizado de acessos acadêmicos, pré-autorizações de emails para compras manuais e moderação de assinantes.
         </p>
+      </div>
+
+      {/* Banner de Acesso Rápido ao Importador de Provas Reais em PDF */}
+      <div className="p-4 bg-neutral-900 text-white rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm border border-neutral-800">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-[#D44E3D] text-white">PROVAS REAIS</span>
+            <h3 className="text-sm font-bold tracking-tight">Importador de Provas Médicas em PDF (Gabarito Integrado)</h3>
+          </div>
+          <p className="text-xs text-stone-300">
+            Extração fiel com detecção de gabarito nas páginas finais, integridade documental e tela de conferência administrativa.
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'realExams' }));
+          }}
+          className="px-4 py-2 bg-white hover:bg-stone-100 text-neutral-900 rounded-xl text-xs font-mono font-bold cursor-pointer transition-all shrink-0 shadow-xs"
+        >
+          Abrir Importador →
+        </button>
       </div>
 
       {/* Bento Grid Analytics Statistics */}

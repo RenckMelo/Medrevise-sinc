@@ -6,43 +6,41 @@ import { Subject, Topic, Flashcard, UserProgress, FlashcardDeepDive, FlashcardSe
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Brain,
-  RefreshCcw,
-  ChevronLeft,
-  ChevronRight,
-  RotateCcw,
-  Loader2,
-  Sparkles,
-  Filter,
-  Layers,
-  HelpCircle,
-  ChevronRight as ChevronRightIcon,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Calendar,
-  Plus,
-  Trophy,
-  Target,
-  BarChart2,
-  Check,
-  Flame,
-  ArrowRight,
-  ShieldAlert,
-  Sparkle,
-  Keyboard,
-  Clock,
-  BookOpen,
-  Zap,
-  Award,
-  Trash2,
-  Search,
-  FileText,
-  X,
-  ExternalLink,
-  Copy
-} from 'lucide-react';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import RefreshCcw from 'lucide-react/dist/esm/icons/refresh-ccw.js';
+import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw.js';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Filter from 'lucide-react/dist/esm/icons/filter.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import ChevronRightIcon from 'lucide-react/dist/esm/icons/chevron-right.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import XCircle from 'lucide-react/dist/esm/icons/x-circle.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Trophy from 'lucide-react/dist/esm/icons/trophy.js';
+import Target from 'lucide-react/dist/esm/icons/target.js';
+import BarChart2 from 'lucide-react/dist/esm/icons/bar-chart-2.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import Flame from 'lucide-react/dist/esm/icons/flame.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import ShieldAlert from 'lucide-react/dist/esm/icons/shield-alert.js';
+import Sparkle from 'lucide-react/dist/esm/icons/sparkle.js';
+import Keyboard from 'lucide-react/dist/esm/icons/keyboard.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import ExternalLink from 'lucide-react/dist/esm/icons/external-link.js';
+import Copy from 'lucide-react/dist/esm/icons/copy.js';
 
 import { db, collection, query, getDocs, getDoc, doc, updateDoc, setDoc, where, addDoc, limit, deleteDoc, documentId } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
@@ -219,7 +217,7 @@ export default function FlashcardModule({
         subjectId: selectedTopic?.subjectId || 'geral',
         semesterId: selectedTopic?.semesterId || 'cronograma_sem',
         completed: false
-      } as Topic;
+      } as unknown as Topic;
     }
     const resolvedTitle = getTopicTitle(found);
     return {
@@ -377,7 +375,7 @@ export default function FlashcardModule({
     }
     for (const tid of selectedTopicIds) {
       if (!list.some(t => t.id === tid)) {
-        list.unshift(getTopicForId(tid));
+        list.unshift(getTopicForId(tid) as any);
       }
     }
     return list;
@@ -452,7 +450,7 @@ export default function FlashcardModule({
     } else {
       const erredAndHardScores = currentSessionScores.filter(s => s.rating === 'errei' || s.rating === 'dificil');
       failedCardsList = erredAndHardScores.map(s => ({
-        concept: s.card.concept || s.cardFront,
+        concept: (s as any).card?.concept || s.concept || s.cardFront,
         front: s.cardFront,
         back: s.cardBack,
         rating: s.rating
@@ -543,7 +541,7 @@ export default function FlashcardModule({
     } else {
       const erredAndHardScores = currentSessionScores.filter(s => s.rating === 'errei' || s.rating === 'dificil');
       failedCardsList = erredAndHardScores.map(s => ({
-        concept: s.card.concept || s.cardFront,
+        concept: (s as any).card?.concept || s.concept || s.cardFront,
         front: s.cardFront,
         back: s.cardBack,
         rating: s.rating
@@ -847,7 +845,7 @@ export default function FlashcardModule({
       const existing = flashcards.find(f => f.id === s.cardId);
       if (existing) return existing;
 
-      const subName = s.subtopicTag || 'Clínica Médica';
+      const subName = (s as any).subtopicTag || 'Clínica Médica';
       return {
         id: s.cardId || `redo_card_${session.id}_${idx}`,
         front: s.cardFront || s.concept || 'Pergunta do Flashcard',
@@ -880,8 +878,8 @@ export default function FlashcardModule({
 
     if (session.scores && Array.isArray(session.scores)) {
       session.scores.forEach(s => {
-        if (s.subtopicTag && s.subtopicTag.length <= 35 && !s.subtopicTag.includes('?')) {
-          subjectsSet.add(s.subtopicTag.trim());
+        if ((s as any).subtopicTag && (s as any).subtopicTag.length <= 35 && !(s as any).subtopicTag.includes('?')) {
+          subjectsSet.add((s as any).subtopicTag.trim());
         }
       });
     }
@@ -946,8 +944,8 @@ export default function FlashcardModule({
         const topObj = topics.find(t => t.id === s.topicId);
         if (topObj && topObj.title && topObj.title.length <= 40) {
           topicTitlesSet.add(topObj.title);
-        } else if (s.subtopicTag && s.subtopicTag.length <= 40) {
-          topicTitlesSet.add(s.subtopicTag);
+        } else if ((s as any).subtopicTag && (s as any).subtopicTag.length <= 40) {
+          topicTitlesSet.add((s as any).subtopicTag);
         } else if (s.concept && s.concept.length <= 35 && !s.concept.includes('?')) {
           topicTitlesSet.add(s.concept);
         }
@@ -1115,7 +1113,7 @@ export default function FlashcardModule({
 
       // Find matching topic(s) and save to content_resumo_lacunas
       const matchedTopics = topics.filter(t => 
-        (selectedSessionHistory.topicIds && selectedSessionHistory.topicIds.includes(t.id)) ||
+        ((selectedSessionHistory as any).topicIds && (selectedSessionHistory as any).topicIds.includes(t.id)) ||
         (selectedSessionHistory.topicTitles && selectedSessionHistory.topicTitles.includes(t.title))
       );
 
@@ -1521,7 +1519,7 @@ export default function FlashcardModule({
       const selectedPull = shuffleArray(newCommunityCards).slice(0, countToPull * (topicsToFilter.length || 1));
 
       const importedCards: Flashcard[] = [];
-      for (const card of selectedPull) {
+      for (const card of selectedPull as any[]) {
         const cardData = {
           front: card.front,
           back: card.back,

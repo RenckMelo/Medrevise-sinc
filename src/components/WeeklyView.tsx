@@ -13,8 +13,14 @@ import {
   subWeeks,
   isToday
 } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, GripVertical, Trash2, X, BookOpen } from 'lucide-react';
+import { ptBR } from 'date-fns/locale/pt-BR';
+import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import CalendarIcon from 'lucide-react/dist/esm/icons/calendar.js';
+import GripVertical from 'lucide-react/dist/esm/icons/grip-vertical.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
 import { useStudyData } from '../hooks/useStudyData';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
 

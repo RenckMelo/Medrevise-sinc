@@ -1,9 +1,57 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Topic, UserProgress, Subject } from '../types';
+import { Topic, UserProgress, Subject, Question } from '../types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, ArrowLeft, ArrowRight, BookOpen, Clock, Share2, Sparkles, Loader2, FileText, Brain, Download, ChevronDown, Zap, RefreshCcw, Printer, X, Play, Edit3, Trash2, Maximize2, Bookmark, FolderPlus, Notebook, Copy, Check, PenTool, Eye, EyeOff, Image as ImageIcon, ImageOff, Link as LinkIcon, Upload as UploadIcon, Search, ExternalLink, QrCode, CreditCard, Cpu, Award, ShieldCheck, Columns, Lightbulb, Stethoscope, AlertCircle, HardDriveDownload, WifiOff, MapPin, Plus, Globe, Camera } from 'lucide-react';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Share2 from 'lucide-react/dist/esm/icons/share-2.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import Brain from 'lucide-react/dist/esm/icons/brain.js';
+import Download from 'lucide-react/dist/esm/icons/download.js';
+import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import RefreshCcw from 'lucide-react/dist/esm/icons/refresh-ccw.js';
+import Printer from 'lucide-react/dist/esm/icons/printer.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import Play from 'lucide-react/dist/esm/icons/play.js';
+import Edit3 from 'lucide-react/dist/esm/icons/edit-3.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Maximize2 from 'lucide-react/dist/esm/icons/maximize-2.js';
+import Bookmark from 'lucide-react/dist/esm/icons/bookmark.js';
+import FolderPlus from 'lucide-react/dist/esm/icons/folder-plus.js';
+import Notebook from 'lucide-react/dist/esm/icons/notebook.js';
+import Copy from 'lucide-react/dist/esm/icons/copy.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import PenTool from 'lucide-react/dist/esm/icons/pen-tool.js';
+import Eye from 'lucide-react/dist/esm/icons/eye.js';
+import EyeOff from 'lucide-react/dist/esm/icons/eye-off.js';
+import ImageIcon from 'lucide-react/dist/esm/icons/image.js';
+import ImageOff from 'lucide-react/dist/esm/icons/image-off.js';
+import LinkIcon from 'lucide-react/dist/esm/icons/link.js';
+import UploadIcon from 'lucide-react/dist/esm/icons/upload.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import ExternalLink from 'lucide-react/dist/esm/icons/external-link.js';
+import QrCode from 'lucide-react/dist/esm/icons/qr-code.js';
+import CreditCard from 'lucide-react/dist/esm/icons/credit-card.js';
+import Cpu from 'lucide-react/dist/esm/icons/cpu.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import Columns from 'lucide-react/dist/esm/icons/columns.js';
+import Lightbulb from 'lucide-react/dist/esm/icons/lightbulb.js';
+import Stethoscope from 'lucide-react/dist/esm/icons/stethoscope.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import HardDriveDownload from 'lucide-react/dist/esm/icons/hard-drive-download.js';
+import WifiOff from 'lucide-react/dist/esm/icons/wifi-off.js';
+import MapPin from 'lucide-react/dist/esm/icons/map-pin.js';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Globe from 'lucide-react/dist/esm/icons/globe.js';
+import Camera from 'lucide-react/dist/esm/icons/camera.js';
 import { SmartPenCanvas } from './SmartPenCanvas';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -3553,14 +3601,14 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
       return;
     }
 
-    const costMap = {
+    const costMap: Record<string, number> = {
       standard: 1,
       deep: 3,
       elite: 5,
       master: 10,
       monograph: 20
     };
-    const requiredCredits = costMap[depth] || 1;
+    const requiredCredits = costMap[depth as string] || 1;
     if (!checkCreditsSufficient(requiredCredits)) {
       return;
     }
@@ -3610,7 +3658,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
           updateFields.content_master = sanitized;
         } else if (depth === 'monograph') {
           updateFields.content_monograph = sanitized;
-        } else if (depth === 'custom_analyzed') {
+        } else if ((depth as string) === 'custom_analyzed') {
           updateFields.content_custom_analyzed = sanitized;
         }
 
@@ -5092,6 +5140,7 @@ th { background: #F8F7F4; font-weight: bold; }
 
   useEffect(() => {
     const fetchCounts = async () => {
+      if (!topic.id) return;
       if (countCache.current[topic.id]) {
         setQuestionCount(countCache.current[topic.id].q);
         setFlashcardCount(countCache.current[topic.id].f);
@@ -5107,14 +5156,36 @@ th { background: #F8F7F4; font-weight: bold; }
           getCountFromServer(qFlashcards)
         ]);
         
-        const q = questionsSnap.data().count;
+        const officialCount = questionsSnap.data().count;
         const f = flashcardsSnap.data().count;
-        setQuestionCount(q);
+
+        // Check if there are local generated questions in cache for this topic
+        let localGenCount = 0;
+        const cachedStr = safeLocalStorageGet(`questions_topic_${topic.id}`);
+        if (cachedStr) {
+          try {
+            const parsed = JSON.parse(cachedStr);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              localGenCount = parsed.filter((q: any) => q?.id && typeof q.id === 'string' && q.id.startsWith('gen_q_')).length;
+            }
+          } catch (e) {}
+        }
+
+        const totalQ = officialCount + localGenCount;
+        setQuestionCount(totalQ);
         setFlashcardCount(f);
-        countCache.current[topic.id] = { q, f };
+        countCache.current[topic.id] = { q: totalQ, f };
       } catch (e) {
         console.warn('Count optimization failed (max 1 read):', e);
-        setQuestionCount(0);
+        let fallbackQ = 0;
+        const cachedStr = safeLocalStorageGet(`questions_topic_${topic.id}`);
+        if (cachedStr) {
+          try {
+            const parsed = JSON.parse(cachedStr);
+            if (Array.isArray(parsed)) fallbackQ = parsed.length;
+          } catch (e) {}
+        }
+        setQuestionCount(fallbackQ);
         setFlashcardCount(0);
       }
     };
@@ -5130,20 +5201,90 @@ th { background: #F8F7F4; font-weight: bold; }
       const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
       const newQuestions = await generateQuestions(topic.title, subjectName, 10, [], userId, undefined);
       
-      if (newQuestions && Array.isArray(newQuestions)) {
+      if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
+        const added: Question[] = [];
         for (const q of newQuestions) {
-          await addDoc(collection(db, 'questions'), {
+          const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const newQ: Question = {
+            id: localId,
             ...q,
             topicId: topic.id,
-            subjectId: topic.subjectId
-          });
+            subjectId: topic.subjectId,
+            source: q.source || 'Questão Inédita (IA)'
+          } as Question;
+          added.push(newQ);
         }
-        safeLocalStorageRemove(`questions_topic_${topic.id}`);
+
+        // Merge and deduplicate in local storage cache for this topic
+        const cached = safeLocalStorageGet(`questions_topic_${topic.id}`);
+        let cachedList: Question[] = [];
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) cachedList = parsed;
+          } catch (e) {}
+        }
+
+        const previousLocalCount = cachedList.length;
+        const seenIds = new Set<string>();
+        const seenContentKeys = new Set<string>();
+        const combined: Question[] = [];
+
+        for (const qItem of [...cachedList, ...added]) {
+          if (!qItem) continue;
+          const idKey = qItem.id || '';
+          if (idKey && seenIds.has(idKey)) continue;
+
+          // Full normalized text comparison without truncation to preserve questions with similar vignette intros
+          const normalizedText = (qItem.text || '')
+            .toLowerCase()
+            .replace(/[^\w\s]/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          const optionsSignature = Array.isArray(qItem.options)
+            ? qItem.options
+                .map(opt => (opt || '').toLowerCase().replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim())
+                .join('|')
+            : '';
+
+          const contentKey = `${qItem.topicId || topic.id}:::${normalizedText}:::${optionsSignature}`;
+
+          if (normalizedText.length > 20 && seenContentKeys.has(contentKey)) continue;
+
+          if (idKey) seenIds.add(idKey);
+          if (normalizedText.length > 20) seenContentKeys.add(contentKey);
+          combined.push(qItem);
+        }
+
+        safeLocalStorageSet(`questions_topic_${topic.id}`, JSON.stringify(combined));
         if (topic.subjectId) safeLocalStorageRemove(`questions_subject_${topic.subjectId}`);
         safeLocalStorageRemove('questions_fallback');
 
-        setQuestionCount(prev => prev + newQuestions.length);
-        alert('10 novas questões geradas com sucesso!');
+        const effectivelyAdded = Math.max(0, combined.length - previousLocalCount);
+
+        // Update questionCount with accurate sum of official questions + local generated questions
+        const localGenCount = combined.filter(q => q.id && q.id.startsWith('gen_q_')).length;
+        const cachedOfficialCount = combined.filter(q => !q.id || !q.id.startsWith('gen_q_')).length;
+        const baseOfficial = countCache.current[topic.id]?.q 
+          ? Math.max(0, countCache.current[topic.id].q - (cachedList.filter(q => q.id && q.id.startsWith('gen_q_')).length))
+          : cachedOfficialCount;
+        const newTotal = baseOfficial + localGenCount;
+
+        setQuestionCount(newTotal);
+        if (countCache.current[topic.id]) {
+          countCache.current[topic.id].q = newTotal;
+        } else {
+          countCache.current[topic.id] = { q: newTotal, f: flashcardCount };
+        }
+
+        if (effectivelyAdded > 0) {
+          alert(`${effectivelyAdded} nova(s) questão(ões) gerada(s) com sucesso para o tema "${topic.title}"!`);
+        } else {
+          alert(`As questões geradas já constavam no seu banco para o tema "${topic.title}". Nenhuma nova questão precisou ser adicionada.`);
+        }
+      } else {
+        alert('Não foi possível gerar mais questões para este tema no momento.');
       }
     } catch (error: any) {
       console.error('Error saving questions:', error);

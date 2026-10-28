@@ -1,7 +1,11 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ArrowLeft, CheckCircle2, XCircle, AlertCircle, Bookmark } from 'lucide-react';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import XCircle from 'lucide-react/dist/esm/icons/x-circle.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import Bookmark from 'lucide-react/dist/esm/icons/bookmark.js';
 import { motion } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';

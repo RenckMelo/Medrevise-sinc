@@ -1,20 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Subject, Topic, Question, Semester } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { 
-  Plus, Save, Trash2, Book, HelpCircle, Calendar, 
-  Search, ShieldAlert, Sparkles, Loader2, Database,
-  User, Shield, Mail, Check, X, ShieldCheck, ChevronRight,
-  Zap, Award, Edit3, Eye, FileText, CheckCircle2, AlertTriangle,
-  ListChecks, RefreshCw, Layers, CheckCircle, ArrowLeft,
-  BarChart3, TrendingUp, Users, BookOpen, Clock, Activity, Lock, Wrench
-} from 'lucide-react';
+import Plus from 'lucide-react/dist/esm/icons/plus.js';
+import Save from 'lucide-react/dist/esm/icons/save.js';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2.js';
+import Book from 'lucide-react/dist/esm/icons/book.js';
+import HelpCircle from 'lucide-react/dist/esm/icons/help-circle.js';
+import Calendar from 'lucide-react/dist/esm/icons/calendar.js';
+import Search from 'lucide-react/dist/esm/icons/search.js';
+import ShieldAlert from 'lucide-react/dist/esm/icons/shield-alert.js';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles.js';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2.js';
+import Database from 'lucide-react/dist/esm/icons/database.js';
+import User from 'lucide-react/dist/esm/icons/user.js';
+import Shield from 'lucide-react/dist/esm/icons/shield.js';
+import Mail from 'lucide-react/dist/esm/icons/mail.js';
+import Check from 'lucide-react/dist/esm/icons/check.js';
+import X from 'lucide-react/dist/esm/icons/x.js';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check.js';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.js';
+import Zap from 'lucide-react/dist/esm/icons/zap.js';
+import Award from 'lucide-react/dist/esm/icons/award.js';
+import Edit3 from 'lucide-react/dist/esm/icons/edit-3.js';
+import Eye from 'lucide-react/dist/esm/icons/eye.js';
+import FileText from 'lucide-react/dist/esm/icons/file-text.js';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2.js';
+import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle.js';
+import ListChecks from 'lucide-react/dist/esm/icons/list-checks.js';
+import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw.js';
+import Layers from 'lucide-react/dist/esm/icons/layers.js';
+import CheckCircle from 'lucide-react/dist/esm/icons/check-circle.js';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left.js';
+import BarChart3 from 'lucide-react/dist/esm/icons/bar-chart-3.js';
+import TrendingUp from 'lucide-react/dist/esm/icons/trending-up.js';
+import Users from 'lucide-react/dist/esm/icons/users.js';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open.js';
+import Clock from 'lucide-react/dist/esm/icons/clock.js';
+import Activity from 'lucide-react/dist/esm/icons/activity.js';
+import Lock from 'lucide-react/dist/esm/icons/lock.js';
+import Wrench from 'lucide-react/dist/esm/icons/wrench.js';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle.js';
+import UploadCloud from 'lucide-react/dist/esm/icons/upload-cloud.js';
+import DownloadCloud from 'lucide-react/dist/esm/icons/download-cloud.js';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
+import { generateQuestions, getUserFocusSettings } from '../../services/geminiService';
+import { db, collection, addDoc, getDocs, where, query, deleteDoc, doc, limit, orderBy, auth } from '../../firebase';
 
 // Common visual transition props for sub-components
 const transitionProps = {
@@ -1603,6 +1638,136 @@ export function AdminDashboard({
   handleToggleUserPremium,
   updatingUser
 }: AdminDashboardProps) {
+  const [isSeedingAll, setIsSeedingAll] = useState(false);
+  const [seedingProgress, setSeedingProgress] = useState(0);
+  const [seedingLogs, setSeedingLogs] = useState<string>('');
+  const [seedingCurrentTopic, setSeedingCurrentTopic] = useState<string>('');
+  const [seedingDelaySec, setSeedingDelaySec] = useState<number>(8);
+
+  const startSeedingAll = async () => {
+    if (isSeedingAll) {
+      setIsSeedingAll(false);
+      setSeedingLogs(p => p + '\n[Modo Noturno] Cancelamento solicitado pelo usuário. Finalizando tópico atual e parando...');
+      return;
+    }
+
+    setIsSeedingAll(true);
+    setSeedingProgress(0);
+    setSeedingCurrentTopic('Iniciando...');
+    setSeedingLogs('==== SEEDER EM MASSA MODO NOTURNO ====\nComeçando análise dos tópicos cadastrados...\n');
+
+    const topicsToProcess = [...topics];
+    let processed = 0;
+
+    for (let i = 0; i < topicsToProcess.length; i++) {
+      // Create a closure-safe check for cancellation
+      let shouldContinue = true;
+      setIsSeedingAll(current => {
+        if (!current) shouldContinue = false;
+        return current;
+      });
+      if (!shouldContinue) {
+        break;
+      }
+
+      const topic = topicsToProcess[i];
+      setSeedingCurrentTopic(topic.title);
+      setSeedingLogs(prev => {
+        const lines = prev.split('\n');
+        const truncated = lines.slice(-20).join('\n'); // keep memory usage low
+        return truncated + `\n\n[Tópico ${i+1}/${topicsToProcess.length}] Processando: "${topic.title}"`;
+      });
+
+      try {
+        const subject = subjects.find(s => s.id === topic.subjectId);
+        const subjectName = subject?.name || 'Clínica Médica';
+
+        // Check current questions count
+        const qSnap = await getDocs(query(collection(db, 'questions'), where('topicId', '==', topic.id)));
+        const existingCount = qSnap.docs.length;
+
+        if (existingCount >= 10) {
+          setSeedingLogs(prev => {
+            const lines = prev.split('\n');
+            const truncated = lines.slice(-20).join('\n');
+            return truncated + `\n✓ Já possui ${existingCount} questões cadastradas. Pulando para o próximo.`;
+          });
+          processed++;
+          setSeedingProgress(Math.round((processed / topicsToProcess.length) * 100));
+          continue;
+        }
+
+        const needed = 10 - existingCount;
+        setSeedingLogs(prev => {
+          const lines = prev.split('\n');
+          const truncated = lines.slice(-20).join('\n');
+          return truncated + `\n→ Encontradas ${existingCount} questões. Baixando ${needed} novas questões com IA (Google Search Grounding)...`;
+        });
+
+        const existingTexts = qSnap.docs.map(d => (d.data()?.text || ''));
+
+        // Call our state-of-the-art generator with search grounding enabled
+        const newQuestions = await generateQuestions(topic.title, subjectName, needed, existingTexts, 'admin', undefined);
+        
+        if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
+          let added = 0;
+          for (const qData of newQuestions) {
+            await addDoc(collection(db, 'questions'), {
+              ...qData,
+              topicId: topic.id,
+              subjectId: topic.subjectId
+            });
+            added++;
+          }
+          setSeedingLogs(prev => {
+            const lines = prev.split('\n');
+            const truncated = lines.slice(-20).join('\n');
+            return truncated + `\n✓ Sucesso! ${added} novas questões reais salvas na base.`;
+          });
+        } else {
+          setSeedingLogs(prev => {
+            const lines = prev.split('\n');
+            const truncated = lines.slice(-20).join('\n');
+            return truncated + `\n⚠ Nenhuma questão nova gerada pelo modelo.`;
+          });
+        }
+
+      } catch (err: any) {
+        console.error('Error seeding topic:', topic.title, err);
+        setSeedingLogs(prev => {
+          const lines = prev.split('\n');
+          const truncated = lines.slice(-20).join('\n');
+          return truncated + `\n❌ Falha: ${err.message || 'Erro desconhecido'}`;
+        });
+      }
+
+      processed++;
+      setSeedingProgress(Math.round((processed / topicsToProcess.length) * 100));
+
+      // Throttled pause between topics
+      if (i < topicsToProcess.length - 1) {
+        setSeedingLogs(prev => {
+          const lines = prev.split('\n');
+          const truncated = lines.slice(-20).join('\n');
+          return truncated + `\n⏱ Aguardando ${seedingDelaySec} segundos para respeitar limites de cota...`;
+        });
+
+        for (let s = seedingDelaySec; s > 0; s--) {
+          await new Promise(r => setTimeout(r, 1000));
+          let cancelCheck = true;
+          setIsSeedingAll(current => {
+            if (!current) cancelCheck = false;
+            return current;
+          });
+          if (!cancelCheck) break;
+        }
+      }
+    }
+
+    setIsSeedingAll(false);
+    setSeedingLogs(prev => prev + '\n\n==== FIM DO SEEDING EM MASSA ====');
+  };
+
   const totalSemesters = semesters.length;
   const totalSubjects = subjects.length;
   const totalTopics = topics.length;
@@ -1892,6 +2057,22 @@ export function AdminDashboard({
               </button>
 
               <button 
+                onClick={() => setActiveTab('pdf-upload')}
+                className="w-full p-3 bg-[#FFFBF0] hover:bg-[#FFF3CA] border border-[#FFEAB6] rounded-xl flex items-center justify-between text-left transition-all group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-lg text-amber-800 shrink-0">
+                    <UploadCloud className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-black text-amber-950">Extrair Prova (PDF)</p>
+                    <p className="text-[9px] text-amber-700">Suba o caderno da prova e extraia com IA em lotes</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-amber-800 group-hover:text-amber-950 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              <button 
                 onClick={() => setActiveTab('moderation')}
                 className="w-full p-3 bg-[#FBFBFA] hover:bg-neutral-50 border border-[#E2E0D9] hover:border-neutral-450 rounded-xl flex items-center justify-between text-left transition-all group cursor-pointer"
               >
@@ -1908,6 +2089,87 @@ export function AdminDashboard({
               </button>
             </CardContent>
           </Card>
+
+          {/* Semeador de Questões em Massa Modo Noturno Card */}
+          <Card className="border-[#E2E0D9] shadow-xs rounded-2xl bg-white overflow-hidden">
+            <CardHeader className="p-4 border-b border-[#E2E0D9] bg-[#FBFBFA]">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-amber-600 shrink-0" />
+                <CardTitle className="text-xs font-black text-neutral-950 uppercase tracking-wide">Semeador de Questões (Modo Noturno)</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              <p className="text-[10px] text-[#8E8A82] leading-relaxed">
+                Deixe a aba aberta durante a madrugada para que a IA busque no Google Search Grounding e salve até 10 questões oficiais de residência para <strong>cada tema médico cadastrado</strong> no sistema. Totalmente otimizado para o limite de 3GB do Supabase (ocupa menos de 20MB para 10.000 questões!).
+              </p>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 space-y-1">
+                    <span className="text-[8.5px] uppercase tracking-wider font-black text-[#8E8A82] block">Intervalo de Segurança (Cota)</span>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min="5"
+                        max="30"
+                        value={seedingDelaySec}
+                        onChange={(e) => setSeedingDelaySec(Math.max(5, parseInt(e.target.value, 10) || 8))}
+                        disabled={isSeedingAll}
+                        className="border-[#E2E0D9] focus:border-neutral-400 h-8 rounded-lg bg-white font-mono text-xs focus-visible:ring-0 text-neutral-900 w-20"
+                      />
+                      <span className="text-[9.5px] text-neutral-500 font-medium">segundos entre tópicos</span>
+                    </div>
+                  </div>
+                </div>
+
+                {isSeedingAll && (
+                  <div className="space-y-1.5 p-3.5 bg-neutral-50 border border-neutral-150 rounded-xl">
+                    <div className="flex justify-between items-center text-[9px] font-black uppercase text-[#8E8A82]">
+                      <span className="truncate">Semeando: <strong className="text-neutral-900">{seedingCurrentTopic}</strong></span>
+                      <span className="font-mono text-neutral-900 shrink-0">{seedingProgress}%</span>
+                    </div>
+                    <div className="w-full bg-[#E2E0D9]/50 rounded-full h-1.5 overflow-hidden">
+                      <div 
+                        className="bg-amber-500 h-full rounded-full transition-all duration-300" 
+                        style={{ width: `${seedingProgress || 3}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  onClick={startSeedingAll}
+                  className={cn(
+                    "w-full h-10 rounded-xl font-black text-[10px] uppercase tracking-wider cursor-pointer shadow-xs gap-2 flex items-center justify-center",
+                    isSeedingAll 
+                      ? "bg-red-50 hover:bg-red-100 text-red-600 border border-red-200"
+                      : "bg-[#FFFBF0] hover:bg-[#FFF3CA] text-amber-800 border border-[#FFEAB6]"
+                  )}
+                >
+                  {isSeedingAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-red-600" />
+                      Interromper Semeador
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      Ativar Modo Noturno
+                    </>
+                  )}
+                </Button>
+
+                {seedingLogs && (
+                  <div className="space-y-1.5">
+                    <span className="text-[8.5px] uppercase tracking-wider font-black text-[#8E8A82] block">Logs do Processo (20 linhas mais recentes):</span>
+                    <pre className="bg-[#2D2A26] text-[#EAD8B1] text-[8.5px] p-3.5 rounded-xl font-mono overflow-y-auto max-h-[160px] whitespace-pre-wrap leading-relaxed border border-[#3E3A36] select-text">
+                      {seedingLogs}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
@@ -1917,7 +2179,6 @@ export function AdminDashboard({
 // ==========================================
 // 7. REFERRAL LOGS MANAGER COMPONENT
 // ==========================================
-import { db, collection, query, orderBy, limit, getDocs } from '../../../firebase';
 
 export function ReferralLogsManager() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -1986,6 +2247,729 @@ export function ReferralLogsManager() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+interface PdfUploadManagerProps {
+  subjects: Subject[];
+  topics: Topic[];
+}
+
+export function PdfUploadManager({ subjects, topics }: PdfUploadManagerProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [banca, setBanca] = useState<string>('ENARE');
+  const [ano, setAno] = useState<number>(2025);
+  const [tipoProva, setTipoProva] = useState<string>('Acesso Direto');
+  
+  const [isExtractingPdf, setIsExtractingPdf] = useState<boolean>(false);
+  const [extractionProgress, setExtractionProgress] = useState<number>(0);
+  
+  const [isProcessingIA, setIsProcessingIA] = useState<boolean>(false);
+  const [iaProgress, setIaProgress] = useState<number>(0);
+  const [iaLogs, setIaLogs] = useState<string[]>([]);
+  const [extractedQuestions, setExtractedQuestions] = useState<Question[]>([]);
+  
+  const [importedExams, setImportedExams] = useState<any[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [pdfUrl, setPdfUrl] = useState<string>('');
+  const [isDownloading, setIsDownloading] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    setIsHistoryLoading(true);
+    try {
+      const q = query(collection(db, 'imported_exams'));
+      const snapshot = await getDocs(q);
+      const exams = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setImportedExams(exams);
+    } catch (err) {
+      console.error("Erro ao buscar histórico de uploads:", err);
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
+
+  const loadPdfJS = (): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).pdfjsLib) {
+        resolve((window as any).pdfjsLib);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
+      script.onload = () => {
+        const pdfjsLib = (window as any).pdfjsLib;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+        resolve(pdfjsLib);
+      };
+      script.onerror = (err) => reject(new Error("Não foi possível carregar o motor PDF.js"));
+      document.head.appendChild(script);
+    });
+  };
+
+  const extractTextFromPdf = async (targetFile: File, onProg: (pct: number) => void): Promise<string> => {
+    const pdfjsLib = await loadPdfJS();
+    const arrayBuffer = await targetFile.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+    
+    let fullText = '';
+    const numPages = pdf.numPages;
+    
+    for (let i = 1; i <= numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      fullText += `\n--- PAGINA ${i} ---\n` + pageText;
+      onProg(Math.round((i / numPages) * 100));
+    }
+    return fullText;
+  };
+
+  const addIaLog = (msg: string) => {
+    const timeStr = new Date().toLocaleTimeString('pt-BR');
+    setIaLogs(prev => [...prev, `[${timeStr}] ${msg}`]);
+  };
+
+  const handleProcessPdf = async () => {
+    if (!file) return;
+    
+    setIsExtractingPdf(true);
+    setExtractionProgress(0);
+    setIaLogs([]);
+    setExtractedQuestions([]);
+    setIaProgress(0);
+    
+    addIaLog(`Iniciando extração do PDF: "${file.name}"...`);
+    
+    try {
+      const fullText = await extractTextFromPdf(file, (pct) => {
+        setExtractionProgress(pct);
+      });
+      
+      setIsExtractingPdf(false);
+      addIaLog(`Leitura concluída! Extraídos ${fullText.length} caracteres.`);
+      
+      // Step 2: Chunking & Gemini AI Extraction
+      setIsProcessingIA(true);
+      
+      // Smart Chunking by Character Length (around 12,000 characters per batch ~ 5-10 questions)
+      const chunkSize = 12000;
+      const textChunks: string[] = [];
+      for (let i = 0; i < fullText.length; i += chunkSize) {
+        textChunks.push(fullText.substring(i, i + chunkSize));
+      }
+      
+      addIaLog(`Fatiado o texto da prova em ${textChunks.length} blocos para envio à IA.`);
+      
+      const allExtracted: Question[] = [];
+      
+      for (let idx = 0; idx < textChunks.length; idx++) {
+        addIaLog(`Enviando lote ${idx + 1} de ${textChunks.length} para processamento com Gemini 3.1-Flash-Lite...`);
+        setIaProgress(Math.round(((idx + 1) / textChunks.length) * 100));
+        
+        const chunkText = textChunks[idx];
+        const prompt = `Você é um extrator de inteligência artificial altamente especializado em exames de residência médica no Brasil.
+Seu objetivo é analisar o seguinte fragmento de texto de prova de ${banca} (${ano}), identificar e extrair TODAS as questões médicas reais contidas nele.
+
+Fragmento de Prova Médica:
+${chunkText}
+
+DIRETRIZES DE FORMATAÇÃO:
+1. Extraia o enunciado completo ("text") em português do Brasil sem resumir o caso clínico.
+2. Extraia todas as alternativas ("options") perfeitamente estruturadas. Remova indicações de letras (como "A)", "B)") no início delas para que fiquem limpas.
+3. Identifique o índice correto da alternativa ("correctOptionIndex") sendo 0 para A, 1 para B, 2 para C, 3 para D.
+4. Crie uma explicação de gabarito detalhada ("explanation") explicando didaticamente o motivo do erro de cada alternativa e a corretude da verdadeira.
+5. Atribua o campo "source" rigorosamente como "${banca} (${ano})".
+6. IMPORTANTE: Deduzi e classifique a sub-especialidade/sub-área ("subSubject") em português (ex: Gastroenterologia Pediátrica, Obstetrícia Patológica, Traumatologia, Neurologia, etc.).
+7. IMPORTANTE: Deduzi e identifique o conceito ultra-específico focado ("subtopicTag") em português (ex: Plano A, B e C, Sulfato de Magnésio, Diretrizes SBP).
+
+Retorne estritamente um array JSON de objetos contendo as questões extraídas. Se o fragmento não contiver nenhuma pergunta de múltipla escolha completa, retorne um array vazio [].
+Não adicione explicações em Markdown fora do JSON.
+
+Formato:
+[
+  {
+    "text": "Caso clínico...",
+    "options": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correctOptionIndex": 0,
+    "explanation": "Comentário...",
+    "source": "${banca} (${ano})",
+    "subSubject": "sub-área médica",
+    "subtopicTag": "conceito focado"
+  }
+]`;
+
+        try {
+          const res = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'generateJson',
+              prompt,
+              model: 'gemini-3.1-flash-lite'
+            })
+          });
+          
+          if (!res.ok) {
+            throw new Error(`Código de status ${res.status}`);
+          }
+          
+          const data = await res.json();
+          const resultJson = data.result;
+          
+          if (Array.isArray(resultJson)) {
+            addIaLog(`Lote ${idx + 1} processado! Encontradas e formatadas ${resultJson.length} questões.`);
+            allExtracted.push(...resultJson);
+          } else if (resultJson && typeof resultJson === 'object') {
+            const keys = Object.values(resultJson).filter((v: any) => v && typeof v === 'object' && ('text' in v));
+            if (keys.length > 0) {
+              addIaLog(`Lote ${idx + 1} processado! Encontradas ${keys.length} questões.`);
+              allExtracted.push(...(keys as any[]));
+            } else {
+              addIaLog(`Lote ${idx + 1} processado, mas nenhuma questão pôde ser estruturada.`);
+            }
+          } else {
+            addIaLog(`Lote ${idx + 1} processado, mas o formato de retorno não foi array.`);
+          }
+        } catch (err: any) {
+          addIaLog(`Erro ao processar lote ${idx + 1}: ${err.message || 'Erro de cota/rede'}. Continuando...`);
+        }
+        
+        // Brief pause to satisfy RPM limits
+        await new Promise(r => setTimeout(r, 600));
+      }
+      
+      setIsProcessingIA(false);
+      setExtractedQuestions(allExtracted);
+      addIaLog(`Processamento Geral Concluído! Extraímos com sucesso ${allExtracted.length} questões oficiais.`);
+      
+    } catch (err: any) {
+      setIsExtractingPdf(false);
+      setIsProcessingIA(false);
+      addIaLog(`❌ Ocorreu um erro crítico durante a operação: ${err.message || err}`);
+    }
+  };
+
+  const handleDownloadAndProcessUrl = async () => {
+    if (!pdfUrl || !pdfUrl.trim()) return;
+    
+    setIsDownloading(true);
+    setIaLogs([]);
+    setExtractedQuestions([]);
+    setIsExtractingPdf(true);
+    setExtractionProgress(0);
+    setIaProgress(0);
+    
+    addIaLog(`Iniciando download do arquivo da URL: "${pdfUrl}"...`);
+    
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error("Autenticação necessária. Faça login como administrador para baixar a prova.");
+      }
+
+      const response = await fetch('/api/download-file', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ url: pdfUrl.trim() })
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData?.error || `Falha ao baixar arquivo: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      addIaLog(`Download concluído com sucesso!`);
+      
+      // Convert base64 to File object to let existing logic work seamlessly
+      const base64Response = await fetch(`data:${data.contentType};base64,${data.base64}`);
+      const blob = await base64Response.blob();
+      const filename = pdfUrl.split('/').pop()?.split('?')[0] || 'prova_baixada.pdf';
+      const downloadedFile = new File([blob], filename, { type: data.contentType });
+      
+      setFile(downloadedFile);
+      addIaLog(`Arquivo carregado: "${filename}" (${(downloadedFile.size / (1024 * 1024)).toFixed(2)} MB).`);
+      
+      // Proceed with extracting text from PDF
+      const fullText = await extractTextFromPdf(downloadedFile, (pct) => {
+        setExtractionProgress(pct);
+      });
+      
+      setIsExtractingPdf(false);
+      addIaLog(`Leitura concluída! Extraídos ${fullText.length} caracteres.`);
+      
+      // Step 2: Chunking & Gemini AI Extraction
+      setIsProcessingIA(true);
+      
+      const chunkSize = 12000;
+      const textChunks: string[] = [];
+      for (let i = 0; i < fullText.length; i += chunkSize) {
+        textChunks.push(fullText.substring(i, i + chunkSize));
+      }
+      
+      addIaLog(`Fatiado o texto da prova em ${textChunks.length} blocos para envio à IA.`);
+      
+      const allExtracted: Question[] = [];
+      
+      for (let idx = 0; idx < textChunks.length; idx++) {
+        addIaLog(`Enviando lote ${idx + 1} de ${textChunks.length} para processamento com Gemini 3.1-Flash-Lite...`);
+        setIaProgress(Math.round(((idx + 1) / textChunks.length) * 100));
+        
+        const chunkText = textChunks[idx];
+        const prompt = `Você é um extrator de inteligência artificial altamente especializado em exames de residência médica no Brasil.
+Seu objetivo é analisar o seguinte fragmento de texto de prova de ${banca} (${ano}), identificar e extrair TODAS as questões médicas reais contidas nele.
+
+Fragmento de Prova Médica:
+\${chunkText}
+
+DIRETRIZES DE FORMATAÇÃO:
+1. Extraia o enunciado completo ("text") em português do Brasil sem resumir o caso clínico.
+2. Extraia todas as alternativas ("options") perfeitamente estruturadas. Remova indicações de letras (como "A)", "B)") no início delas para que fiquem limpas.
+3. Identifique o índice correto da alternativa ("correctOptionIndex") sendo 0 para A, 1 para B, 2 para C, 3 para D.
+4. Crie uma explicação de gabarito detalhada ("explanation") explicando didaticamente o motivo do erro de cada alternativa e a corretude da verdadeira.
+5. Atribua o campo "source" rigorosamente como "\${banca} (\${ano})".
+6. IMPORTANTE: Deduzi e classifique a sub-especialidade/sub-área ("subSubject") em português (ex: Gastroenterologia Pediátrica, Obstetrícia Patológica, Traumatologia, Neurologia, etc.).
+7. IMPORTANTE: Deduzi e identifique o conceito ultra-específico focado ("subtopicTag") em português (ex: Plano A, B e C, Sulfato de Magnésio, Diretrizes SBP).
+
+Retorne estritamente um array JSON de objetos contendo as questões extraídas. Se o fragmento não contiver nenhuma pergunta de múltipla escolha completa, retorne um array vazio [].
+Não adicione explicações em Markdown fora do JSON.
+
+Formato:
+[
+  {
+    "text": "Caso clínico...",
+    "options": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correctOptionIndex": 0,
+    "explanation": "Comentário...",
+    "source": "\${banca} (\${ano})",
+    "subSubject": "sub-área médica",
+    "subtopicTag": "conceito focado"
+  }
+]`;
+
+        try {
+          const res = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'generateJson',
+              prompt,
+              model: 'gemini-3.1-flash-lite'
+            })
+          });
+          
+          if (!res.ok) {
+            throw new Error(`Código de status \${res.status}`);
+          }
+          
+          const data = await res.json();
+          const resultJson = data.result;
+          
+          if (Array.isArray(resultJson)) {
+            addIaLog(`Lote \${idx + 1} processado! Encontradas e formatadas \${resultJson.length} questões.`);
+            allExtracted.push(...resultJson);
+          } else if (resultJson && typeof resultJson === 'object') {
+            const keys = Object.values(resultJson).filter((v: any) => v && typeof v === 'object' && ('text' in v));
+            if (keys.length > 0) {
+              addIaLog(`Lote \${idx + 1} processado! Encontradas \${keys.length} questões.`);
+              allExtracted.push(...(keys as any[]));
+            } else {
+              addIaLog(`Lote \${idx + 1} processado, mas nenhuma questão pôde ser estruturada.`);
+            }
+          } else {
+            addIaLog(`Lote \${idx + 1} processado, mas nenhuma questão foi encontrada.`);
+          }
+        } catch (err: any) {
+          addIaLog(`Erro no lote \${idx + 1}: \${err.message || err}`);
+        }
+        
+        // Anti-throttling delay (2s between API calls to prevent rate limits)
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      
+      setExtractedQuestions(allExtracted);
+      addIaLog(`Análise de IA concluída! Total de \${allExtracted.length} questões estruturadas com sucesso.`);
+    } catch (err: any) {
+      console.error(err);
+      addIaLog(`Falha geral: \${err.message || err}`);
+      setIsExtractingPdf(false);
+    } finally {
+      setIsDownloading(false);
+      setIsProcessingIA(false);
+    }
+  };
+
+  const findBestTopicAndSubject = (qText: string, subSubject: string) => {
+    const qLower = qText.toLowerCase();
+    const sLower = subSubject.toLowerCase();
+    
+    // Direct overlap check among topics
+    for (const t of topics) {
+      const tLower = t.title.toLowerCase();
+      if (qLower.includes(tLower) || tLower.includes(sLower) || sLower.includes(tLower)) {
+        return { topicId: t.id, subjectId: t.subjectId };
+      }
+    }
+    
+    // Match by Subject
+    const matchedSubject = subjects.find(s => 
+      qLower.includes(s.name.toLowerCase()) || 
+      sLower.includes(s.name.toLowerCase()) ||
+      (s.name === 'Pediatria' && sLower.includes('pediá')) ||
+      (s.name === 'Ginecologia e Obstetrícia' && (qLower.includes('ginec') || qLower.includes('obstet') || qLower.includes('gestan')))
+    );
+    
+    if (matchedSubject) {
+      const firstTopic = topics.find(t => t.subjectId === matchedSubject.id);
+      return { topicId: firstTopic?.id || '', subjectId: matchedSubject.id };
+    }
+    
+    // Global fallback
+    return { topicId: topics[0]?.id || '', subjectId: subjects[0]?.id || '' };
+  };
+
+  const handleSaveQuestions = async () => {
+    if (extractedQuestions.length === 0) return;
+    
+    setIsSaving(true);
+    addIaLog("Salvando questões no banco de dados e mapeando para matérias de internação...");
+    
+    try {
+      let savedCount = 0;
+      
+      for (const q of extractedQuestions) {
+        const mapping = findBestTopicAndSubject(q.text, q.subSubject || '');
+        await addDoc(collection(db, 'questions'), {
+          text: q.text,
+          options: q.options,
+          correctOptionIndex: q.correctOptionIndex,
+          explanation: q.explanation,
+          source: q.source || `${banca} (${ano})`,
+          subSubject: q.subSubject || 'Geral',
+          subtopicTag: q.subtopicTag || 'Conceitos Chave',
+          topicId: mapping.topicId,
+          subjectId: mapping.subjectId,
+          heatLevel: q.heatLevel || 'alto'
+        });
+        savedCount++;
+      }
+      
+      // Save exam summary to imported history ledger
+      await addDoc(collection(db, 'imported_exams'), {
+        banca,
+        ano: parseInt(ano as any, 10) || 2025,
+        tipoProva,
+        questionCount: savedCount,
+        createdAt: new Date().toISOString()
+      });
+      
+      addIaLog(`✓ Tudo pronto! ${savedCount} questões salvas e mapeadas com sucesso.`);
+      setExtractedQuestions([]);
+      setFile(null);
+      fetchHistory();
+      
+    } catch (err: any) {
+      addIaLog(`❌ Falha ao salvar no banco: ${err.message || err}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteExam = async (examId: string) => {
+    if (!window.confirm("Tem certeza que deseja excluir esta prova? As questões já inseridas continuarão no banco, mas o registro deste upload será removido.")) return;
+    
+    try {
+      await deleteDoc(doc(db, 'imported_exams', examId));
+      setImportedExams(prev => prev.filter(e => e.id !== examId));
+    } catch (err: any) {
+      alert("Erro ao remover registro de upload: " + err.message);
+    }
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-neutral-900 tracking-tight flex items-center gap-2">
+            <UploadCloud className="w-5 h-5 text-primary" />
+            Extrator Inteligente de Provas em PDF (Gemini 3.1)
+          </h2>
+          <p className="text-xs text-neutral-500 mt-1 font-medium">
+            Arraste o arquivo PDF oficial da prova, selecione o ano/banca e a IA fatiará e extrairá as questões com explicações detalhadas em menos de 5 minutos!
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Form Panel */}
+        <Card className="lg:col-span-5 border-[#E2E0D9] shadow-xs rounded-2xl bg-white">
+          <CardHeader className="p-4 border-b border-[#E2E0D9] bg-[#FBFBFA]">
+            <CardTitle className="text-xs font-black text-neutral-950 uppercase tracking-wide">Configurações da Prova</CardTitle>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] uppercase tracking-wider font-black text-[#8E8A82]">Instituição / Banca</label>
+              <Input
+                type="text"
+                value={banca}
+                onChange={(e) => setBanca(e.target.value.toUpperCase())}
+                placeholder="Ex: ENARE, USP-SP, PSU-MG"
+                disabled={isExtractingPdf || isProcessingIA}
+                className="border-[#E2E0D9] focus:border-neutral-400 h-10 rounded-xl bg-white focus-visible:ring-0 text-neutral-900 text-sm font-semibold"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-wider font-black text-[#8E8A82]">Ano de Aplicação</label>
+                <Input
+                  type="number"
+                  value={ano}
+                  onChange={(e) => setAno(parseInt(e.target.value, 10) || 2025)}
+                  disabled={isExtractingPdf || isProcessingIA}
+                  className="border-[#E2E0D9] focus:border-neutral-400 h-10 rounded-xl bg-white focus-visible:ring-0 text-neutral-900 text-sm font-mono font-bold"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-wider font-black text-[#8E8A82]">Tipo de Prova</label>
+                <Input
+                  type="text"
+                  value={tipoProva}
+                  onChange={(e) => setTipoProva(e.target.value)}
+                  placeholder="Ex: Acesso Direto"
+                  disabled={isExtractingPdf || isProcessingIA}
+                  className="border-[#E2E0D9] focus:border-neutral-400 h-10 rounded-xl bg-white focus-visible:ring-0 text-neutral-900 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Drop Zone */}
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase tracking-wider font-black text-[#8E8A82] block">Caderno de Questões (PDF)</label>
+              <div className={cn(
+                "border-2 border-dashed border-[#E2E0D9] rounded-2xl p-6 text-center hover:bg-stone-50 hover:border-neutral-400 transition-all select-none relative",
+                file && "border-primary bg-primary/5"
+              )}>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  disabled={isExtractingPdf || isProcessingIA}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <div className="space-y-2">
+                  <FileText className={cn("w-8 h-8 mx-auto text-neutral-400", file && "text-primary")} />
+                  {file ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-black text-neutral-950 truncate max-w-xs mx-auto">{file.name}</p>
+                      <p className="text-[10px] font-mono text-[#8E8A82]">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-neutral-800">Clique para selecionar ou arraste o PDF</p>
+                      <p className="text-[9px] text-[#8E8A82]">Apenas arquivos .pdf contendo a prova oficial</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Divider OR option */}
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-[#E2E0D9]"></div>
+              <span className="flex-shrink mx-4 text-[10px] text-[#8E8A82] font-black uppercase tracking-wider">OU</span>
+              <div className="flex-grow border-t border-[#E2E0D9]"></div>
+            </div>
+
+            {/* URL Input Area */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] uppercase tracking-wider font-black text-[#8E8A82] block">Baixar do Link Oficial (PDF)</label>
+              <div className="flex gap-2">
+                <Input
+                  type="url"
+                  placeholder="Cole o link direto do PDF da prova oficial..."
+                  value={pdfUrl}
+                  onChange={(e) => setPdfUrl(e.target.value)}
+                  disabled={isExtractingPdf || isProcessingIA || isDownloading}
+                  className="border-[#E2E0D9] focus:border-neutral-400 h-10 rounded-xl bg-white focus-visible:ring-0 text-neutral-900 text-sm flex-grow"
+                />
+                <Button
+                  onClick={handleDownloadAndProcessUrl}
+                  disabled={!pdfUrl.trim() || isExtractingPdf || isProcessingIA || isDownloading}
+                  className="h-10 px-4 bg-amber-950 hover:bg-amber-900 text-white rounded-xl font-bold text-xs shrink-0 flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  {isDownloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
+                  Baixar e Processar
+                </Button>
+              </div>
+              <p className="text-[9px] text-[#8E8A82]">O sistema baixará o arquivo através do nosso proxy e enviará para extração com o Gemini.</p>
+            </div>
+
+            {file && !isExtractingPdf && !isProcessingIA && extractedQuestions.length === 0 && (
+              <Button
+                onClick={handleProcessPdf}
+                className="w-full h-11 bg-neutral-950 hover:bg-neutral-800 text-white rounded-xl font-black text-[10px] uppercase tracking-wider cursor-pointer shadow-sm mt-2"
+              >
+                Analisar e Extrair Questões
+              </Button>
+            )}
+
+            {extractedQuestions.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+                  <span className="text-emerald-800 text-xs font-black block">✓ Extração Concluída com Sucesso!</span>
+                  <span className="text-[10px] text-emerald-600 font-bold block mt-0.5 font-mono">{extractedQuestions.length} questões reais prontas para salvar</span>
+                </div>
+                <Button
+                  onClick={handleSaveQuestions}
+                  disabled={isSaving}
+                  className="w-full h-11 bg-primary hover:bg-primary/95 text-white rounded-xl font-black text-[10px] uppercase tracking-wider cursor-pointer shadow-sm"
+                >
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Gravar Tudo no Banco de Dados"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setExtractedQuestions([]);
+                    setFile(null);
+                  }}
+                  className="w-full h-11 border-stone-200 rounded-xl font-bold text-xs"
+                >
+                  Descartar e Escolher Outro
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Right Console & Ledger Panel */}
+        <div className="lg:col-span-7 space-y-6">
+          {/* Terminal Logs */}
+          <Card className="border-[#E2E0D9] shadow-xs rounded-2xl bg-white overflow-hidden">
+            <CardHeader className="p-4 border-b border-[#E2E0D9] bg-[#FBFBFA]">
+              <CardTitle className="text-xs font-black text-neutral-950 uppercase tracking-wide">Terminal de Extração e Conversão de IA</CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 space-y-4">
+              {isExtractingPdf && (
+                <div className="space-y-1.5 p-4 bg-[#FAF9F6] border border-[#E2E0D9] rounded-xl animate-pulse">
+                  <div className="flex justify-between items-center text-[9px] font-black uppercase text-[#8E8A82]">
+                    <span>Lendo PDF Localmente...</span>
+                    <span className="font-mono text-neutral-900">{extractionProgress}%</span>
+                  </div>
+                  <div className="w-full bg-[#E2E0D9]/50 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className="bg-neutral-800 h-full rounded-full transition-all duration-300" 
+                      style={{ width: `${extractionProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {isProcessingIA && (
+                <div className="space-y-1.5 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <div className="flex justify-between items-center text-[9px] font-black uppercase text-amber-800 animate-pulse">
+                    <span>Faturando e Estruturando Lotes com IA...</span>
+                    <span className="font-mono text-amber-900">{iaProgress}%</span>
+                  </div>
+                  <div className="w-full bg-[#E2E0D9]/50 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className="bg-amber-500 h-full rounded-full transition-all duration-300" 
+                      style={{ width: `${iaProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-stone-900 text-stone-100 font-mono text-[10.5px] p-4 rounded-xl h-56 overflow-y-auto space-y-1.5 shadow-inner">
+                {iaLogs.length === 0 ? (
+                  <p className="text-stone-400 italic">Aguardando início de processamento de arquivo...</p>
+                ) : (
+                  iaLogs.map((log, lIdx) => (
+                    <p key={lIdx} className={cn(
+                      "leading-relaxed",
+                      log.includes('❌') ? 'text-red-400 font-bold' :
+                      log.includes('✓') ? 'text-green-400 font-bold' :
+                      log.includes('Gemini') ? 'text-amber-400' : 'text-stone-300'
+                    )}>
+                      {log}
+                    </p>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Upload History Table */}
+          <Card className="border-[#E2E0D9] shadow-xs rounded-2xl bg-white overflow-hidden">
+            <CardHeader className="p-4 border-b border-[#E2E0D9] bg-[#FBFBFA]">
+              <CardTitle className="text-xs font-black text-neutral-950 uppercase tracking-wide">Uploads Realizados de Provas</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {isHistoryLoading ? (
+                <div className="py-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-[#8E8A82]" /></div>
+              ) : importedExams.length === 0 ? (
+                <div className="p-8 text-center text-xs text-[#8E8A82] italic">
+                  Nenhuma prova oficial importada até o momento. Faça o upload do primeiro PDF!
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-stone-50/50 text-[9px] uppercase tracking-wider text-[#8E8A82] font-black border-b border-[#E2E0D9]">
+                        <th className="p-4 pl-6">Prova</th>
+                        <th className="p-4">Tipo</th>
+                        <th className="p-4">Questões</th>
+                        <th className="p-4">Data Importação</th>
+                        <th className="p-4 pr-6 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E2E0D9]/60">
+                      {importedExams.map((exam) => (
+                        <tr key={exam.id} className="hover:bg-stone-50/50 transition-colors">
+                          <td className="p-4 pl-6 font-bold text-xs text-neutral-950">
+                            {exam.banca} ({exam.ano})
+                          </td>
+                          <td className="p-4 text-xs font-medium text-neutral-500">
+                            {exam.tipoProva || exam.tipo || 'Acesso Direto'}
+                          </td>
+                          <td className="p-4">
+                            <span className="text-[10px] font-mono font-black bg-stone-100 border border-stone-200 text-stone-800 px-2 py-0.5 rounded-full">
+                              +{exam.questionCount}q
+                            </span>
+                          </td>
+                          <td className="p-4 text-[10px] text-neutral-400 font-mono">
+                            {exam.createdAt ? new Date(exam.createdAt).toLocaleDateString() : 'N/D'}
+                          </td>
+                          <td className="p-4 pr-6 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteExam(exam.id)}
+                              className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg p-0 w-7 flex items-center justify-center cursor-pointer ml-auto"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

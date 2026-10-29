@@ -20,6 +20,8 @@ export interface Topic {
   references: string[];
   lastUpdated: string;
   semesterId?: string;
+  subjectName?: string;
+  name?: string;
   content_standard?: string;
   content_deep?: string;
   content_elite?: string;

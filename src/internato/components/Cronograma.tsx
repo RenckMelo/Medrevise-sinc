@@ -713,7 +713,10 @@ export default function Cronograma({
                 foundInFirestore = docData;
               } else {
                 console.warn(`[MedRevise Trace ${traceId}] ETAPA B4A (Firestore por ID REJEITADO): ID ${topicIdToTry} possui título "${docData.title}", divergente de cleanTitle "${cleanTitle}"`);
+                scheduleTopic.topicId = null;
               }
+            } else {
+              scheduleTopic.topicId = null;
             }
           } catch (err) {
             console.warn('Error fetching topic by ID from Firestore:', err);
@@ -725,22 +728,34 @@ export default function Cronograma({
           foundTitle: foundInFirestore?.title || null
         });
 
-        // B. Query users/{uid}/topics by exact cleanTitle
+        // B. Query users/{uid}/topics by exact cleanTitle with strict title & subject validation
         if (!foundInFirestore && cleanTitle) {
           try {
-            const qTitle = query(collection(db, 'users', user.uid, 'topics'), where('title', '==', cleanTitle), limit(5));
+            const qTitle = query(collection(db, 'users', user.uid, 'topics'), where('title', '==', cleanTitle), limit(10));
             const snapTitle = await getDocs(qTitle);
             if (!snapTitle.empty) {
               const matches = snapTitle.docs.map(d => ({ id: d.id, ...d.data() as any }));
-              if (targetSubjNorm) {
-                const matchedBySubj = matches.find(m => {
-                  const mSubjNorm = (m.subjectName || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-                  return mSubjNorm === targetSubjNorm || m.subjectId === scheduleTopic?.subjectId;
-                });
-                if (matchedBySubj) foundInFirestore = matchedBySubj;
-              }
-              if (!foundInFirestore) {
-                foundInFirestore = matches[0];
+              const validTitleMatches = matches.filter(m => {
+                const mNorm = (m.title || m.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+                return mNorm === targetNorm;
+              });
+
+              if (validTitleMatches.length > 0) {
+                if (targetSubjNorm) {
+                  const matchedBySubj = validTitleMatches.find(m => {
+                    const mSubjNorm = (m.subjectName || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+                    return mSubjNorm === targetSubjNorm || m.subjectId === scheduleTopic?.subjectId;
+                  });
+                  if (matchedBySubj) {
+                    foundInFirestore = matchedBySubj;
+                  } else {
+                    foundInFirestore = validTitleMatches[0];
+                  }
+                } else {
+                  foundInFirestore = validTitleMatches[0];
+                }
+              } else {
+                console.warn(`[MedRevise Trace ${traceId}] ETAPA B4B (Firestore por Título REJEITADO): Nenhum dos ${matches.length} documentos retornados possui título normalizado igual a "${cleanTitle}"`);
               }
             }
           } catch (err) {

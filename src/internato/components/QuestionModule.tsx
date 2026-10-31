@@ -2222,6 +2222,7 @@ export default function QuestionModule({
             setShowResults(false);
             setIsTopicPreparing(false);
             setIsSelecting(false);
+            setIsActive(true);
 
             // Stream remaining questions in background
             if (remainingPool.length > 0 || poolQuestions.length < targetTotalCount) {
@@ -2370,7 +2371,7 @@ export default function QuestionModule({
 
   const nextQuestion = async () => {
     if (currentIndex < questions.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+      setCurrentIndex(prev => prev + 1);
       setSelectedOption(null);
       setIsAnswered(false);
       setAiExplanation(null);

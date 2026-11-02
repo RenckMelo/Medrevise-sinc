@@ -29,12 +29,12 @@ import FaqModal from '../components/FaqModal';
 import HowToUseView from '../components/HowToUseView';
 import ActionGuidedTour from '../components/ActionGuidedTour';
 
-const Cronograma = React.lazy(() => import('./components/Cronograma'));
-const TopicDetail = React.lazy(() => import('./components/TopicDetail'));
-const QuestionModule = React.lazy(() => import('./components/QuestionModule'));
-const FlashcardModule = React.lazy(() => import('./components/FlashcardModule'));
-const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
-const QuestionReview = React.lazy(() => import('./components/QuestionReview'));
+import Cronograma from './components/Cronograma';
+import TopicDetail from './components/TopicDetail';
+import QuestionModule from './components/QuestionModule';
+import FlashcardModule from './components/FlashcardModule';
+import AdminPanel from './components/AdminPanel';
+import QuestionReview from './components/QuestionReview';
 
 import LayoutDashboard from 'lucide-react/dist/esm/icons/layout-dashboard.js';
 import CalendarIcon from 'lucide-react/dist/esm/icons/calendar.js';

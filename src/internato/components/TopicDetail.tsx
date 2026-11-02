@@ -65,7 +65,7 @@ import { generateTopicContent, generateQuestions, generateFlashcards, Generation
 import { db, auth, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, getCountFromServer } from '../firebase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { markdownComponents, parseMarkdownAlerts, cleanAndFixMarkdownTables, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml, syncSummaryTableOfContents } from '../utils/markdownUtils';
+import { markdownComponents, parseMarkdownAlerts, cleanAndFixMarkdownTables, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml, syncSummaryTableOfContents, sanitizeEliteMarkers } from '../utils/markdownUtils';
 import { safeLocalStorageGet, safeLocalStorageSet, safeLocalStorageRemove } from '../utils/storageUtils';
 import { calculateNextReview } from '../../utils/srs';
 import SummaryGenerationWizard from './SummaryGenerationWizard';
@@ -559,7 +559,8 @@ const SummaryDossierHeader = ({
 const sanitizeMarkdown = (content: string) => {
   if (!content) return '';
   
-  let processed = cleanAndFixMarkdownTables(content);
+  let processed = sanitizeEliteMarkers(content);
+  processed = cleanAndFixMarkdownTables(processed);
 
   // Unescape AI-escaped markdown links e.g. \[text\](#anchor) or \[text\]\(#anchor\)
   processed = processed
@@ -3638,23 +3639,23 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
   const handleResumeAI = async () => {
     setLastGenerationError(null);
 
-    if (depth === 'custom_analyzed') {
+    if (depth === 'custom_analyzed' || depth === 'elite') {
       let analysisToPass = analysisResult;
       if (!analysisToPass || !analysisToPass.chapters || analysisToPass.chapters.length === 0) {
-        analysisToPass = (localTopic as any).analysis_custom_analyzed || (localTopic as any).custom_analysis;
+        analysisToPass = (localTopic as any).analysis_custom_analyzed || (localTopic as any).custom_analysis || (localTopic as any).analysis_elite;
       }
       if (!analysisToPass || !analysisToPass.chapters || analysisToPass.chapters.length === 0) {
         const extracted = getChaptersFromMonograph(currentContent);
         if (extracted.length > 0) {
           analysisToPass = {
             chapters: extracted,
-            cost: extracted.length * 10,
+            cost: depth === 'elite' ? 10 : extracted.length * 10,
             clinicalHighlights: [],
             justification: 'Capítulos preservados do sumário do documento.'
           };
         }
       }
-      await handleGenerateCustomAnalyzedSummary(analysisToPass);
+      await handleGenerateCustomAnalyzedSummary(analysisToPass, undefined, true);
       return;
     }
 
@@ -3709,7 +3710,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
           updateFields.content = sanitized;
         } else if (depth === 'deep') {
           updateFields.content_deep = sanitized;
-        } else if (depth === 'elite') {
+        } else if ((depth as string) === 'elite') {
           updateFields.content_elite = sanitized;
         } else if (depth === 'master') {
           updateFields.content_master = sanitized;
@@ -3767,6 +3768,11 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     const base = costMap[targetDepth as keyof typeof costMap] || 1;
     const requiredCredits = Math.max(1, base + calculateExtraCredits(targetIllLvl, targetAlertLvl));
     if (!checkCreditsSufficient(requiredCredits)) {
+      return;
+    }
+
+    if (targetDepth === 'elite') {
+      await handleGenerateCustomAnalyzedSummary(overrideConfig?.analysisResult || analysisResult, overrideConfig, false);
       return;
     }
 
@@ -3946,7 +3952,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     return Math.max(1, base + extra);
   };
 
-  const handleGenerateCustomAnalyzedSummary = async (overrideAnalysis?: any, overrideConfig?: any) => {
+  const handleGenerateCustomAnalyzedSummary = async (overrideAnalysis?: any, overrideConfig?: any, isResume: boolean = false) => {
     // Configurações a usar
     const targetDepth = overrideConfig?.depth || depth;
     const targetChapters = overrideConfig?.chapters || editedChapters;
@@ -3961,7 +3967,7 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
       const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
       try {
         setGenerationStatus('Analisando tópicos e estruturando capítulos...');
-        const autoAnalysis = await analyzeSummaryNeeds(effectiveTopicTitle, subjectName, targetDepth, userId);
+        const autoAnalysis = await analyzeSummaryNeeds(effectiveTopicTitle, subjectName, targetDepth, userId, false);
         if (autoAnalysis) {
           analysisToUse = autoAnalysis;
         } else {
@@ -4018,7 +4024,9 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     const subjectName = subjects.find(s => s.id === topic.subjectId)?.name || '';
 
     const fieldName = `content_${targetDepth}`;
-    const existingContent = (localTopic[fieldName as keyof typeof localTopic] as string) || (localTopic.content_custom_analyzed as string) || (localTopic.content_standard as string) || (localTopic.content as string) || '';
+    const existingContent = isResume
+      ? ((localTopic[fieldName as keyof typeof localTopic] as string) || (localTopic.content_custom_analyzed as string) || (localTopic.content_standard as string) || (localTopic.content as string) || '')
+      : '';
 
     try {
       const content = await generateCustomAnalyzedSummary(
@@ -4062,7 +4070,10 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
         targetIllLvl,
         targetAlertLvl,
         existingContent as string,
-        targetDepth
+        targetDepth,
+        isResume,
+        topic.id,
+        (localTopic as any)?.generationMeta
       );
 
       if (content) {
@@ -8893,8 +8904,8 @@ th { background: #F8F7F4; font-weight: bold; }
                   if (config.chapters) setEditedChapters(config.chapters);
                   if (config.analysisResult) setAnalysisResult(config.analysisResult);
                   setTimeout(() => {
-                    if (config.depth === 'custom_analyzed') {
-                      handleGenerateCustomAnalyzedSummary(config.analysisResult, config);
+                    if (config.depth === 'custom_analyzed' || config.depth === 'elite') {
+                      handleGenerateCustomAnalyzedSummary(config.analysisResult, config, false);
                     } else {
                       handleGenerateAI(config);
                     }

@@ -6608,4 +6608,22 @@ export function convertMarkdownToHtml(markdown: string): string {
   return html;
 }
 
+export const sanitizeEliteMarkers = (content: string): string => {
+  if (!content) return '';
+  let cleaned = content;
+  // 1. Remove HTML comments containing MEDREVISE_CHAP_END
+  cleaned = cleaned.replace(/<!--\s*MEDREVISE_CHAP_END[\s\S]*?-->/gi, '');
+  // 2. Remove any line or table row containing MEDREVISE_CHAP_END
+  const lines = cleaned.split('\n');
+  const filteredLines = lines.filter(line => {
+    const trimmed = line.trim();
+    if (trimmed.includes('MEDREVISE_CHAP_END')) return false;
+    if (trimmed.startsWith('|') && trimmed.includes('MEDREVISE_CHAP_END')) return false;
+    return true;
+  });
+  cleaned = filteredLines.join('\n');
+  return cleaned;
+};
+
+
 

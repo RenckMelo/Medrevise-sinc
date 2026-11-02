@@ -375,6 +375,26 @@ export function clearDataCache(): void {
   queryCache.clear();
 }
 
+function safeArray(val: any): any[] {
+  if (Array.isArray(val)) return val;
+  if (!val) return [];
+  if (typeof val === 'object') {
+    try {
+      const keys = Object.keys(val);
+      if (keys.length > 0 && keys.every(k => !isNaN(Number(k)))) {
+        return Object.values(val);
+      }
+      return keys.filter(k => val[k]);
+    } catch {
+      return [];
+    }
+  }
+  if (typeof val === 'string') {
+    return [val];
+  }
+  return [];
+}
+
 export async function getDoc(docRef: any): Promise<any> {
   const collectionName = docRef.collectionName;
   const id = docRef.id;
@@ -453,13 +473,14 @@ export async function getDoc(docRef: any): Promise<any> {
 
     const mergedAttempts = { ...(legacyData.attempts || {}), ...(mainData.attempts || {}) };
     const mergedFlashcardReviews = { ...(legacyData.flashcardReviews || {}), ...(mainData.flashcardReviews || {}) };
-    const mergedAnswered = Array.from(new Set([...(legacyData.answeredQuestionIds || []), ...(mainData.answeredQuestionIds || [])]));
-    const mergedCorrect = Array.from(new Set([...(legacyData.correctQuestionIds || []), ...(mainData.correctQuestionIds || [])]));
-    const mergedCompleted = Array.from(new Set([...(legacyData.completedTopicIds || []), ...(mainData.completedTopicIds || [])]));
+    const mergedAnswered = Array.from(new Set([...safeArray(legacyData.answeredQuestionIds), ...safeArray(mainData.answeredQuestionIds)]));
+    const mergedCorrect = Array.from(new Set([...safeArray(legacyData.correctQuestionIds), ...safeArray(mainData.correctQuestionIds)]));
+    const mergedCompleted = Array.from(new Set([...safeArray(legacyData.completedTopicIds), ...safeArray(mainData.completedTopicIds)]));
+    const mergedFlagged = Array.from(new Set([...safeArray(legacyData.flaggedQuestionIds), ...safeArray(mainData.flaggedQuestionIds)]));
     
     const dedupeItems = (arr: any[]) => {
       const seen = new Set();
-      return (arr || []).filter(item => {
+      return safeArray(arr).filter(item => {
         if (!item) return false;
         const key = typeof item === 'string' 
           ? item 
@@ -471,8 +492,8 @@ export async function getDoc(docRef: any): Promise<any> {
       });
     };
 
-    const mergedSessions = dedupeItems([...(mainData.studySessions || []), ...(legacyData.studySessions || [])]);
-    const mergedQuizHistory = dedupeItems([...(mainData.quizHistory || []), ...(legacyData.quizHistory || [])]);
+    const mergedSessions = dedupeItems([...safeArray(mainData.studySessions), ...safeArray(legacyData.studySessions)]);
+    const mergedQuizHistory = dedupeItems([...safeArray(mainData.quizHistory), ...safeArray(legacyData.quizHistory)]);
     const totalTime = Math.max(
       Number(mainData.totalStudyTimeSeconds) || 0,
       Number(legacyData.totalStudyTimeSeconds) || 0
@@ -1366,27 +1387,27 @@ async function migrateUserProgress(sourceUid: string, targetUid: string) {
 
       const mergedAttempts = { ...(supaData.attempts || {}), ...(fsData.attempts || {}) };
       const mergedCompletedTopics = Array.from(new Set([
-        ...(supaData.completedTopicIds || []),
-        ...(fsData.completedTopicIds || [])
+        ...safeArray(supaData.completedTopicIds),
+        ...safeArray(fsData.completedTopicIds)
       ]));
       const mergedAnsweredIds = Array.from(new Set([
-        ...(supaData.answeredQuestionIds || []),
-        ...(fsData.answeredQuestionIds || [])
+        ...safeArray(supaData.answeredQuestionIds),
+        ...safeArray(fsData.answeredQuestionIds)
       ]));
       const mergedCorrectIds = Array.from(new Set([
-        ...(supaData.correctQuestionIds || []),
-        ...(fsData.correctQuestionIds || [])
+        ...safeArray(supaData.correctQuestionIds),
+        ...safeArray(fsData.correctQuestionIds)
       ]));
       const mergedFlaggedIds = Array.from(new Set([
-        ...(supaData.flaggedQuestionIds || []),
-        ...(fsData.flaggedQuestionIds || [])
+        ...safeArray(supaData.flaggedQuestionIds),
+        ...safeArray(fsData.flaggedQuestionIds)
       ]));
 
       const supaTime = Number(supaData.totalStudyTimeSeconds) || 0;
       const fsTime = Number(fsData.totalStudyTimeSeconds) || 0;
 
-      const supaSessions = supaData.studySessions || [];
-      const fsSessions = fsData.studySessions || [];
+      const supaSessions = safeArray(supaData.studySessions);
+      const fsSessions = safeArray(fsData.studySessions);
       const sessionMap = new Map();
       [...supaSessions, ...fsSessions].forEach((s: any) => {
         const key = s.id || `${s.date}_${s.topicId || s.subjectId}`;

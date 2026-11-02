@@ -1,8 +1,9 @@
 
-import { db, doc, getDoc, updateDoc, increment, setDoc, auth } from '../firebase';
+import { db, doc, getDoc, updateDoc, increment, setDoc, auth, runTransaction } from '../firebase';
 import { safeLocalStorageGet } from '../utils/storageUtils';
 import { cleanAndFixMarkdownTables } from '../utils/markdownUtils';
 import { logSystemError } from './errorLogger';
+import { Chapter5DRatings, ChapterMeta, GenerationMeta } from '../types';
 
 export const AI_LIMIT_PER_DAY = 3000; // Shared admin pool is 3000, other plans have custom limits
 export const SITE_AI_MODEL = 'gemini-3.1-flash-lite';
@@ -93,7 +94,7 @@ export async function getUserFocusSettings(userId?: string) {
   return { residencyFocus, isCustom };
 }
 
-async function callGeminiWithMetadata(action: 'generateContent' | 'generateJson', prompt: string, model: string = "gemini-3.1-flash-lite", parts?: any[], tools?: any[]) {
+async function callGeminiWithMetadata(action: 'generateContent' | 'generateJson', prompt: string, model: string = "gemini-3.1-flash-lite", parts?: any[], tools?: any[], maxOutputTokens?: number) {
   return withRetry(async () => {
     try {
       const endpoint = '/api/gemini';
@@ -113,7 +114,8 @@ async function callGeminiWithMetadata(action: 'generateContent' | 'generateJson'
             model,
             parts,
             preferredProvider,
-            tools
+            tools,
+            maxOutputTokens
           }
         })
       });
@@ -160,7 +162,8 @@ async function callGeminiWithMetadata(action: 'generateContent' | 'generateJson'
       return {
         result: data.result,
         groundingMetadata: data.groundingMetadata || null,
-        providerInfo: data.providerInfo || null
+        providerInfo: data.providerInfo || null,
+        finishReason: (data.finishReason || 'UNKNOWN').toUpperCase()
       };
     } catch (error: any) {
       console.error('Gemini Proxy Error Details:', {
@@ -179,8 +182,8 @@ async function callGeminiWithMetadata(action: 'generateContent' | 'generateJson'
   });
 }
 
-async function callGemini(action: 'generateContent' | 'generateJson', prompt: string, model: string = "gemini-3.1-flash-lite", parts?: any[], tools?: any[]) {
-  const res = await callGeminiWithMetadata(action, prompt, model, parts, tools);
+async function callGemini(action: 'generateContent' | 'generateJson', prompt: string, model: string = "gemini-3.1-flash-lite", parts?: any[], tools?: any[], maxOutputTokens?: number) {
+  const res = await callGeminiWithMetadata(action, prompt, model, parts, tools, maxOutputTokens);
   return res.result;
 }
 
@@ -546,6 +549,18 @@ Escreva o capítulo "${chapterTitle}" com densidade técnica impecável, parágr
   }
 }
 
+/**
+ * Normaliza os títulos de capítulos para garantir fonte única de verdade sem duplicação de numeração (ex: corrige 1.1. -> 1.)
+ */
+export function normalizeChapterTitle(title: string, index: number): string {
+  if (!title) return `${index + 1}. Capítulo`;
+  let clean = title.trim();
+  // Remove numerações e prefixos redundantes como "1.1.", "1.1 ", "1. ", "Capítulo 1: ", etc.
+  clean = clean.replace(/^(Cap[íi]tulo\s+\d+[:\-\s]*|\d+[\.\-\s]+)+/i, '').trim();
+  clean = clean.replace(/^[\.\-\s]+/, '').trim();
+  return `${index + 1}. ${clean}`;
+}
+
 export async function generateTopicContent(
   title: string, 
   area: string, 
@@ -562,12 +577,32 @@ export async function generateTopicContent(
   const creditsMap = {
     standard: 1,
     deep: 5,
-    elite: 10,
+    elite: 25,
     master: 50,
     monograph: 100
   };
   const credits = creditsMap[depth] || 1;
   
+  if (depth === 'elite') {
+    return generateCustomAnalyzedSummary(
+      safeTitle,
+      safeArea,
+      {
+        cost: 25,
+        chapters: (existingChapters || []).map((ch, idx) => normalizeChapterTitle(ch, idx)),
+        clinicalHighlights: []
+      },
+      reference,
+      userId,
+      onProgress,
+      illustrationLevel,
+      alertBoxLevel,
+      undefined,
+      'elite',
+      false
+    );
+  }
+
   if (depth === 'monograph') {
     return generateMonograph(safeTitle, safeArea, reference, userId, onProgress, illustrationLevel, alertBoxLevel, existingChapters);
   }
@@ -584,7 +619,7 @@ export async function generateTopicContent(
   const finalCredits = credits;
 
   const isDeep = depth === 'deep';
-  const isElite = depth === 'elite';
+  const isElite = (depth as string) === 'elite';
   const isStandard = depth === 'standard';
   
   // Using stable model
@@ -966,7 +1001,8 @@ export async function resumeFailedSummaryContent(
         illustrationLevel,
         alertBoxLevel,
         currentContent,
-        'custom_analyzed'
+        'custom_analyzed',
+        true
       );
     }
 
@@ -1981,11 +2017,188 @@ export interface SuggestedExtraChapter {
   insertAtIndex: number;
 }
 
+export interface AdaptiveDistributionResult {
+  allocations: {
+    chapterIndex: number;
+    chapterTitle: string;
+    priorityScore: number;
+    allocatedTokens: number;
+    ratings5D: Chapter5DRatings;
+  }[];
+  referenceBudget: number;
+  totalAllocated: number;
+  effectiveFloor: number;
+  effectiveCap: number;
+  isBudgetConstrained: boolean;
+}
+
+/**
+ * Gera um hash numérico simples em hexadecimal para verificação de integridade de capítulos.
+ */
+export function simpleContentHash(text: string): string {
+  if (!text) return '00000000';
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16).padStart(8, '0');
+}
+
+/**
+ * Calcula a distribuição adaptativa do orçamento computacional para a modalidade Elite (depth = 'elite').
+ * Aplica a fórmula 5D: S_i = 0.25*C + 0.30*I + 0.20*R + 0.15*E + 0.10*D.
+ * Utiliza o algoritmo Water-Filling com limites de piso e teto, e o Método dos Maiores Restos (Hamilton Method)
+ * para arredondamento inteiro determinístico de tokens.
+ */
+export function calculateAdaptiveTokenDistribution(
+  chapters: string[],
+  customRatings?: (Chapter5DRatings | null | undefined)[],
+  referenceBudget: number = 16000,
+  minFloor: number = 1200,
+  maxCap: number = 5000
+): AdaptiveDistributionResult {
+  const N = chapters.length;
+  if (N === 0) {
+    return {
+      allocations: [],
+      referenceBudget,
+      totalAllocated: 0,
+      effectiveFloor: minFloor,
+      effectiveCap: maxCap,
+      isBudgetConstrained: false
+    };
+  }
+
+  // 1. Processar ou estimar notas 5D para cada capítulo
+  const ratings: Chapter5DRatings[] = chapters.map((title, idx) => {
+    const custom = customRatings?.[idx];
+    if (custom && typeof custom.C === 'number' && typeof custom.I === 'number') {
+      return {
+        C: Math.min(5, Math.max(1, custom.C)),
+        I: Math.min(5, Math.max(1, custom.I)),
+        R: Math.min(5, Math.max(1, custom.R)),
+        E: Math.min(5, Math.max(1, custom.E)),
+        D: Math.min(5, Math.max(1, custom.D))
+      };
+    }
+    // Estimativa conservadora baseada em heurísticas no título do capítulo
+    const titleLower = title.toLowerCase();
+    let C = 3, I = 3, R = 3, E = 3, D = 3;
+    if (titleLower.includes('fisiopatologia') || titleLower.includes('conceito') || titleLower.includes('definição')) {
+      C = 4; E = 3; D = 3;
+    }
+    if (titleLower.includes('manejo') || titleLower.includes('algoritmo') || titleLower.includes('conduta') || titleLower.includes('urgência') || titleLower.includes('emergência')) {
+      I = 5; R = 5; D = 4; E = 4;
+    }
+    if (titleLower.includes('tratam') || titleLower.includes('farmaco') || titleLower.includes('dose')) {
+      I = 5; R = 5; D = 5; C = 4;
+    }
+    if (titleLower.includes('escore') || titleLower.includes('classifica') || titleLower.includes('estágio') || titleLower.includes('tabela')) {
+      R = 5; D = 5; I = 4;
+    }
+    if (titleLower.includes('prevenção') || titleLower.includes('seguimento') || titleLower.includes('rastreio')) {
+      C = 2; I = 3; R = 2; E = 2; D = 2;
+    }
+    return { C, I, R, E, D };
+  });
+
+  // 2. Calcular o Escore de Prioridade S_i: S_i = 0.25*C + 0.30*I + 0.20*R + 0.15*E + 0.10*D
+  const scores = ratings.map(r => 
+    Number((0.25 * r.C + 0.30 * r.I + 0.20 * r.R + 0.15 * r.E + 0.10 * r.D).toFixed(4))
+  );
+
+  // 3. Ajustar orçamento efetivo B_effective e pisos/tetos
+  let effectiveBudget = referenceBudget;
+  let effectiveFloor = minFloor;
+  let effectiveCap = maxCap;
+  let isBudgetConstrained = false;
+
+  // Se N * maxCap < referenceBudget (ex: 2 capítulos * 5000 = 10000 < 16000)
+  if (N * maxCap < referenceBudget) {
+    effectiveBudget = N * maxCap;
+    isBudgetConstrained = true;
+  }
+  // Se N * minFloor > referenceBudget (ex: 16 capítulos * 1200 = 19200 > 16000)
+  if (N * minFloor > referenceBudget) {
+    effectiveFloor = Math.floor(referenceBudget / N);
+    isBudgetConstrained = true;
+  }
+
+  // 4. Algoritmo Water-Filling
+  const unconstrained = new Set<number>(Array.from({ length: N }, (_, i) => i));
+  const finalAllocationsFloat = new Array<number>(N).fill(0);
+  let budgetToDistribute = effectiveBudget;
+
+  while (unconstrained.size > 0) {
+    const currentUnconstrainedScoreSum = Array.from(unconstrained).reduce((sum, idx) => sum + scores[idx], 0);
+    let newlyConstrainedCount = 0;
+
+    for (const idx of Array.from(unconstrained)) {
+      const share = currentUnconstrainedScoreSum > 0 ? (scores[idx] / currentUnconstrainedScoreSum) * budgetToDistribute : (budgetToDistribute / unconstrained.size);
+      if (share > effectiveCap) {
+        finalAllocationsFloat[idx] = effectiveCap;
+        budgetToDistribute -= effectiveCap;
+        unconstrained.delete(idx);
+        newlyConstrainedCount++;
+      } else if (share < effectiveFloor) {
+        finalAllocationsFloat[idx] = effectiveFloor;
+        budgetToDistribute -= effectiveFloor;
+        unconstrained.delete(idx);
+        newlyConstrainedCount++;
+      }
+    }
+
+    if (newlyConstrainedCount === 0) {
+      for (const idx of Array.from(unconstrained)) {
+        finalAllocationsFloat[idx] = currentUnconstrainedScoreSum > 0 ? (scores[idx] / currentUnconstrainedScoreSum) * budgetToDistribute : (budgetToDistribute / unconstrained.size);
+      }
+      break;
+    }
+  }
+
+  // 5. Arredondamento Determinístico Inteiro pelo Método dos Maiores Restos (Hamilton)
+  const integerParts = finalAllocationsFloat.map(v => Math.floor(v));
+  const remainders = finalAllocationsFloat.map((v, idx) => ({
+    idx,
+    remainder: v - integerParts[idx]
+  }));
+
+  const integerSum = integerParts.reduce((sum, v) => sum + v, 0);
+  let remainderTokensToDistribute = effectiveBudget - integerSum;
+
+  remainders.sort((a, b) => b.remainder - a.remainder || a.idx - b.idx);
+
+  const finalAllocationsInt = [...integerParts];
+  for (let i = 0; i < remainderTokensToDistribute && i < remainders.length; i++) {
+    finalAllocationsInt[remainders[i].idx] += 1;
+  }
+
+  return {
+    allocations: chapters.map((title, idx) => ({
+      chapterIndex: idx,
+      chapterTitle: title,
+      priorityScore: scores[idx],
+      allocatedTokens: finalAllocationsInt[idx],
+      ratings5D: ratings[idx]
+    })),
+    referenceBudget,
+    totalAllocated: finalAllocationsInt.reduce((s, v) => s + v, 0),
+    effectiveFloor,
+    effectiveCap,
+    isBudgetConstrained
+  };
+}
+
 /**
  * Realiza uma pré-análise inteligente do tópico para estimar as necessidades de créditos,
  * justificativa de profundidade, capítulos sugeridos e destaques essenciais do tema.
  */
-export async function analyzeSummaryNeeds(title: string, area: string, depth: GenerationDepth = 'custom_analyzed', userId?: string) {
+export async function analyzeSummaryNeeds(title: string, area: string, depth: GenerationDepth = 'custom_analyzed', userId?: string, chargeCredits: boolean = true) {
+  if (chargeCredits) {
+    await checkUsageLimit(2);
+  }
   const safeTitle = sanitizeTopicTitle(title, 'Tópico de Estudo');
   const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
   const depthText = {
@@ -2128,7 +2341,9 @@ Retorne APENAS um JSON válido no seguinte formato:
 
     // Preço do resumo inteligente cobrado estritamente pela quantidade de capítulos (10 créditos por capítulo)
     const finalCost = depth === 'custom_analyzed' ? Math.max(10, chapters.length * 10) : (costText !== null ? costText : 50);
-    await recordUsage(2, userId);
+    if (chargeCredits) {
+      await recordUsage(2, userId);
+    }
     return {
       cost: finalCost,
       justification: data.justification || 'Análise realizada com sucesso.',
@@ -2173,32 +2388,717 @@ Retorne APENAS um JSON válido no seguinte formato:
   }
 }
 
+// Registra a cobrança de créditos de forma estritamente idempotente por runId usando transação atômica do Firestore
+export async function recordIdempotentEliteUsage(
+  runId: string,
+  credits: number = 25,
+  targetUserId?: string,
+  topicId?: string
+): Promise<{ charged: boolean; alreadyBilled: boolean }> {
+  if (!db) return { charged: false, alreadyBilled: false };
+  const currentUser = auth.currentUser;
+  const uid = targetUserId || currentUser?.uid;
+  if (!uid) return { charged: false, alreadyBilled: false };
+
+  const email = (currentUser?.email || '').toLowerCase().trim();
+  const today = getTodayDateString();
+
+  const runRef = doc(db, 'users', uid, 'processedRuns', runId);
+  const userRef = doc(db, 'users', uid);
+  const globalStatsRef = doc(db, 'global', 'stats');
+
+  return await runTransaction(db, async (transaction) => {
+    // 1. LEITURAS ATÔMICAS (Todas as leituras devem preceder escritas no Firestore transaction)
+    const runSnap = await transaction.get(runRef);
+    if (runSnap.exists()) {
+      console.log(`[Elite Cobrança Idempotente] runId ${runId} já faturada anteriormente em ${runSnap.data()?.billedAt}. Isenção concedida.`);
+      return { charged: false, alreadyBilled: true };
+    }
+
+    const userSnap = await transaction.get(userRef);
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      const isSpecialUser = email === 'ysabelleosaraiva@gmail.com' || email === 'yasabelleosaraiva@gmail.com' || email === 'lucas1renck2melo@gmail.com';
+      const isPremium = !!userData?.isPremium;
+      const premiumPlan = userData?.premiumPlan || 'med_revise_pro';
+      const customLimit = userData?.customLimit || userData?.creditLimit || userData?.dailyLimit;
+
+      let limit = 10;
+      if (customLimit && typeof customLimit === 'number' && customLimit > 0) {
+        limit = customLimit;
+      } else if (isSpecialUser) {
+        limit = 1000;
+      } else if (isPremium) {
+        if (premiumPlan === 'combo_ouro') limit = 250;
+        else if (premiumPlan === 'med_internato_premium') limit = 200;
+        else limit = 10;
+      }
+
+      const usage = userData?.aiUsage;
+      const todayUsageCount = (usage && usage.date === today) ? (usage.count || 0) : 0;
+      const dailyUsageCount = userData?.dailyUsage?.[today] || 0;
+      const currentCount = Math.max(todayUsageCount, dailyUsageCount);
+      const available = Math.max(0, limit - currentCount);
+
+      if (credits > available) {
+        throw new Error(`Créditos diários insuficientes para esta operação (${available} cr disponíveis, necessário ${credits} cr). Seus créditos renovam diariamente.`);
+      }
+
+      if (usage && usage.date === today) {
+        transaction.update(userRef, {
+          'aiUsage.count': increment(credits),
+          [`dailyUsage.${today}`]: increment(credits)
+        });
+      } else {
+        const newCount = (userData?.dailyUsage?.[today] || 0) + credits;
+        transaction.set(userRef, {
+          aiUsage: { date: today, count: newCount },
+          [`dailyUsage.${today}`]: newCount
+        }, { merge: true });
+      }
+    } else {
+      transaction.set(userRef, {
+        email,
+        aiUsage: { date: today, count: credits },
+        [`dailyUsage.${today}`]: credits
+      }, { merge: true });
+    }
+
+    // 2. ESCRITAS ATÔMICAS (Registro de idempotência em processedRuns e atualização de stats global com suporte a documento não-inicializado)
+    transaction.set(runRef, {
+      runId,
+      credits,
+      topicId: topicId || 'temp',
+      billedAt: new Date().toISOString(),
+      depth: 'elite'
+    });
+
+    transaction.set(globalStatsRef, {
+      aiUsage: {
+        count: increment(credits)
+      }
+    }, { merge: true });
+
+    console.log(`[Elite Cobrança Idempotente] Sucesso: ${credits} créditos cobrados e runId ${runId} registrado atomicamente.`);
+    return { charged: true, alreadyBilled: false };
+  });
+}
+
+// Trava em memória para impedir execuções síncronas simultâneas do mesmo tópico no mesmo navegador
+const activeTopicGenerationsSet = new Set<string>();
+
 /**
- * Gera um resumo completo e 100% autossuficiente baseado na análise de requisitos prévia.
+ * Motor dedicado de Geração Adaptativa Progressiva para a Modalidade Elite (depth = 'elite').
+ * Orçamento computacional base de 16.000 tokens distribuído via Water-Filling + 5D Ratings.
+ * Trava atômica no Firestore (activeLock via runTransaction) com Fencing Token (lockVersion) & Lease Heartbeat.
+ * Persistência e Recuperação Garantida de runId em generationMeta + activeLock.
+ * Cobrança idempotente garantida no Firestore (processedRuns/{runId}).
+ * Validação rigorosa de finishReason (exclusivamente STOP) contra respostas truncadas.
  */
-export async function generateCustomAnalyzedSummary(
+export async function generateEliteProgressiveSummary(
   title: string,
   area: string,
-  analysis: { cost: number; chapters: string[]; clinicalHighlights: string[] },
+  analysis: { cost: number; chapters: string[]; clinicalHighlights: string[]; chapterRatings5D?: Chapter5DRatings[] },
+  topicId?: string,
   reference?: string,
   userId?: string,
   onProgress?: ProgressCallback,
   illustrationLevel: string = 'moderate',
   alertBoxLevel: string = 'moderate',
   existingContent?: string,
-  depth: GenerationDepth = 'custom_analyzed'
+  existingMeta?: GenerationMeta,
+  isResume: boolean = false
+) {
+  // 0. TRAVA SÍNCRONA DE INSTÂNCIA LOCAL (IMPEDE DUPLO CLIQUE NA MESMA ABA)
+  if (topicId && topicId !== 'temp' && activeTopicGenerationsSet.has(topicId)) {
+    throw new Error("Uma operação de geração para este tópico já está em andamento nesta aba do navegador.");
+  }
+  if (topicId && topicId !== 'temp') {
+    activeTopicGenerationsSet.add(topicId);
+  }
+
+  const currentTabId = `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  let isLockOwner = false;
+  let hasLostLock = false;
+  let heartbeatTimer: any = null;
+  let runId = `run_elite_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  let lockVersion = 0; // Fencing token monotônico local
+
+  // Helper para validação estrita de propriedade da trava (tabId + runId + lockVersion)
+  const isOwnerValid = (lockData: any): boolean => {
+    return !!(
+      lockData &&
+      lockData.tabId === currentTabId &&
+      lockData.runId === runId &&
+      typeof lockData.lockVersion === 'number' &&
+      lockData.lockVersion === lockVersion
+    );
+  };
+
+  try {
+    const safeTitle = sanitizeTopicTitle(title, 'Tópico de Estudo');
+    const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
+    
+    // Definir ou recuperar runId e metadata passados explicitamente
+    let isResumingValidRun = false;
+    let startChapterIndex = 0;
+    let fullContent = "";
+
+    if (isResume && existingMeta && existingMeta.runId && (existingMeta.depth === 'elite' || (existingMeta as any).depth === 'elite')) {
+      runId = existingMeta.runId;
+      isResumingValidRun = true;
+      if (existingContent && existingContent.trim().length > 100) {
+        fullContent = existingContent;
+      }
+    }
+
+    // FONTE ÚNICA DE VERDADE: Se for retomada, recuperar rigorosamente os capítulos salvos do metadata para manter integridade
+    let chapters: string[] = [];
+    if (isResumingValidRun && existingMeta && Array.isArray(existingMeta.chapters) && existingMeta.chapters.length > 0) {
+      chapters = existingMeta.chapters.map((c, idx) => normalizeChapterTitle(c.title, idx));
+      console.log(`[Elite Fonte Única] Recuperados ${chapters.length} capítulos do generationMeta salvo.`);
+    } else {
+      chapters = (analysis?.chapters || []).map((ch, idx) => normalizeChapterTitle(ch, idx));
+    }
+
+    if (chapters.length === 0) {
+      chapters = [
+        '1. Introdução, Definição Formal Rigorosa e Fisiopatologia',
+        '2. Quadro Clínico e Propedêutica Diagnóstica',
+        '3. Classificações Oficiais, Escores de Risco e Escalas (Tabelas Integrais)',
+        '4. Propedêutica Avançada e Algoritmo de Investigação',
+        '5. Manejo Clínico Prático e Algoritmo Passo a Passo',
+        '6. Tratamento Medicamentoso, Doses e Peculiaridades de Provas'
+      ];
+    }
+
+    // 0.1 TRAVA PERSISTENTE ATÔMICA MULTI-ABA / MULTI-DISPOSITIVO NO FIRESTORE COM FENCING TOKEN (lockVersion)
+    if (topicId && topicId !== 'temp' && db) {
+      try {
+        await runTransaction(db, async (transaction) => {
+          const topicRef = doc(db, 'topics', topicId);
+          const topicSnap = await transaction.get(topicRef);
+          if (!topicSnap.exists()) return;
+
+          const topicData = topicSnap.data();
+          const existingLock = topicData?.activeLock;
+          const existingTopicMeta = topicData?.generationMeta;
+          const nowISO = new Date().toISOString();
+
+          // T0: Tentar recuperar runId do Firestore se não foi passado no parâmetro mas já existe na gravação prévia
+          if (!isResumingValidRun) {
+            const savedRunId = existingTopicMeta?.runId || existingLock?.runId;
+            if (savedRunId && typeof savedRunId === 'string' && savedRunId.startsWith('run_elite_')) {
+              runId = savedRunId;
+              isResumingValidRun = true;
+              console.log(`[Elite Recuperação] runId recuperado do Firestore a partir do documento do tópico: ${runId}`);
+              if (existingTopicMeta && Array.isArray(existingTopicMeta.chapters) && existingTopicMeta.chapters.length > 0) {
+                chapters = existingTopicMeta.chapters.map((c: any, idx: number) => normalizeChapterTitle(c.title, idx));
+              }
+            }
+          }
+
+          // Verificar se existe um bloqueio ativo e válido de outra aba/dispositivo
+          const isLockActive = existingLock && existingLock.expiresAt && nowISO < existingLock.expiresAt;
+          if (isLockActive && (existingLock.tabId !== currentTabId || existingLock.runId !== runId)) {
+            console.warn(`[Elite Trava Atômica] Tópico ${topicId} bloqueado por outra aba (${existingLock.tabId}, runId: ${existingLock.runId}). Rejeitando requisição concorrente sem cobrar créditos.`);
+            throw new Error("Este tópico já está sendo gerado em outra guia ou dispositivo. Por favor, acompanhe a execução na guia ativa.");
+          }
+
+          // Calcular próximo lockVersion monotônico
+          const newLockVersion = (typeof existingLock?.lockVersion === 'number' && existingLock.lockVersion > 0)
+            ? existingLock.lockVersion + 1
+            : 1;
+
+          const newLock = {
+            topicId,
+            userId: userId || auth.currentUser?.uid || 'anonymous',
+            runId,
+            tabId: currentTabId,
+            lockVersion: newLockVersion,
+            acquiredAt: nowISO,
+            expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 minutos de TTL
+          };
+
+          // Gravar a trava e persistir o runId na estrutura generationMeta no T0
+          transaction.update(topicRef, {
+            activeLock: newLock,
+            'generationMeta.runId': runId,
+            'generationMeta.depth': 'elite'
+          });
+
+          lockVersion = newLockVersion;
+        });
+
+        isLockOwner = true;
+        console.log(`[Elite Trava Atômica] Trava transacional adquirida com sucesso para o tópico ${topicId} (tabId: ${currentTabId}, runId: ${runId}, lockVersion: ${lockVersion}).`);
+      } catch (lockErr: any) {
+        if (lockErr?.message?.includes('já está sendo gerado em outra guia')) {
+          throw lockErr;
+        }
+        console.warn('[Elite Trava Atômica] Aviso/Erro na trava atômica do Firestore:', lockErr?.message);
+      }
+    }
+
+    // 0.2 INICIAR HEARTBEAT LEASE DE RENOVAÇÃO DA TRAVA COM VALIDAÇÃO ESTRITA (tabId + runId + lockVersion)
+    if (isLockOwner && topicId && topicId !== 'temp' && db) {
+      heartbeatTimer = setInterval(async () => {
+        if (hasLostLock) return;
+        try {
+          await runTransaction(db, async (transaction) => {
+            const topicRef = doc(db, 'topics', topicId);
+            const topicSnap = await transaction.get(topicRef);
+            if (!topicSnap.exists()) return;
+
+            const currentLock = topicSnap.data()?.activeLock;
+            if (isOwnerValid(currentLock)) {
+              transaction.update(topicRef, {
+                'activeLock.expiresAt': new Date(Date.now() + 10 * 60 * 1000).toISOString()
+              });
+            } else {
+              hasLostLock = true;
+            }
+          });
+          if (hasLostLock) {
+            console.warn(`[Elite Heartbeat] Perda de propriedade da trava detectada para o tópico ${topicId}. Interrompendo renovação.`);
+          }
+        } catch (hbErr) {
+          console.warn('[Elite Heartbeat] Aviso na renovação periódica da trava:', hbErr);
+        }
+      }, 120000); // 2 minutos
+    }
+
+    // 1. Calcular distribuição adaptativa do orçamento computacional (16.000 tokens base)
+    const distribution = calculateAdaptiveTokenDistribution(chapters, analysis?.chapterRatings5D);
+    const totalChapters = chapters.length;
+
+    // 2. Gestão da Cobrança Comercial Idempotente (25 Créditos Totais Fixo com Isenção via runId)
+    const chargeResult = await recordIdempotentEliteUsage(runId, 25, userId, topicId);
+    if (chargeResult.alreadyBilled) {
+      console.log(`[Elite Cobrança] Execução runId ${runId} já faturada anteriormente. Isenção confirmada.`);
+    }
+
+    // 3. Inicializar ou atualizar GenerationMeta com ESTRUTURA COMPLETA DE FONTE ÚNICA DE VERDADE
+    let generationMeta: GenerationMeta = isResumingValidRun && existingMeta ? { ...existingMeta, runId } : {
+      runId,
+      userId: userId || auth.currentUser?.uid || 'anonymous',
+      topicId: topicId || 'temp',
+      depth: 'elite',
+      totalChapters,
+      referenceTokenBudget: distribution.referenceBudget,
+      totalTokensAllocated: distribution.totalAllocated,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isFullyCompleted: false,
+      chapters: distribution.allocations.map((alloc) => ({
+        chapterId: `chap_${alloc.chapterIndex + 1}_${slugify(alloc.chapterTitle)}`,
+        index: alloc.chapterIndex,
+        order: alloc.chapterIndex + 1,
+        title: alloc.chapterTitle,
+        objectives: [
+          `Desenvolver exaustivamente o tema "${alloc.chapterTitle}" sem duplicações com os demais capítulos.`,
+          `Apresentar tabelas completas, condutas de diretrizes e escores oficiais com precisão de provas.`
+        ],
+        keyTopics: analysis?.clinicalHighlights || [],
+        allocatedTokens: alloc.allocatedTokens,
+        status: 'pending',
+        ratings5D: alloc.ratings5D,
+        priorityScore: alloc.priorityScore
+      }))
+    };
+
+    // Se estiver retomando, determinar o primeiro capítulo não concluído verificando status E tag de fechamento
+    if (isResumingValidRun) {
+      for (let i = 0; i < totalChapters; i++) {
+        const chap = generationMeta.chapters[i];
+        const endTag = `<!-- MEDREVISE_CHAP_END: RUN=${runId} | ID=${chap?.chapterId}`;
+        if (chap && chap.status === 'completed' && fullContent.includes(endTag)) {
+          startChapterIndex = i + 1;
+        } else {
+          startChapterIndex = i;
+          if (chap) chap.status = 'pending';
+          break;
+        }
+      }
+      console.log(`[Elite Progressivo] Retomando runId ${runId} a partir do capítulo ${startChapterIndex + 1}/${totalChapters}`);
+    }
+
+    // Se todos os capítulos já foram concluídos
+    if (isResumingValidRun && startChapterIndex >= totalChapters) {
+      generationMeta.isFullyCompleted = true;
+      if (onProgress) {
+        onProgress({
+          current: totalChapters,
+          total: totalChapters,
+          message: 'Resumo Elite já está 100% concluído!',
+          partialContent: fullContent
+        });
+      }
+      return { fullContent, generationMeta };
+    }
+
+    // 4. Estruturar cabeçalho e sumário inicial a partir da estrutura aprovada oficial
+    if (startChapterIndex === 0) {
+      fullContent = `# ${safeTitle.toUpperCase()}\n\n*Tratado Elite Médica de Alta Performance - Geração Adaptativa Progressiva por Preceptor IA*\n\n---\n\n## SUMÁRIO DE NAVEGAÇÃO ELITE\n\n`;
+      chapters.forEach((ch) => {
+        const slug = slugify(ch);
+        fullContent += `- [${ch}](#${slug})\n`;
+      });
+      fullContent += `\n---\n\n`;
+    }
+
+    if (onProgress) {
+      onProgress({
+        current: startChapterIndex,
+        total: totalChapters,
+        message: startChapterIndex > 0 ? `Retomando resumo Elite a partir do capítulo ${startChapterIndex + 1}/${totalChapters}...` : 'Iniciando Tratado Elite com alocação adaptativa de tokens...',
+        partialContent: fullContent
+      });
+    }
+
+    // 5. Loop Sequencial por Capítulo
+    for (let i = startChapterIndex; i < totalChapters; i++) {
+      if (hasLostLock) {
+        throw new Error("A propriedade da execução deste resumo foi assumida por outra sessão ou expirou. A geração nesta guia foi interrompida com segurança.");
+      }
+
+      const chapterObj = generationMeta.chapters[i];
+      const chapterTitle = chapters[i];
+      const allocatedTokens = chapterObj?.allocatedTokens || 2500;
+
+      if (chapterObj) chapterObj.status = 'generating';
+      generationMeta.updatedAt = new Date().toISOString();
+
+      if (onProgress) {
+        onProgress({
+          current: i,
+          total: totalChapters,
+          message: `Gerando Capítulo ${i + 1}/${totalChapters}: "${chapterTitle}" (Orçamento: ~${allocatedTokens} tokens)...`,
+          partialContent: fullContent
+        });
+      }
+
+      if (i > startChapterIndex) {
+        await new Promise(r => setTimeout(r, 2500));
+      }
+
+      // Contexto global econômico para evitar duplicidades
+      const previousChaptersContext = i > 0
+        ? chapters.slice(0, i).map((c, idx) => `- Capítulo ${idx + 1}: "${c}" (Já incluído no resumo)`).join('\n')
+        : 'Nenhum (Este é o Capítulo 1 Inicial)';
+      const futureChaptersContext = i < totalChapters - 1
+        ? chapters.slice(i + 1).map((c, idx) => `- Capítulo ${i + 2 + idx}: "${c}"`).join('\n')
+        : 'Nenhum (Este é o Capítulo Final)';
+      const previousSignatures = extractPreviousContentSignatures(fullContent);
+
+      const prompt = `Você é o COORDENADOR-PRECEPTOR de um Internato de Elite Médica. Estamos gerando um TRATADO ELITE de Alta Performance médica para o aluno gabaritar qualquer questão e ter segurança absoluta na prática clínica.
+
+Tema Geral do Tratado Elite: "${title}" (${area})
+Capítulo Atual (${i + 1}/${totalChapters}): "${chapterTitle}"
+Orçamento Alocado para Este Capítulo: ~${allocatedTokens} tokens de saída. Exige máxima densidade técnica, profundidade de livro-texto (Harrison / UpToDate) e precisão de condutas.
+
+REGRA RÍGIDA E INVIOLÁVEL DE TÍTULO E ESCOPO DO CAPÍTULO (FONTE ÚNICA DE VERDADE):
+1. A PRIMEIRA LINHA DA RESPOSTA DEVE CONTER EXATAMENTE O CABEÇALHO OFICIAL: "## ${chapterTitle}".
+2. É TERMINANTEMENTE PROIBIDO alterar o título do capítulo, criar numerações duplicadas (ex: 1.1.), trocar palavras ou mudar a ordem.
+3. É TERMINANTEMENTE PROIBIDO criar capítulos adicionais, como "Checklist de Elite" ou apêndices não autorizados. Escreva o conteúdo estritamente dentro deste capítulo.
+4. É TERMINANTEMENTE PROIBIDO fundir este capítulo com outros ou eliminar tópicos da ementa aprovada.
+
+ESTRUTURA GLOBAL E CONTEXTO DE CAPÍTULOS ANTERIORES:
+Capítulos Anteriores Já Concluídos:
+${previousChaptersContext}
+
+Capítulos Seguintes A Serem Gerados:
+${futureChaptersContext}
+
+ELEMENTOS JÁ APRESENTADOS NOS CAPÍTULOS ANTERIORES (REGRA RÍGIDA ANTI-DUPLICAÇÃO):
+${previousSignatures}
+* É TERMINANTEMENTE PROIBIDO REPETIR TABELAS, ESCORES OU CAIXAS DE DICA LISTADAS ACIMA.
+
+DIRETRIZES TÉCNICAS E MÉDICAS MANDATÓRIAS DO CAPÍTULO:
+1. MATRIZ DE EXCELÊNCIA MÉDICA:
+   - Apresente definições completas termo a termo, estagiamentos oficiais com valores de corte exatos, dosagens farmacológicas em mg/kg (primeira e segunda linhas, ajustes renais/hepáticos) e condutas beira-leito.
+   - Inclua tabelas comparativas limpas, escores com pontuação e conduta por faixa de risco.
+   - Adicione caixas de destaque para pegadinhas de bancas do ENARE, Revalida, USP e SUS:
+     > [!IMPORTANT]
+     > **DESTAQUE CLÍNICO DE PROVA:**
+     > [Dica objetiva e acionável]
+2. DENSIDADE E FLUIDADE DIDÁTICA:
+   - Redija de forma profunda e orgânica, encadeando o raciocínio fisiopatológico e clínico sem frases artificiais de transição.
+
+Referência ou contexto adicional do aluno: ${reference || 'Nenhuma'}
+
+Escreva o capítulo "${chapterTitle}" de forma exaustiva e pronta para alta performance médica.`;
+
+      const finalPrompt = prompt + getPromptPreferenceInstructions(illustrationLevel, alertBoxLevel);
+      let chapterText = "";
+      let chapterSuccess = false;
+      let chapterError: any = null;
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (hasLostLock) {
+          throw new Error("A propriedade da trava foi perdida. A geração do capítulo foi abortada.");
+        }
+
+        try {
+          if (attempt > 0) {
+            console.warn(`[Elite Progressivo] Tentativa ${attempt + 1}/3 para capítulo ${i + 1}/${totalChapters}: "${chapterTitle}"...`);
+            if (onProgress) {
+              onProgress({
+                current: i,
+                total: totalChapters,
+                message: `Re-tentando capítulo ${i + 1}/${totalChapters} (tentativa ${attempt + 1}/3)...`,
+                partialContent: fullContent
+              });
+            }
+            await new Promise(r => setTimeout(r, 2000 * attempt));
+          }
+
+          const responseData = await callGeminiWithMetadata('generateContent', finalPrompt, "gemini-3.1-flash-lite", undefined, undefined, Math.max(allocatedTokens, 8192));
+          let accumulatedText = responseData.result || "";
+          let finishReason = (responseData.finishReason || 'UNKNOWN').toUpperCase();
+
+          // Intelligent Truncation Recovery & Contextual Continuation
+          let continuationRounds = 0;
+          const MAX_CONTINUATION_ROUNDS = 3;
+          while ((finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH') && continuationRounds < MAX_CONTINUATION_ROUNDS && accumulatedText.length > 0) {
+            continuationRounds++;
+            console.log(`[Elite Continuation] Capítulo ${i + 1} (${chapterTitle}) truncado (MAX_TOKENS). Iniciando continuação inteligente rodada ${continuationRounds}...`);
+            
+            const lastSnippet = accumulatedText.slice(-800);
+            const continuationPrompt = `[CONTINUAÇÃO OBRIGATÓRIA DE CAPÍTULO TRUNCADO]
+Você estava redigindo o capítulo "${chapterTitle}" do Tratado Elite Médica. A última resposta foi interrompida por limite de tokens.
+CONTEXTO FINAL DO TRECHO GERADO ATÉ AGORA:
+"...${lastSnippet}"
+
+INSTRUÇÃO: Continue a redação EXATAMENTE do ponto onde o texto acima parou. 
+- NÃO repita nenhuma introdução, título ou frase já escrita.
+- Mantenha a mesma densidade científica, formatação Markdown, tabelas e tom preceptor.
+- Conclua o capítulo com o mesmo rigor.`;
+
+            try {
+              const contRes = await callGeminiWithMetadata('generateContent', continuationPrompt, "gemini-3.1-flash-lite", undefined, undefined, 8192);
+              const contText = contRes.result || "";
+              if (contText.trim().length > 0) {
+                accumulatedText += "\n" + contText.trim();
+              }
+              finishReason = (contRes.finishReason || 'UNKNOWN').toUpperCase();
+            } catch (contErr) {
+              console.warn(`[Elite Continuation] Falha na rodada ${continuationRounds} de continuação:`, contErr);
+              break;
+            }
+          }
+
+          chapterText = accumulatedText;
+
+          if (chapterText && chapterText.trim().length > 100) {
+            chapterSuccess = true;
+            break;
+          } else {
+            console.warn(`[Elite Progressivo] Capítulo ${i + 1} (${chapterTitle}) descartado por tamanho insuficiente.`);
+          }
+        } catch (err) {
+          chapterError = err;
+          console.error(`[Elite Progressivo] Capítulo ${i + 1} tentativa ${attempt + 1} falhou:`, err);
+        }
+      }
+
+      if (!chapterSuccess) {
+        if (chapterObj) chapterObj.status = 'failed';
+        generationMeta.updatedAt = new Date().toISOString();
+        
+        const warningBlock = `## ${chapterTitle}\n\n> [!WARNING]\n> **Instabilidade de conexão ou limite de saída atingido na geração deste capítulo.** Clique no botão **"Retomar e Concluir"** no final da página para gerar este capítulo e as seções restantes de onde parou.\n\n---\n\n`;
+        const tempContent = fullContent + warningBlock;
+
+        if (topicId && topicId !== 'temp' && db && !hasLostLock) {
+          try {
+            await runTransaction(db, async (transaction) => {
+              const topicRef = doc(db, 'topics', topicId);
+              const topicSnap = await transaction.get(topicRef);
+              if (!topicSnap.exists()) return;
+
+              const currentLock = topicSnap.data()?.activeLock;
+              if (!isOwnerValid(currentLock)) {
+                hasLostLock = true;
+                return;
+              }
+
+              transaction.update(topicRef, {
+                content: tempContent,
+                content_elite: tempContent,
+                generationMeta,
+                lastUpdated: new Date().toISOString()
+              });
+            });
+          } catch (dbErr) {
+            console.error('[Elite Progressivo] Erro ao gravar capítulo falhado no Firestore:', dbErr);
+          }
+        }
+
+        if (onProgress) {
+          onProgress({
+            current: i,
+            total: totalChapters,
+            message: `Geração interrompida no capítulo ${i + 1}/${totalChapters}. Clique em "Retomar e Concluir".`,
+            partialContent: tempContent
+          });
+        }
+
+        throw new Error(`Instabilidade na geração do capítulo "${chapterTitle}". ${chapterError?.message || 'Clique em Retomar para continuar.'}`);
+      }
+
+      // Processar texto do capítulo e anexar marcador estruturado de encerramento
+      let cleanedChapterText = cleanLeadingChapterTitle(chapterText, chapterTitle);
+      const contentHash = simpleContentHash(cleanedChapterText);
+      const chapterId = chapterObj?.chapterId || `chap_${i + 1}_${slugify(chapterTitle)}`;
+      const chapterEndTag = `<!-- MEDREVISE_CHAP_END: RUN=${runId} | ID=${chapterId} | HASH=${contentHash} -->`;
+
+      const chapterMarkdown = `## ${chapterTitle}\n\n${cleanedChapterText}\n\n${chapterEndTag}\n\n---\n\n`;
+      fullContent += chapterMarkdown;
+
+      if (chapterObj) {
+        chapterObj.status = 'completed';
+        chapterObj.contentHash = contentHash;
+        chapterObj.savedAt = new Date().toISOString();
+      }
+      generationMeta.updatedAt = new Date().toISOString();
+
+      if (i === totalChapters - 1) {
+        generationMeta.isFullyCompleted = true;
+      }
+
+      // PERSISTÊNCIA ATÔMICA EM UMA ÚNICA TRANSAÇÃO DO FIRESTORE COM VALIDAÇÃO E RENOVAÇÃO DO LOCK (tabId + runId + lockVersion)
+      if (topicId && topicId !== 'temp' && db) {
+        if (hasLostLock) {
+          throw new Error("A propriedade da trava foi perdida. A gravação do capítulo foi bloqueada com segurança.");
+        }
+
+        try {
+          await runTransaction(db, async (transaction) => {
+            const topicRef = doc(db, 'topics', topicId);
+            const topicSnap = await transaction.get(topicRef);
+            if (!topicSnap.exists()) return;
+
+            const currentLock = topicSnap.data()?.activeLock;
+            if (!isOwnerValid(currentLock)) {
+              hasLostLock = true;
+              throw new Error("A propriedade da trava foi assumida por outra guia ou dispositivo. Gravação abortada.");
+            }
+
+            const activeLockToRefresh = {
+              ...currentLock,
+              expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+            };
+
+            transaction.update(topicRef, {
+              content: fullContent,
+              content_elite: fullContent,
+              generationMeta,
+              lastUpdated: new Date().toISOString(),
+              activeLock: activeLockToRefresh
+            });
+          });
+          console.log(`[Elite Progressivo] Capítulo ${i + 1}/${totalChapters} gravado atomicamente no Firestore (lockVersion: ${lockVersion} validado)!`);
+        } catch (saveErr: any) {
+          if (saveErr?.message?.includes('propriedade da trava foi assumida')) {
+            hasLostLock = true;
+            throw saveErr;
+          }
+          console.error(`[Elite Progressivo] Falha ao persistir capítulo ${i + 1} no Firestore:`, saveErr);
+        }
+      }
+
+      if (onProgress) {
+        onProgress({
+          current: i + 1,
+          total: totalChapters,
+          message: `Capítulo ${i + 1}/${totalChapters} concluído e salvo com sucesso!`,
+          partialContent: fullContent
+        });
+      }
+    }
+
+    return { fullContent, generationMeta };
+  } finally {
+    // 1. Limpar timer do heartbeat de renovação da trava
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+    }
+
+    // 2. Liberar trava local em memória
+    if (topicId && topicId !== 'temp') {
+      activeTopicGenerationsSet.delete(topicId);
+    }
+
+    // 3. Liberar trava do Firestore SOMENTE se esta sessão for a proprietária ativa (tabId + runId + lockVersion)
+    if (topicId && topicId !== 'temp' && db && isLockOwner && !hasLostLock) {
+      try {
+        await runTransaction(db, async (transaction) => {
+          const topicRef = doc(db, 'topics', topicId);
+          const topicSnap = await transaction.get(topicRef);
+          if (!topicSnap.exists()) return;
+
+          const currentLock = topicSnap.data()?.activeLock;
+          if (isOwnerValid(currentLock)) {
+            transaction.update(topicRef, { activeLock: null });
+            console.log(`[Elite Trava] Trava atômica liberada no Firestore para o tópico ${topicId} (lockVersion: ${lockVersion}).`);
+          } else {
+            console.log(`[Elite Trava] Trava mantida intacta pois pertence a outra sessão/aba.`);
+          }
+        });
+      } catch (releaseErr) {
+        console.warn('[Elite Trava] Erro ao liberar trava no Firestore:', releaseErr);
+      }
+    }
+  }
+}
+
+/**
+ * Gera um resumo completo e 100% autossuficiente baseado na análise de requisitos prévia.
+ */
+export async function generateCustomAnalyzedSummary(
+  title: string,
+  area: string,
+  analysis: { cost: number; chapters: string[]; clinicalHighlights: string[]; chapterRatings5D?: Chapter5DRatings[] },
+  reference?: string,
+  userId?: string,
+  onProgress?: ProgressCallback,
+  illustrationLevel: string = 'moderate',
+  alertBoxLevel: string = 'moderate',
+  existingContent?: string,
+  depth: GenerationDepth = 'custom_analyzed',
+  isResume: boolean = false,
+  topicId?: string,
+  existingMeta?: GenerationMeta
 ) {
   try {
     const safeTitle = sanitizeTopicTitle(title, 'Tópico de Estudo');
     const safeArea = sanitizeTopicTitle(area, 'Clínica Médica');
     let chapters = [...(analysis?.chapters || [])];
+
+    // Desvio seguro para o Motor de Geração Adaptativa Progressiva Elite
+    if (depth === 'elite') {
+      const eliteRes = await generateEliteProgressiveSummary(
+        title,
+        area,
+        analysis,
+        topicId,
+        reference,
+        userId,
+        onProgress,
+        illustrationLevel,
+        alertBoxLevel,
+        existingContent,
+        existingMeta,
+        isResume
+      );
+      return eliteRes.fullContent;
+    }
     
-    // Se já houver conteúdo existente, verifica se o sumário contém os capítulos originais planejados
-    if (existingContent && existingContent.trim().length > 100) {
+    // Apenas em uma RETOMADA legítima e caso a análise não forneça capítulos, recupera do documento existente
+    if (isResume && (!chapters || chapters.length === 0) && existingContent && existingContent.trim().length > 100) {
       const extractedChapters = getChaptersFromMonograph(existingContent);
-      const matchesCount = chapters.filter(ch => extractedChapters.some(ex => ex.toLowerCase().includes(ch.toLowerCase()) || ch.toLowerCase().includes(ex.toLowerCase()))).length;
-      if (matchesCount > 0 && extractedChapters.length > chapters.length) {
-        console.log(`[Gemini] Preservando todos os ${extractedChapters.length} capítulos do sumário original do documento (em vez de ${chapters.length}).`);
+      if (extractedChapters.length > 0) {
+        console.log(`[Gemini] Retomada: Preservando todos os ${extractedChapters.length} capítulos do sumário original do documento.`);
         chapters = extractedChapters;
       }
     }
@@ -2208,8 +3108,8 @@ export async function generateCustomAnalyzedSummary(
       finalCost = 1;
     } else if (depth === 'deep') {
       finalCost = 5;
-    } else if (depth === 'elite') {
-      finalCost = 10;
+    } else if ((depth as string) === 'elite') {
+      finalCost = 25;
     } else if (depth === 'master') {
       finalCost = 50;
     } else if (depth === 'monograph') {
@@ -2227,7 +3127,7 @@ export async function generateCustomAnalyzedSummary(
     let startChapterIndex = 0;
     
     // Suporte a retomada de progresso inteligente com limpeza de blocos de erro
-    if (existingContent && existingContent.trim().length > 100 && existingContent.includes('## ')) {
+    if (isResume && existingContent && existingContent.trim().length > 100 && existingContent.includes('## ')) {
       fullContent = existingContent;
       for (let i = 0; i < totalChapters; i++) {
         const chapterTitle = chapters[i];
@@ -2256,7 +3156,7 @@ export async function generateCustomAnalyzedSummary(
       console.log(`[Gemini] Retomando geração do resumo personalizado a partir do capítulo ${startChapterIndex + 1}/${totalChapters}: ${chapters[startChapterIndex]}`);
     }
 
-    if (startChapterIndex >= totalChapters && totalChapters > 0) {
+    if (isResume && startChapterIndex >= totalChapters && totalChapters > 0) {
       console.log(`[Gemini] Todos os ${totalChapters} capítulos do resumo personalizado já foram gerados com sucesso.`);
       if (onProgress) {
         onProgress({

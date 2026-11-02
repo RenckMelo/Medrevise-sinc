@@ -225,7 +225,7 @@ export default function TopicSyncWizard({
     setWizardError(null);
     try {
       // 1. Run Gemini Analysis (0 credits charged for pre-analysis)
-      const analysis = await analyzeSummaryNeeds(title.trim(), subjectName, 'custom_analyzed');
+      const analysis = await analyzeSummaryNeeds(title.trim(), subjectName, 'custom_analyzed', undefined, false);
       if (analysis) {
         setAnalysisResult(analysis);
         setCustomChapters(analysis.chapters || []);

@@ -15,7 +15,7 @@ import Award from 'lucide-react/dist/esm/icons/award.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { recordUsage, calculateExtraCredits } from '../services/geminiService';
+import { calculateExtraCredits } from '../services/geminiService';
 
 interface SummaryGenerationWizardProps {
   topicTitle: string;
@@ -114,8 +114,6 @@ export default function SummaryGenerationWizard({
     setAnalysisError('');
     setIsAnalyzingLocal(true);
     try {
-      // Deduct 2 credits for running the analysis
-      await recordUsage(2);
       if (onRunAnalysis) {
         const res = await onRunAnalysis(selectedDepth);
         if (res) {
@@ -141,7 +139,6 @@ export default function SummaryGenerationWizard({
     }
     setIsAnalyzingLocal(true);
     try {
-      await recordUsage(2);
       if (onRunAnalysis) {
         const res = await onRunAnalysis(depth);
         if (res) {
@@ -203,7 +200,7 @@ export default function SummaryGenerationWizard({
     let base = 10;
     if (depth === 'standard') base = 1;
     else if (depth === 'deep') base = 5;
-    else if (depth === 'elite') base = 10;
+    else if (depth === 'elite') base = 25;
     else if (depth === 'master') base = 50;
     else if (depth === 'monograph') base = 100;
     else {
@@ -286,7 +283,7 @@ export default function SummaryGenerationWizard({
               {[
                 { id: 'standard', name: 'Resumo Padrão', cost: '1cr', desc: 'Direto ao ponto, essencial para revisões rápidas.' },
                 { id: 'deep', name: 'Resumo Avançado', cost: '5cr', desc: 'Foco em diretrizes nacionais e condutas práticas.' },
-                { id: 'elite', name: 'Resumo Elite', cost: '10cr', desc: 'Uma visão geral sobre o tema' },
+                { id: 'elite', name: 'Resumo Elite', cost: '25cr', desc: 'Tratado completo em geração única com alta densidade' },
                 { id: 'custom_analyzed', name: 'Resumo Adaptado (Inteligente)', cost: '10cr / capítulo', desc: 'Personalizado com ementa dinâmica. Custo final calculado com base na quantidade de capítulos gerados (10cr por capítulo).' },
                 { id: 'master', name: 'Resumo Master', cost: '50cr', desc: 'Tratado clínico completo com fluxogramas.' },
                 { id: 'monograph', name: 'Monografia Completa', cost: '100cr', desc: 'Estudo acadêmico exaustivo do tema.' },

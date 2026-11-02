@@ -272,7 +272,7 @@ async function persistProviderCall(provider: string, email: string) {
 }
 
 // Helper for Groq API Call (Llama 3.3 70B, Llama 3.1 8B, Mixtral Fallback)
-async function callGroqApi(apiKey: string, action: string, promptText: string, payload: any): Promise<{ text: string; model: string }> {
+async function callGroqApi(apiKey: string, action: string, promptText: string, payload: any): Promise<{ text: string; model: string; finishReason?: string }> {
   const url = "https://api.groq.com/openai/v1/chat/completions";
   let contentToUse: string = promptText || payload?.prompt || "";
 
@@ -314,7 +314,7 @@ async function callGroqApi(apiKey: string, action: string, promptText: string, p
           { role: "user", content: contentToUse }
         ],
         temperature: 0.3,
-        max_tokens: 4000
+        max_tokens: payload?.maxOutputTokens || 4000
       };
 
       if (isJsonRequest) {
@@ -349,7 +349,9 @@ async function callGroqApi(apiKey: string, action: string, promptText: string, p
           if (retryResp.ok) {
             const retryData = await retryResp.json();
             const text = retryData.choices?.[0]?.message?.content || "";
-            if (text.trim().length > 0) return { text, model: modelName };
+            const rawReason = retryData.choices?.[0]?.finish_reason || 'stop';
+            const finishReason = rawReason === 'length' ? 'MAX_TOKENS' : (rawReason === 'stop' ? 'STOP' : rawReason.toUpperCase());
+            if (text.trim().length > 0) return { text, model: modelName, finishReason };
           }
         }
         lastErr = new Error(`[Groq API HTTP ${response.status}] ${errText}`);
@@ -358,8 +360,10 @@ async function callGroqApi(apiKey: string, action: string, promptText: string, p
 
       const data = await response.json();
       const textResult = data.choices?.[0]?.message?.content || "";
+      const rawReason = data.choices?.[0]?.finish_reason || 'stop';
+      const finishReason = rawReason === 'length' ? 'MAX_TOKENS' : (rawReason === 'stop' ? 'STOP' : rawReason.toUpperCase());
       if (textResult && textResult.trim().length > 0) {
-        return { text: textResult, model: modelName };
+        return { text: textResult, model: modelName, finishReason };
       }
     } catch (err: any) {
       lastErr = err;
@@ -689,6 +693,7 @@ app.post("/api/gemini", async (req, res) => {
       model: req.body.model || (payload || {}).model || "gemini-3.1-flash-lite",
       parts: req.body.parts || (payload || {}).parts,
       tools: req.body.tools || (payload || {}).tools,
+      maxOutputTokens: req.body.maxOutputTokens || (payload || {}).maxOutputTokens || undefined,
       preferredProvider: req.body.preferredProvider || (payload || {}).preferredProvider || req.body.preferredEngine || (payload || {}).preferredEngine || "",
       fileData: req.body.fileData || (payload || {}).fileData,
       mimeType: req.body.mimeType || (payload || {}).mimeType,
@@ -781,6 +786,7 @@ app.post("/api/gemini", async (req, res) => {
     let lastError: any = null;
     let capturedGroundingMetadata: any = null;
     let capturedProviderInfo: { provider: 'gemini' | 'groq'; model: string } | null = null;
+    let capturedFinishReason: string = 'UNKNOWN';
 
     // Execute provider steps in up to 3 rounds (initial attempt + retries with progressive delay)
     const MAX_ROUNDS = 3;
@@ -801,6 +807,7 @@ app.post("/api/gemini", async (req, res) => {
             console.log(`[AI Engine - Rodada ${round}] Tentando Groq LPU para ${userEmail}...`);
             const groqRes = await callGroqApi(groqKey!, action, promptText, payloadToUse);
             resultText = groqRes.text;
+            capturedFinishReason = groqRes.finishReason || 'STOP';
             success = true;
             capturedGroundingMetadata = { provider: 'groq', searchAvailable: false, message: 'Web search grounding not supported by non-Gemini provider' };
             capturedProviderInfo = { provider: 'groq', model: groqRes.model };
@@ -911,6 +918,7 @@ app.post("/api/gemini", async (req, res) => {
                   const isJsonReq = action === 'generateJson' || (typeof promptText === 'string' && (promptText.includes('"weeks":') || promptText.toLowerCase().includes('retorne estritamente um objeto json')));
                   const genConfig: any = isJsonReq ? { responseMimeType: "application/json" } : {};
                   if (action === 'importPdf') genConfig.maxOutputTokens = 65536;
+                  if (payloadToUse.maxOutputTokens) genConfig.maxOutputTokens = payloadToUse.maxOutputTokens;
 
                   const modelInstance = ai.getGenerativeModel({
                     model: currentModelName,
@@ -920,6 +928,8 @@ app.post("/api/gemini", async (req, res) => {
 
                   const result = await modelInstance.generateContent({ contents: contentsToUse });
                   currentResult = result.response.text() || "";
+                  const candidateReason = result.response.candidates?.[0]?.finishReason;
+                  capturedFinishReason = candidateReason ? String(candidateReason).toUpperCase() : 'STOP';
                   capturedGroundingMetadata = result.response.candidates?.[0]?.groundingMetadata || null;
                   capturedProviderInfo = { provider: 'gemini', model: currentModelName };
                 }
@@ -962,13 +972,13 @@ app.post("/api/gemini", async (req, res) => {
     if (isJsonExpected || (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
       try {
         const parsed = JSON.parse(trimmed);
-        return res.json({ result: parsed, groundingMetadata: capturedGroundingMetadata, providerInfo: capturedProviderInfo });
+        return res.json({ result: parsed, groundingMetadata: capturedGroundingMetadata, providerInfo: capturedProviderInfo, finishReason: capturedFinishReason });
       } catch (e) {
         // Fallback for markdown JSON blocks ```json { ... } ```
         const cleanJsonText = trimmed.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
         try {
           const parsed = JSON.parse(cleanJsonText);
-          return res.json({ result: parsed, groundingMetadata: capturedGroundingMetadata, providerInfo: capturedProviderInfo });
+          return res.json({ result: parsed, groundingMetadata: capturedGroundingMetadata, providerInfo: capturedProviderInfo, finishReason: capturedFinishReason });
         } catch (e2) {
           if (action === 'generateJson') {
             console.warn("[Server] Falha ao converter resposta em JSON:", text.substring(0, 100));
@@ -977,7 +987,7 @@ app.post("/api/gemini", async (req, res) => {
       }
     }
 
-    return res.json({ result: text, groundingMetadata: capturedGroundingMetadata, providerInfo: capturedProviderInfo });
+    return res.json({ result: text, groundingMetadata: capturedGroundingMetadata, providerInfo: capturedProviderInfo, finishReason: capturedFinishReason });
   } catch (error: any) {
     console.error("AI Proxy Error:", error.message);
     res.status(500).json({ error: error.message || "Internal Server Error" });

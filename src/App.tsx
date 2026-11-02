@@ -40,7 +40,7 @@ import Compass from 'lucide-react/dist/esm/icons/compass.js';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useStudyData } from './hooks/useStudyData';
 
-const InternatoApp = React.lazy(() => import('./internato/InternatoApp'));
+import InternatoApp from './internato/InternatoApp';
 const CalendarView = React.lazy(() => import('./components/CalendarView'));
 const CollegeSchedule = React.lazy(() => import('./components/CollegeSchedule'));
 const PerformanceStats = React.lazy(() => import('./components/PerformanceStats'));
@@ -318,16 +318,10 @@ export default function App() {
   if (appMode === 'internato') {
     return (
       <ErrorBoundary>
-        <React.Suspense fallback={
-          <div className="min-h-screen bg-[#F4F3EF] flex items-center justify-center">
-            <div className="font-mono text-xs animate-pulse text-stone-600">CARREGANDO MEDINTERNATO...</div>
-          </div>
-        }>
-          <InternatoApp onToggleAppMode={() => {
-            setAppMode('revise');
-            localStorage.setItem('app_mode', 'revise');
-          }} />
-        </React.Suspense>
+        <InternatoApp onToggleAppMode={() => {
+          setAppMode('revise');
+          localStorage.setItem('app_mode', 'revise');
+        }} />
       </ErrorBoundary>
     );
   }

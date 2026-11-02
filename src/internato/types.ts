@@ -30,12 +30,14 @@ export interface Topic {
   content_custom_analyzed?: string;
   content_resumo_expansao?: string;
   content_resumo_lacunas?: string;
+  generationMeta?: GenerationMeta;
   custom_analysis?: {
     cost: number;
     justification: string;
     chapters: string[];
     clinicalHighlights: string[];
     analyzedAt: string;
+    chapterRatings5D?: Chapter5DRatings[];
   };
   importedPdfData?: string;
   importedPdfName?: string;
@@ -54,6 +56,42 @@ export interface Topic {
   isInsufficient?: boolean;
   insufficiencySource?: 'pos_estudo' | 'simulado' | 'ambos';
   insufficiencyReason?: string;
+}
+
+export interface Chapter5DRatings {
+  C: number; // Complexidade Científica (1..5)
+  I: number; // Importância Clínica (1..5)
+  R: number; // Relevância para Provas (1..5)
+  E: number; // Extensão Necessária (1..5)
+  D: number; // Densidade de Informações (1..5)
+}
+
+export interface ChapterMeta {
+  chapterId: string;
+  index: number;
+  title: string;
+  allocatedTokens: number;
+  status: 'pending' | 'generating' | 'completed' | 'failed';
+  contentHash?: string;
+  savedAt?: string;
+  tokensUsed?: number;
+  ratings5D?: Chapter5DRatings;
+  priorityScore?: number;
+}
+
+export interface GenerationMeta {
+  runId: string;
+  userId: string;
+  topicId: string;
+  depth: string;
+  totalChapters: number;
+  referenceTokenBudget: number;
+  totalTokensAllocated: number;
+  totalTokensUsed?: number;
+  createdAt: string;
+  updatedAt: string;
+  isFullyCompleted: boolean;
+  chapters: ChapterMeta[];
 }
 
 export interface Question {

@@ -363,38 +363,106 @@ export default function QuestionModule({
   useEffect(() => {
     const loadSavedSession = async () => {
       try {
+        let remoteSession: PausedQuestionSession | null = null;
+        let remoteQueried = false;
+
+        // 1. Query Firestore first for authenticated users as primary source of truth
+        if (userId && db) {
+          try {
+            const userDocRef = doc(db, 'users', userId);
+            const snap = await getDoc(userDocRef);
+            remoteQueried = true;
+            if (snap.exists()) {
+              const fsData = snap.data();
+              if (fsData?.pausedSimuladoSession && Array.isArray(fsData.pausedSimuladoSession.questions) && fsData.pausedSimuladoSession.questions.length > 0) {
+                remoteSession = fsData.pausedSimuladoSession as PausedQuestionSession;
+              } else if (fsData && 'pausedSimuladoSession' in fsData && !fsData.pausedSimuladoSession) {
+                remoteSession = null;
+              }
+            }
+          } catch (netErr) {
+            console.warn('[Simulado Pausado] Erro de rede ao consultar Firestore, usando cache local como fallback:', netErr);
+            remoteQueried = false;
+          }
+        }
+
+        // 2. Load local sessions from cache
         const keys = [
           `medinternato_paused_question_session_${userId || 'guest'}`,
           `medinternato_paused_question_session_global`,
           `medrevise_paused_simulado`,
           `medinternato_paused_question_session_guest`
         ];
+
+        let localSession: PausedQuestionSession | null = null;
         for (const k of keys) {
           const saved = localStorage.getItem(k);
           if (saved) {
-            const parsed = JSON.parse(saved);
-            if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-              setPausedSession(parsed);
-              return;
-            }
+            try {
+              const parsed = JSON.parse(saved);
+              if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+                localSession = parsed;
+                break;
+              }
+            } catch (e) {}
           }
         }
 
-        // Cloud sync fallback from Firestore (vital for Netlify cross-domain/fresh sessions)
-        if (userId && db) {
-          const userDocRef = doc(db, 'users', userId);
-          const snap = await getDoc(userDocRef);
-          if (snap.exists()) {
-            const fsData = snap.data();
-            if (fsData?.pausedSimuladoSession && Array.isArray(fsData.pausedSimuladoSession.questions) && fsData.pausedSimuladoSession.questions.length > 0) {
-              setPausedSession(fsData.pausedSimuladoSession);
+        // 3. Conflict resolution and selection logic
+        let finalSession: PausedQuestionSession | null = null;
+
+        if (userId && remoteQueried) {
+          if (remoteSession) {
+            // Compare timestamps if local session exists
+            if (localSession && localSession.timestamp && remoteSession.timestamp) {
+              const localTime = new Date(localSession.timestamp).getTime();
+              const remoteTime = new Date(remoteSession.timestamp).getTime();
+              if (localTime > remoteTime) {
+                finalSession = localSession;
+                // Sync newer local session to remote asynchronously
+                try {
+                  updateDoc(doc(db, 'users', userId), { pausedSimuladoSession: localSession });
+                } catch (e) {}
+              } else {
+                finalSession = remoteSession;
+              }
+            } else {
+              finalSession = remoteSession;
+            }
+
+            // Update local cache
+            if (finalSession) {
               try {
-                localStorage.setItem(`medinternato_paused_question_session_${userId}`, JSON.stringify(fsData.pausedSimuladoSession));
-                localStorage.setItem('medinternato_paused_question_session_global', JSON.stringify(fsData.pausedSimuladoSession));
+                localStorage.setItem(`medinternato_paused_question_session_${userId}`, JSON.stringify(finalSession));
+                localStorage.setItem('medinternato_paused_question_session_global', JSON.stringify(finalSession));
               } catch (e) {}
             }
+          } else {
+            // Remote confirmed no session exists -> clear obsolete local cache
+            if (localSession) {
+              try {
+                localStorage.removeItem(`medinternato_paused_question_session_${userId}`);
+                localStorage.removeItem('medinternato_paused_question_session_global');
+                localStorage.removeItem('medrevise_paused_simulado');
+              } catch (e) {}
+            }
+            finalSession = null;
           }
+        } else {
+          // Guest or network error fallback to local cache
+          finalSession = localSession;
         }
+
+        // 4. Exclude completed sessions
+        if (finalSession && finalSession.sessionId && completedSessionIds.has(finalSession.sessionId)) {
+          finalSession = null;
+          try {
+            localStorage.removeItem(PAUSED_SESSION_KEY);
+            localStorage.removeItem(`medinternato_paused_question_session_${userId || 'guest'}`);
+          } catch (e) {}
+        }
+
+        setPausedSession(finalSession);
       } catch (e) {
         console.error('Error loading paused session:', e);
       }
@@ -424,6 +492,7 @@ export default function QuestionModule({
   const [medReviseMinutes, setMedReviseMinutes] = useState<number>(15);
   const [isSavingMedRevise, setIsSavingMedRevise] = useState(false);
   const [medReviseResult, setMedReviseResult] = useState<{ isFirst: boolean; nextDate: string; topicTitle: string } | null>(null);
+  const [pauseSyncStatus, setPauseSyncStatus] = useState<'idle' | 'saving' | 'synced' | 'local_only'>('idle');
 
   // MedRevise Auto-Sync Mode ('auto' vs 'manual')
   const [questionsSyncMode, setQuestionsSyncMode] = useState<'auto' | 'manual'>(() => {
@@ -595,7 +664,7 @@ export default function QuestionModule({
   };
 
   // Explicit Pause Session handler
-  const handlePauseSession = () => {
+  const handlePauseSession = async () => {
     if (questions.length === 0) return;
 
     setIsActive(false);
@@ -642,12 +711,21 @@ export default function QuestionModule({
       console.error('Error saving paused session:', e);
     }
 
+    setPauseSyncStatus('saving');
+
     if (userId && db) {
       try {
-        updateDoc(doc(db, 'users', userId), {
+        await updateDoc(doc(db, 'users', userId), {
           pausedSimuladoSession: sessionToSave
-        }).catch(err => console.warn('Firestore sync error for paused session:', err));
-      } catch (err) {}
+        });
+        setPauseSyncStatus('synced');
+        console.log('[Simulado Pausado] Sessão salva e sincronizada na nuvem com sucesso.');
+      } catch (err: any) {
+        console.warn('[Simulado Pausado] Falha ao sincronizar na nuvem (mantido localmente):', err);
+        setPauseSyncStatus('local_only');
+      }
+    } else {
+      setPauseSyncStatus('local_only');
     }
 
     setQuestions([]);

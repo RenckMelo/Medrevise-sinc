@@ -525,6 +525,10 @@ export default function QuestionModule({
     message: string;
   } | null>(null);
   const backgroundAbortRef = useRef<boolean>(false);
+  const activeBatchOperationsRef = useRef<Set<string>>(new Set());
+  const batchStatusMapRef = useRef<Map<string, 'pending' | 'running' | 'retry_scheduled' | 'completed' | 'failed'>>(new Map());
+  const batchRetryCountsRef = useRef<Map<string, number>>(new Map());
+  const activeTimeoutsRef = useRef<Set<NodeJS.Timeout>>(new Set());
   const [pausedSession, setPausedSession] = useState<PausedQuestionSession | null>(() => {
     try {
       const saved = localStorage.getItem(`medinternato_paused_question_session_${userId || 'guest'}`);
@@ -2807,6 +2811,10 @@ export default function QuestionModule({
     }
   }, [filterUnanswered, filterOnlyErrors, topicPrepQuestions, isTopicPreparing, userProgress, selectedCountFromExisting]);
 
+  const AUTO_RETRY_DELAY_1 = 8000;  // 8 seconds for 1st retry
+  const AUTO_RETRY_DELAY_2 = 15000; // 15 seconds for 2nd retry
+  const MAX_AUTO_RETRIES = 2;
+
   const fetchRemainingQuestionsInBackground = async (
     targetTotalCount: number,
     initialCount: number,
@@ -2815,6 +2823,8 @@ export default function QuestionModule({
     targetExam?: string
   ) => {
     backgroundAbortRef.current = false;
+    const sessionIdAtStart = currentSessionId;
+
     setBackgroundLoading({
       isRunning: true,
       targetCount: targetTotalCount,
@@ -2827,6 +2837,138 @@ export default function QuestionModule({
     const batchesCount = Math.ceil(missingCount / batchSize);
     let accumulatedCount = initialCount;
 
+    const topicSummary: Record<string, { topicTitle: string; requested: number; generated: number; failed: boolean }> = {};
+    for (const tid of uniqueTids) {
+      const { topicTitle } = findTopicAndSubject(tid, topics, subjects);
+      topicSummary[tid] = { topicTitle, requested: 0, generated: 0, failed: false };
+    }
+
+    const executeBatchFetch = async (
+      tid: string,
+      currentBatchSize: number,
+      batchIndex: number
+    ): Promise<Question[]> => {
+      const operationId = `${sessionIdAtStart}_${tid}_b${batchIndex}`;
+
+      // 1. Concurrency & Idempotency Guards
+      if (activeBatchOperationsRef.current.has(operationId)) {
+        console.warn(`[Auto-Retry] Operação ${operationId} já está em execução. Ignorando chamada duplicada.`);
+        return [];
+      }
+
+      if (batchStatusMapRef.current.get(operationId) === 'completed') {
+        console.warn(`[Auto-Retry] Operação ${operationId} já foi concluída com sucesso. Ignorando.`);
+        return [];
+      }
+
+      if (backgroundAbortRef.current || currentSessionId !== sessionIdAtStart) {
+        return [];
+      }
+
+      activeBatchOperationsRef.current.add(operationId);
+      batchStatusMapRef.current.set(operationId, 'running');
+
+      const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
+
+      let currentExistingTexts: string[] = [];
+      setQuestions(prev => {
+        currentExistingTexts = prev.map(q => q.text);
+        return prev;
+      });
+
+      try {
+        const newQuestions = await generateQuestions(
+          topicTitle,
+          subjectName,
+          currentBatchSize,
+          currentExistingTexts,
+          userId,
+          targetExam
+        );
+
+        if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
+          const addedForTopic: Question[] = [];
+          for (const qData of newQuestions) {
+            const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const qObj = { id: localId, ...qData, topicId: topicId, subjectId: subjectId } as Question;
+            addedForTopic.push(qObj);
+          }
+
+          batchStatusMapRef.current.set(operationId, 'completed');
+          activeBatchOperationsRef.current.delete(operationId);
+          safeLocalStorageRemove(`questions_topic_${topicId}`);
+          if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
+
+          return addedForTopic;
+        } else {
+          throw new Error(`Nenhuma questão válida retornada no lote ${batchIndex + 1}`);
+        }
+      } catch (err: any) {
+        activeBatchOperationsRef.current.delete(operationId);
+        const errMsg = String(err?.message || '').toUpperCase();
+        const isRecoverable = errMsg.includes('TIMEOUT') || errMsg.includes('DEADLINE') || errMsg.includes('504') || errMsg.includes('502') || errMsg.includes('503') || errMsg.includes('NETWORK') || errMsg.includes('FETCH') || errMsg.includes('ECONN') || errMsg.includes('ETIMEDOUT') || errMsg.includes('INACTIVITY');
+
+        const currentRetryCount = batchRetryCountsRef.current.get(operationId) || 0;
+
+        if (isRecoverable && currentRetryCount < MAX_AUTO_RETRIES && !backgroundAbortRef.current && currentSessionId === sessionIdAtStart) {
+          const nextRetryNum = currentRetryCount + 1;
+          batchRetryCountsRef.current.set(operationId, nextRetryNum);
+          batchStatusMapRef.current.set(operationId, 'retry_scheduled');
+
+          const delayMs = nextRetryNum === 1 ? AUTO_RETRY_DELAY_1 : AUTO_RETRY_DELAY_2;
+          console.warn(`[Auto-Retry Background] Agendando recuperação automática ${nextRetryNum}/${MAX_AUTO_RETRIES} para o lote "${operationId}" (${topicTitle}) em ${delayMs/1000}s...`);
+
+          const timer = setTimeout(async () => {
+            activeTimeoutsRef.current.delete(timer);
+
+            if (backgroundAbortRef.current || currentSessionId !== sessionIdAtStart) {
+              console.log(`[Auto-Retry] Sessão alterada, pausada ou encerrada. Cancelando retry para ${operationId}.`);
+              return;
+            }
+
+            try {
+              const retryQuestions = await executeBatchFetch(tid, currentBatchSize, batchIndex);
+              if (retryQuestions.length > 0 && !backgroundAbortRef.current && currentSessionId === sessionIdAtStart) {
+                setQuestions(prev => {
+                  const merged = deduplicateQuestions([...prev, ...retryQuestions]);
+                  const newlyAdded = merged.length - prev.length;
+                  if (newlyAdded > 0) {
+                    setSecondsRemaining(sec => sec + (newlyAdded * 90));
+                    accumulatedCount += newlyAdded;
+                    if (topicSummary[tid]) topicSummary[tid].generated += newlyAdded;
+                    setBackgroundLoading(bLoad => ({
+                      isRunning: true,
+                      targetCount: targetTotalCount,
+                      currentCount: accumulatedCount,
+                      isFinished: false,
+                      message: `Lote recuperado! ${accumulatedCount} de ${targetTotalCount} questões salvas...`
+                    }));
+                  }
+                  return merged;
+                });
+              }
+            } catch (retryErr) {
+              console.warn(`[Auto-Retry Failed] Tentativa ${nextRetryNum} falhou para ${topicTitle}:`, retryErr);
+            }
+          }, delayMs);
+
+          activeTimeoutsRef.current.add(timer);
+        } else {
+          batchStatusMapRef.current.set(operationId, 'failed');
+          console.warn(`[Background Generation] Lote ${batchIndex + 1} falhou definitivamente para o tópico "${topicTitle}":`, err);
+        }
+
+        logSystemError({
+          action: `Geração de Questões em Segundo Plano (Lote ${batchIndex + 1})`,
+          error: err,
+          module: 'QuestionModule',
+          metadata: { topicId: tid, targetExam, batchSize: currentBatchSize, retryCount: currentRetryCount }
+        });
+
+        return [];
+      }
+    };
+
     for (let b = 0; b < batchesCount; b++) {
       if (backgroundAbortRef.current) break;
 
@@ -2836,41 +2978,18 @@ export default function QuestionModule({
       for (const tid of uniqueTids) {
         if (backgroundAbortRef.current) break;
 
-        const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
-        
-        let currentExistingTexts: string[] = [];
-        setQuestions(prev => {
-          currentExistingTexts = prev.map(q => q.text);
-          return prev;
-        });
+        if (topicSummary[tid]) {
+          topicSummary[tid].requested += currentBatchSize;
+        }
 
-        try {
-          const newQuestions = await generateQuestions(
-            topicTitle,
-            subjectName,
-            currentBatchSize,
-            currentExistingTexts,
-            userId,
-            targetExam
-          );
-
-          if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
-            for (const qData of newQuestions) {
-              const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-              const qObj = { id: localId, ...qData, topicId: topicId, subjectId: subjectId } as Question;
-              allAddedBatch.push(qObj);
-            }
-            safeLocalStorageRemove(`questions_topic_${topicId}`);
-            if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
+        const batchQuestions = await executeBatchFetch(tid, currentBatchSize, b);
+        if (batchQuestions.length > 0) {
+          allAddedBatch.push(...batchQuestions);
+          if (topicSummary[tid]) {
+            topicSummary[tid].generated += batchQuestions.length;
           }
-        } catch (err) {
-          console.warn(`[Background Generation] Batch ${b + 1} failed for topic ${tid}:`, err);
-          logSystemError({
-            action: `Geração de Questões em Segundo Plano (Lote ${b + 1})`,
-            error: err,
-            module: 'QuestionModule',
-            metadata: { topicId: tid, targetExam, batchSize: currentBatchSize }
-          });
+        } else {
+          if (topicSummary[tid]) topicSummary[tid].failed = true;
         }
       }
 
@@ -2895,12 +3014,20 @@ export default function QuestionModule({
         await loadSelectedTopicsStats(uniqueTids);
       } catch (e) {}
 
+      const failedOrPartial = Object.values(topicSummary).filter(t => t.generated < t.requested || t.failed);
+      let finalMessage = `Todas as ${accumulatedCount} questões foram geradas e carregadas no seu simulado com sucesso!`;
+
+      if (failedOrPartial.length > 0 && accumulatedCount < targetTotalCount) {
+        const failedNames = failedOrPartial.map(t => t.topicTitle).join(', ');
+        finalMessage = `Seu simulado foi carregado parcialmente: ${accumulatedCount} de ${targetTotalCount} questões foram geradas. Os tópicos (${failedNames}) tiveram instabilidade na IA. Você pode clicar em "Gerar Mais" no tópico para tentar novamente.`;
+      }
+
       setBackgroundLoading({
         isRunning: false,
         targetCount: targetTotalCount,
         currentCount: accumulatedCount,
         isFinished: true,
-        message: `Todas as ${accumulatedCount} questões foram geradas e carregadas no seu simulado com sucesso!`
+        message: finalMessage
       });
     }
   };
@@ -2916,6 +3043,7 @@ export default function QuestionModule({
     const preset = simuladoMode === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
     const targetExam = preset ? preset.name : undefined;
     const initialBatch: Question[] = [];
+    const topicResults: { topicId: string; topicTitle: string; requested: number; generated: number; failed: boolean }[] = [];
 
     try {
       const firstBatchSize = Math.min(5, countToGen);
@@ -2926,22 +3054,32 @@ export default function QuestionModule({
         const { topicTitle, subjectName, topicId, subjectId } = findTopicAndSubject(tid, topics, subjects);
         const existingTexts = topicPrepQuestions.map(q => q.text);
 
-        const newQuestions = await generateQuestions(
-          topicTitle, 
-          subjectName, 
-          firstBatchSize, 
-          existingTexts, 
-          userId, 
-          targetExam
-        );
+        try {
+          const newQuestions = await generateQuestions(
+            topicTitle, 
+            subjectName, 
+            firstBatchSize, 
+            existingTexts, 
+            userId, 
+            targetExam
+          );
 
-        if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
-          for (const qData of newQuestions) {
-            const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            initialBatch.push({ id: localId, ...qData, topicId: topicId, subjectId: subjectId } as Question);
+          if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
+            const addedForTopic: Question[] = [];
+            for (const qData of newQuestions) {
+              const localId = `gen_q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              addedForTopic.push({ id: localId, ...qData, topicId: topicId, subjectId: subjectId } as Question);
+            }
+            initialBatch.push(...addedForTopic);
+            topicResults.push({ topicId, topicTitle, requested: firstBatchSize, generated: addedForTopic.length, failed: false });
+            safeLocalStorageRemove(`questions_topic_${topicId}`);
+            if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
+          } else {
+            topicResults.push({ topicId, topicTitle, requested: firstBatchSize, generated: 0, failed: true });
           }
-          safeLocalStorageRemove(`questions_topic_${topicId}`);
-          if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
+        } catch (topicErr) {
+          console.warn(`[handleGenerateTopicQuestions] Error for topic "${topicTitle}":`, topicErr);
+          topicResults.push({ topicId, topicTitle, requested: firstBatchSize, generated: 0, failed: true });
         }
       }
 
@@ -2969,6 +3107,14 @@ export default function QuestionModule({
         setIsTopicPreparing(false);
         setIsGeneratingTopicQuestions(false);
 
+        const failedOrPartial = topicResults.filter(r => r.generated < r.requested || r.failed);
+        if (failedOrPartial.length > 0) {
+          const totalGen = finalInitialPool.length;
+          const totalExp = uniqueTids.length * firstBatchSize;
+          const failedTitles = failedOrPartial.map(r => r.topicTitle).join(', ');
+          alert(`Seu simulado foi carregado parcialmente: ${totalGen} de ${totalExp} questões foram geradas.\n\nOs tópicos (${failedTitles}) tiveram instabilidade na IA. Você poderá tentar gerar mais questões para esses tópicos durante o simulado.`);
+        }
+
         const remainingNeeded = countToGen - initialBatch.length;
         if (remainingNeeded > 0) {
           fetchRemainingQuestionsInBackground(
@@ -2982,7 +3128,7 @@ export default function QuestionModule({
           setBackgroundLoading(null);
         }
       } else {
-        throw new Error("Nenhuma questão pôde ser gerada no 1º lote.");
+        throw new Error("Nenhuma questão pôde ser gerada no 1º lote. Por favor, tente novamente.");
       }
 
     } catch (err: any) {
@@ -3240,6 +3386,8 @@ export default function QuestionModule({
     const preset = (simuladoMode as string) === 'official-ratio' ? EXAM_PRESETS.find(p => p.id === selectedPresetId) : null;
     const targetExam = preset ? preset.name : undefined;
     const allAdded: Question[] = [];
+    const topicSummary: { topicTitle: string; requested: number; generated: number }[] = [];
+    const numPerTopic = numQuestionsPerTopic || 5;
     
     try {
       for (const tid of uniqueTids) {
@@ -3247,7 +3395,7 @@ export default function QuestionModule({
         const existingTexts = questions.map(q => q.text);
         
         try {
-          const newQuestions = await generateQuestions(topicTitle, subjectName, numQuestionsPerTopic || 5, existingTexts, userId, targetExam);
+          const newQuestions = await generateQuestions(topicTitle, subjectName, numPerTopic, existingTexts, userId, targetExam);
           
           if (newQuestions && Array.isArray(newQuestions) && newQuestions.length > 0) {
             const addedQuestions: Question[] = [];
@@ -3256,18 +3404,25 @@ export default function QuestionModule({
               addedQuestions.push({ id: localId, ...qData, topicId: topicId, subjectId: subjectId } as Question);
             }
             allAdded.push(...addedQuestions);
+            topicSummary.push({ topicTitle, requested: numPerTopic, generated: addedQuestions.length });
             safeLocalStorageRemove(`questions_topic_${topicId}`);
             if (subjectId) safeLocalStorageRemove(`questions_subject_${subjectId}`);
+          } else {
+            topicSummary.push({ topicTitle, requested: numPerTopic, generated: 0 });
           }
         } catch (genErr) {
           console.warn(`Error generating questions for topic ${topicTitle}:`, genErr);
+          topicSummary.push({ topicTitle, requested: numPerTopic, generated: 0 });
         }
       }
       safeLocalStorageRemove('questions_fallback');
 
-      if (allAdded.length > 0) {
+      const totalExpected = uniqueTids.length * numPerTopic;
+      const totalGen = allAdded.length;
+
+      if (totalGen > 0) {
         await loadSelectedTopicsStats(uniqueTids);
-        const updatedList = [...questions, ...allAdded];
+        const updatedList = deduplicateQuestions([...questions, ...allAdded]);
         setQuestions(updatedList);
         setIsActive(true);
         setIsSelecting(false);
@@ -3279,9 +3434,16 @@ export default function QuestionModule({
         setSelectedOption(null);
         setAiExplanation(null);
         setShowResults(false);
-        alert(`${allAdded.length} novas questões foram geradas com sucesso! Iniciando simulado...`);
+
+        const failedOrPartial = topicSummary.filter(t => t.generated < t.requested);
+        if (failedOrPartial.length > 0) {
+          const failedTitles = failedOrPartial.map(t => t.topicTitle).join(', ');
+          alert(`Seu simulado foi expandido parcialmente: ${totalGen} de ${totalExpected} questões adicionais foram geradas.\n\nOs tópicos (${failedTitles}) tiveram instabilidade na IA. Você pode tentar novamente para esses tópicos.`);
+        } else {
+          alert(`${totalGen} nova(s) questão(ões) gerada(s) com sucesso para o seu simulado!`);
+        }
       } else {
-        alert('Não foi possível gerar novas questões no momento. Tente novamente.');
+        alert('Não foi possível gerar novas questões para os tópicos selecionados no momento devido a instabilidade na IA. Nenhuma questão anterior foi perdida.');
       }
     } catch (err: any) {
       console.error('Error generating questions:', err);

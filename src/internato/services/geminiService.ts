@@ -1412,11 +1412,8 @@ export async function generateQuestions(
         remaining -= normalizedQuestions.length;
       }
     } catch (chunkError: any) {
-      console.error(`Error generating chunk of questions:`, chunkError);
-      if (allQuestions.length === 0 && remaining === count) {
-        throw new Error(`A IA não conseguiu estruturar as questões neste momento (${chunkError?.message || 'erro de resposta'}). Nenhum crédito foi cobrado da sua conta.`);
-      }
-      // Pause briefly and attempt next iteration
+      console.error(`Error generating chunk of questions for topic "${topicTitle}":`, chunkError);
+      // Pause briefly and allow next attempt iteration in while loop
       await new Promise(r => setTimeout(r, 600));
     }
   }

@@ -1614,7 +1614,7 @@ const MarkdownImage = ({ src, alt, ...props }: any) => {
           {...props}
         />
         
-        {alt && !isLoading && !hasError && (
+        {cleanAlt && cleanAlt.length > 0 && !isLoading && !hasError && (
           <span className="block mt-2 px-3 py-1 bg-gray-50 rounded text-[11px] font-medium font-sans text-gray-500 text-center max-w-full select-all">
             📸 <span className="italic">{cleanAlt}</span>
             {sourceText && (
@@ -1887,7 +1887,8 @@ export function cleanAndFixMarkdownTables(text: string): string {
     }
 
     // Check if line contains tab characters or multi-spaces separating columns
-    if (!trimmed.startsWith('#') && !trimmed.startsWith('!') && !trimmed.startsWith('>')) {
+    const isImageMetaText = /(?:IMAGEM OBTIDA|BUSCA WEB|CDC|BING|Fonte:|source:|📸)/i.test(trimmed);
+    if (!trimmed.startsWith('#') && !trimmed.startsWith('!') && !trimmed.startsWith('>') && !trimmed.startsWith('*') && !trimmed.startsWith('_') && !isImageMetaText) {
       const bqMatch = line.match(/^(\s*>\s*)*/);
       const prefix = bqMatch ? bqMatch[0] : '';
       const tClean = trimmed.replace(/^[•\-\*\d+\.\)]\s*/, '');
@@ -1932,8 +1933,10 @@ export function cleanAndFixMarkdownTables(text: string): string {
 
   const isPipeLine = (line: string) => {
     const trimmed = line.trim().replace(/^>\s*/, '');
-    if (!trimmed || trimmed.startsWith('```') || trimmed.startsWith('#') || trimmed.startsWith('![') || trimmed.startsWith('[!')) return false;
+    if (!trimmed || trimmed.startsWith('```') || trimmed.startsWith('#') || trimmed.startsWith('!') || trimmed.startsWith('[!')) return false;
     if (isFlowchartOrDrawing(line)) return false;
+    if (/^!\[.*\]\(.*\)/.test(trimmed)) return false;
+    if (/(?:IMAGEM OBTIDA|BUSCA WEB|CDC|BING|\(Fonte:|\(source:)/i.test(trimmed) && !trimmed.startsWith('|')) return false;
     return trimmed.includes('|');
   };
 
@@ -2258,6 +2261,47 @@ export const slugify = (text: string): string => {
     .replace(/[^\w\-]+/g, '')
     .replace(/\-\-+/g, '-');
 };
+
+export function cleanImageUrl(input: string): string {
+  if (!input) return '';
+  let str = input.trim();
+
+  // 1. If it's a Markdown link like [**url**](targetUrl) or [text](targetUrl), extract targetUrl
+  const mdLinkMatch = str.match(/\[[^\]]*\]\((https?:\/\/[^\s)\n]+)\)/i);
+  if (mdLinkMatch && mdLinkMatch[1]) {
+    str = mdLinkMatch[1];
+  } else {
+    // 2. If it contains a raw http(s) URL inside bold/brackets/quotes, extract the http(s) URL
+    const httpMatch = str.match(/(https?:\/\/[^\s\n"'>)]+)/i);
+    if (httpMatch && httpMatch[1]) {
+      str = httpMatch[1];
+    }
+  }
+
+  // 3. Strip bold asterisks, backticks, brackets or trailing parens if any remain
+  str = str.replace(/[\*`"'\>\<\(\)]/g, '').trim();
+
+  // 4. Validate that it starts with http:// or https://
+  if (/^https?:\/\/[^\s]+/i.test(str)) {
+    return str;
+  }
+
+  return '';
+}
+
+export function cleanImageCaption(rawCaption: string): string {
+  if (!rawCaption) return 'Imagem Médica';
+
+  let str = rawCaption
+    .replace(/[\r\n]+/g, ' ')          // Flatten newlines into spaces
+    .replace(/[\[\]]/g, '')            // Remove square brackets
+    .replace(/\\/g, '')                // Remove backslashes
+    .replace(/\s+/g, ' ')              // Collapse consecutive spaces
+    .trim();
+
+  if (!str) return 'Imagem Médica';
+  return str;
+}
 
 export const syncSummaryTableOfContents = (content: string): string => {
   if (!content || !content.trim()) return content;
@@ -5930,6 +5974,9 @@ export const markdownComponents: any = {
 
   blockquote: ({ children, ...props }: any) => {
     const text = getParagraphText(children);
+    if (!text || text.trim().length === 0 || /^[`*_~\-\s#]+$/.test(text)) {
+      return null;
+    }
 
     if (text.includes('📝 NOTA') || text.includes('NOTA:')) {
       return (
@@ -6390,11 +6437,14 @@ export function convertMarkdownToHtml(markdown: string): string {
       blockquoteContent.push(contentLine);
     } else {
       if (inBlockquote) {
-        const innerHtml = convertMarkdownToHtml(blockquoteContent.join('\n'));
-        if (blockquoteType) {
-          processedLines.push(`<blockquote class="${blockquoteType.className}"><span class="badge ${blockquoteType.badgeClass}">${blockquoteType.label}</span>${innerHtml}</blockquote>`);
-        } else {
-          processedLines.push(`<blockquote>${innerHtml}</blockquote>`);
+        const joinedContent = blockquoteContent.join(' ').replace(/<[^>]*>/g, '').trim();
+        if (joinedContent.length > 0 && !/^[`*_~\-\s#]+$/.test(joinedContent)) {
+          const innerHtml = convertMarkdownToHtml(blockquoteContent.join('\n'));
+          if (blockquoteType) {
+            processedLines.push(`<blockquote class="${blockquoteType.className}"><span class="badge ${blockquoteType.badgeClass}">${blockquoteType.label}</span>${innerHtml}</blockquote>`);
+          } else {
+            processedLines.push(`<blockquote>${innerHtml}</blockquote>`);
+          }
         }
         inBlockquote = false;
       }
@@ -6402,11 +6452,14 @@ export function convertMarkdownToHtml(markdown: string): string {
     }
   }
   if (inBlockquote) {
-    const innerHtml = convertMarkdownToHtml(blockquoteContent.join('\n'));
-    if (blockquoteType) {
-      processedLines.push(`<blockquote class="${blockquoteType.className}"><span class="badge ${blockquoteType.badgeClass}">${blockquoteType.label}</span>${innerHtml}</blockquote>`);
-    } else {
-      processedLines.push(`<blockquote>${innerHtml}</blockquote>`);
+    const joinedContent = blockquoteContent.join(' ').replace(/<[^>]*>/g, '').trim();
+    if (joinedContent.length > 0 && !/^[`*_~\-\s#]+$/.test(joinedContent)) {
+      const innerHtml = convertMarkdownToHtml(blockquoteContent.join('\n'));
+      if (blockquoteType) {
+        processedLines.push(`<blockquote class="${blockquoteType.className}"><span class="badge ${blockquoteType.badgeClass}">${blockquoteType.label}</span>${innerHtml}</blockquote>`);
+      } else {
+        processedLines.push(`<blockquote>${innerHtml}</blockquote>`);
+      }
     }
   }
 

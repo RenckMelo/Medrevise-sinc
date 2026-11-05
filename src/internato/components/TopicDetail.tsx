@@ -65,7 +65,7 @@ import { generateTopicContent, generateQuestions, generateFlashcards, Generation
 import { db, auth, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, getCountFromServer } from '../firebase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { markdownComponents, parseMarkdownAlerts, cleanAndFixMarkdownTables, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml, syncSummaryTableOfContents, sanitizeEliteMarkers } from '../utils/markdownUtils';
+import { markdownComponents, parseMarkdownAlerts, cleanAndFixMarkdownTables, getEnglishMedicalTerm, expandSearchTerms, isCertifiedMedicalImage, getBestMedicalImageCandidate, scoreMedicalCandidate, convertMarkdownToHtml, syncSummaryTableOfContents, sanitizeEliteMarkers, cleanImageUrl, cleanImageCaption } from '../utils/markdownUtils';
 import { safeLocalStorageGet, safeLocalStorageSet, safeLocalStorageRemove } from '../utils/storageUtils';
 import { calculateNextReview } from '../../utils/srs';
 import SummaryGenerationWizard from './SummaryGenerationWizard';
@@ -560,6 +560,33 @@ const sanitizeMarkdown = (content: string) => {
   if (!content) return '';
   
   let processed = sanitizeEliteMarkers(content);
+
+  // Consolidate loose image caption/provenance text lines into image alt tags
+  processed = processed.replace(
+    /!\[([^\]\n]*)\]\(([^)\n]+)\)\s*\n+\*?\s*([^*|\n]*?(?:Fonte:|source:|IMAGEM OBTIDA|BUSCA WEB|CDC|BING)[^*|\n]*?)\*?/gi,
+    (match, altText, imgUrl, capText) => {
+      const cleanCap = capText.trim();
+      if (!cleanCap) return `![${altText}](${imgUrl})`;
+      const combinedAlt = altText && altText.trim() && altText.trim() !== cleanCap
+        ? `${altText.trim()} - ${cleanCap}`
+        : cleanCap;
+      return `![${combinedAlt}](${imgUrl})`;
+    }
+  );
+
+  // Fix malformed markdown images (nested links in URL target, bold, newlines in captions)
+  processed = processed.replace(
+    /!\[([\s\S]*?)\]\(([\s\S]*?)\)/g,
+    (fullMatch, rawAlt, rawUrl) => {
+      const cleanUrl = cleanImageUrl(rawUrl);
+      const cleanAlt = cleanImageCaption(rawAlt);
+      if (cleanUrl) {
+        return `![${cleanAlt}](${cleanUrl})`;
+      }
+      return fullMatch;
+    }
+  );
+
   processed = cleanAndFixMarkdownTables(processed);
 
   // Unescape AI-escaped markdown links e.g. \[text\](#anchor) or \[text\]\(#anchor\)
@@ -2681,7 +2708,12 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
     
     try {
       const term = searchModalQuery || selectedItem.title;
-      const foundUrl = selectedItem.url;
+      const foundUrl = cleanImageUrl(selectedItem.url);
+      if (!foundUrl) {
+        alert('URL de imagem inválida ou corrompida.');
+        setIsRequestingIllustration(false);
+        return;
+      }
       const sourceType = selectedItem.sourceType;
       const bookInfo = {
         title: selectedItem.sourceName,
@@ -2774,7 +2806,11 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
         
         const captionText = selectedItem.caption || term;
         const sourceText = selectedItem.sourceName || 'Acervo Médico';
-        const markdownImageBlock = `\n\n![${term}](${foundUrl})\n*${captionText} (Fonte: ${sourceText})*\n\n`;
+        const rawCaption = captionText.toLowerCase().includes('fonte:')
+          ? captionText
+          : `${captionText} (Fonte: ${sourceText})`;
+        const fullCaption = cleanImageCaption(rawCaption);
+        const markdownImageBlock = `\n\n![${fullCaption}](${foundUrl})\n\n`;
         const newContent = contentStr.substring(0, insertIndex) + markdownImageBlock + contentStr.substring(insertIndex);
         
         setCurrentContent(newContent);

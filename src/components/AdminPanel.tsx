@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, collection, getDocs, doc, updateDoc, setDoc, deleteDoc, query, onSnapshot, syncSurplusFirestoreToSupabase } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
+import { calculateRemainingDays } from '../utils/subscriptionUtils';
 import User from 'lucide-react/dist/esm/icons/user.js';
 import Shield from 'lucide-react/dist/esm/icons/shield.js';
 import Search from 'lucide-react/dist/esm/icons/search.js';
@@ -91,6 +92,7 @@ interface RegisteredUser {
   isLifetimePremium?: boolean;
   planType?: PlanType;
   premiumUntil?: string;
+  premiumSince?: string | any;
   premiumPlan?: string;
   premiumProvider?: string;
 }
@@ -272,10 +274,11 @@ export default function AdminPanel() {
     setModalIsLifetime(isLife);
 
     let daysLeft = 30;
-    if (targetUser.premiumUntil && !isLife) {
-      const untilMs = new Date(targetUser.premiumUntil).getTime();
-      const diff = Math.ceil((untilMs - Date.now()) / (1000 * 60 * 60 * 24));
-      daysLeft = Math.max(1, diff);
+    if (!isLife) {
+      const calc = calculateRemainingDays(targetUser.premiumUntil, isLife, false);
+      if (typeof calc === 'number') {
+        daysLeft = Math.max(1, calc);
+      }
     }
     setModalDurationDays(daysLeft);
 
@@ -850,17 +853,26 @@ export default function AdminPanel() {
                             
                             let daysLeftStr = 'Vitalício ♾️';
                             let isExpired = false;
-                            if (!item.isLifetimePremium && item.premiumUntil) {
-                              const untilMs = new Date(item.premiumUntil).getTime();
-                              const diffDays = Math.ceil((untilMs - Date.now()) / (1000 * 60 * 60 * 24));
-                              if (diffDays <= 0) {
+                            const calcDays = calculateRemainingDays(item.premiumUntil, item.isLifetimePremium || false, false);
+                            if (calcDays === 'ilimitado') {
+                              daysLeftStr = 'Vitalício ♾️';
+                            } else if (typeof calcDays === 'number') {
+                              if (calcDays <= 0) {
                                 isExpired = true;
-                                daysLeftStr = `Expirado (${Math.abs(diffDays)}d atrás)`;
+                                if (item.premiumUntil) {
+                                  const untilMs = new Date(item.premiumUntil).getTime();
+                                  if (!isNaN(untilMs)) {
+                                    const diffDays = Math.ceil((untilMs - Date.now()) / (1000 * 60 * 60 * 24));
+                                    daysLeftStr = `Expirado (${Math.abs(diffDays)}d atrás)`;
+                                  } else {
+                                    daysLeftStr = 'Expirado (0d)';
+                                  }
+                                } else {
+                                  daysLeftStr = 'Sem plano ativo (0d)';
+                                }
                               } else {
-                                daysLeftStr = `${diffDays} dias restantes`;
+                                daysLeftStr = `${calcDays} dias restantes`;
                               }
-                            } else if (!item.isLifetimePremium && item.createdAt) {
-                              daysLeftStr = '30 dias (padrão)';
                             }
 
                             return (

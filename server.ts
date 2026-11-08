@@ -2153,6 +2153,108 @@ app.post('/api/mercadopago/create-pix', async (req, res) => {
   }
 });
 
+// Centralized Payment Processing Function with Idempotency & Firestore Transactions
+async function processApprovedPayment(paymentId: string) {
+  if (!db) {
+    throw new Error('Database not initialized.');
+  }
+
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token) {
+    // Simulator mode or offline test
+    return { status: 'approved', isPremium: true, simulated: true };
+  }
+
+  const mpClient = new MercadoPagoConfig({ accessToken: token });
+  const payment = new Payment(mpClient);
+
+  const paymentDetails = await payment.get({ id: String(paymentId) });
+  const paymentStatus = paymentDetails.status;
+  const paymentUserId = paymentDetails.external_reference;
+
+  if (paymentStatus !== 'approved' || !paymentUserId) {
+    return { status: paymentStatus || 'pending', isPremium: false };
+  }
+
+  let planId = 'med_revise_pro';
+  const desc = (paymentDetails.description || '').toLowerCase();
+  if (desc.includes('internato premium')) {
+    planId = 'med_internato_premium';
+  } else if (desc.includes('combo ouro') || desc.includes('combo')) {
+    planId = 'combo_ouro';
+  }
+
+  const paymentDocRef = db.collection('payments').doc(String(paymentId));
+  const userDocRef = db.collection('users').doc(paymentUserId);
+
+  let activationResult: any = null;
+
+  await db.runTransaction(async (transaction) => {
+    const paymentSnap = await transaction.get(paymentDocRef);
+    if (paymentSnap.exists && paymentSnap.data()?.activationStatus === 'completed') {
+      activationResult = { status: 'approved', isPremium: true, premiumPlan: planId, alreadyProcessed: true };
+      return;
+    }
+
+    const userSnap = await transaction.get(userDocRef);
+    const userData = userSnap.exists ? userSnap.data() : null;
+
+    // Accumulative renewal calculation
+    const nowMs = Date.now();
+    let baseMs = nowMs;
+    if (userData?.premiumUntil) {
+      const currentUntilMs = new Date(userData.premiumUntil).getTime();
+      if (currentUntilMs > nowMs) {
+        baseMs = currentUntilMs;
+      }
+    }
+    const newUntilDate = new Date(baseMs + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const paymentRecord = {
+      paymentId: String(paymentId),
+      provider: 'MercadoPago',
+      buyerUid: paymentUserId,
+      planType: planId,
+      amount: paymentDetails.transaction_amount || 0,
+      currency: paymentDetails.currency_id || 'BRL',
+      paymentStatus: 'approved',
+      createdAt: paymentDetails.date_created ? new Date(paymentDetails.date_created).toISOString() : new Date().toISOString(),
+      approvedAt: new Date().toISOString(),
+      processedAt: new Date().toISOString(),
+      activationStatus: 'completed',
+      referralStatus: userData?.usedReferralKey ? 'pending' : 'none',
+      referralOwnerUid: userData?.referralOwnerUid || null,
+      referralKey: userData?.usedReferralKey || null,
+      processingVersion: 1
+    };
+
+    transaction.set(paymentDocRef, paymentRecord, { merge: true });
+
+    transaction.set(userDocRef, {
+      isPremium: true,
+      planType: planId,
+      premiumPlan: planId,
+      premiumPaymentId: String(paymentId),
+      premiumProvider: 'MercadoPago',
+      premiumSince: userData?.premiumSince || admin.firestore.FieldValue.serverTimestamp(),
+      premiumUntil: newUntilDate,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    activationResult = { status: 'approved', isPremium: true, premiumPlan: planId, alreadyProcessed: false };
+  });
+
+  if (activationResult && !activationResult.alreadyProcessed) {
+    try {
+      await processReferralRewardForUser(paymentUserId);
+    } catch (refErr) {
+      console.warn(`[Process Payment] Referral reward processing warning for ${paymentUserId}:`, refErr);
+    }
+  }
+
+  return activationResult;
+}
+
 // Mercado Pago: Direct Receipt Status Verification (Fallback for Webhooks)
 app.get('/api/mercadopago/check-payment/:paymentId', async (req, res) => {
   const { paymentId } = req.params;
@@ -2164,92 +2266,23 @@ app.get('/api/mercadopago/check-payment/:paymentId', async (req, res) => {
     return res.status(400).json({ error: 'O ID do faturamento Pix é obrigatório.' });
   }
 
-  // Pre-emptive check: if the user database is already upgraded, return approved instantly!
   if (db && userId) {
     try {
       const userDoc = await db.collection('users').doc(String(userId)).get();
       if (userDoc.exists && userDoc.data()?.isPremium) {
-        console.log(`[Check Payment API] Pre-emptive success: User ${userId} is already Premium in Firestore.`);
         return res.json({ status: 'approved', isPremium: true });
       }
-    } catch (fsErr: any) {
-      const isPermissionError = fsErr?.code === 7 || (fsErr?.message && (fsErr.message.includes('PERMISSION_DENIED') || fsErr.message.includes('insufficient permissions')));
-      if (!isPermissionError) {
-        console.log('[Check Payment API] Pre-emptive Firestore read skipped:', fsErr?.message || fsErr);
-      }
-    }
+    } catch (fsErr: any) {}
   }
 
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   if (!token) {
-    console.warn('[Check Payment API] Access token not configured. Emulating approval for testing if requested.');
-    // Under testing simulator/offline mode
     return res.json({ status: 'approved', isPremium: true });
   }
 
   try {
-    const mpClient = new MercadoPagoConfig({ accessToken: token });
-    const payment = new Payment(mpClient);
-
-    let paymentDetails;
-    try {
-      paymentDetails = await payment.get({ id: String(paymentId) });
-    } catch (mpErr: any) {
-      console.warn(`[Check Payment API] Mercado Pago payment.get native call failed for ID: ${paymentId}. Error:`, mpErr.message);
-      
-      // Secondary fallback check on Firestore in case payment existed/updated earlier
-      if (db && userId) {
-        const userDoc2 = await db.collection('users').doc(String(userId)).get();
-        if (userDoc2.exists && userDoc2.data()?.isPremium) {
-          return res.json({ status: 'approved', isPremium: true });
-        }
-      }
-      return res.status(200).json({
-        status: 'pending',
-        isPremium: false,
-        warning: 'Transação não encontrada ou token sem acesso direto a esta transação.'
-      });
-    }
-
-    const paymentStatus = paymentDetails.status;
-    const paymentUserId = paymentDetails.external_reference || (userId as string);
-
-    console.log(`[Check Payment API] Mercado Pago status: ${paymentStatus} for Ref: ${paymentUserId}`);
-
-    if (paymentStatus === 'approved' && paymentUserId) {
-      if (db) {
-        let planId = 'med_revise_pro';
-        const desc = (paymentDetails.description || '').toLowerCase();
-        if (desc.includes('internato premium')) {
-          planId = 'med_internato_premium';
-        } else if (desc.includes('combo ouro') || desc.includes('combo')) {
-          planId = 'combo_ouro';
-        }
-        const defaultUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-        try {
-          await db.collection('users').doc(paymentUserId).update({
-            isPremium: true,
-            planType: planId,
-            premiumPlan: planId,
-            premiumPaymentId: String(paymentId),
-            premiumProvider: 'MercadoPago',
-            premiumSince: admin.firestore.FieldValue.serverTimestamp(),
-            premiumUntil: defaultUntil,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          console.log(`[Check Payment API] Upgraded user ${paymentUserId} to ${planId} status successfully in Firestore.`);
-          await processReferralRewardForUser(paymentUserId);
-        } catch (dbErr: any) {
-          console.warn(`[Check Payment API] Failed to update Firestore user document from server-side. Proceeding with approval because Mercado Pago confirmation succeeded. Error:`, dbErr.message);
-        }
-        return res.json({ status: 'approved', isPremium: true, premiumPlan: planId });
-      } else {
-        console.error('[Check Payment API] Firestore instance not initialized.');
-        return res.status(500).json({ error: 'Database not initialized.' });
-      }
-    }
-
-    return res.json({ status: paymentStatus, isPremium: false });
+    const result = await processApprovedPayment(paymentId);
+    return res.json(result);
   } catch (error: any) {
     console.error('[Check Payment API Error] Exception details:', error);
     return res.status(500).json({ error: error.message || 'Erro ao consultar transação no Mercado Pago.' });
@@ -2260,67 +2293,23 @@ app.get('/api/mercadopago/check-payment/:paymentId', async (req, res) => {
 app.post('/api/mercadopago/webhook', async (req, res) => {
   const { action, type, data } = req.body;
   const paymentId = data?.id || req.query.id;
-  const topic = type || req.query.topic;
 
   console.log('[MercadoPago Webhook] Received webhook notification:', JSON.stringify({ body: req.body, query: req.query }));
 
   if (!paymentId) {
-    // Return 200 OK to stop retries from Mercado Pago gateway
     return res.status(200).send('Notification received with no action required.');
   }
 
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   if (!token) {
-    console.warn('[MercadoPago Webhook] Received notification but MERCADO_PAGO_ACCESS_TOKEN is not configured.');
     return res.status(200).send('Webhook completed in simulator mode.');
   }
 
   try {
-    const mpClient = new MercadoPagoConfig({ accessToken: token });
-    const payment = new Payment(mpClient);
-
-    // Dynamic extraction of transaction details from Mercado Pago API integration
-    const paymentDetails = await payment.get({ id: String(paymentId) });
-    const paymentStatus = paymentDetails.status;
-    const userId = paymentDetails.external_reference;
-
-    console.log(`[MercadoPago webhook] Payment #${paymentId} status: ${paymentStatus}, User: ${userId}`);
-
-    if (paymentStatus === 'approved' && userId) {
-      if (db) {
-        let planId = 'med_revise_pro';
-        const desc = (paymentDetails.description || '').toLowerCase();
-        if (desc.includes('internato premium')) {
-          planId = 'med_internato_premium';
-        } else if (desc.includes('combo ouro') || desc.includes('combo')) {
-          planId = 'combo_ouro';
-        }
-        const defaultUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-        try {
-          await db.collection('users').doc(userId).update({
-            isPremium: true,
-            planType: planId,
-            premiumPlan: planId,
-            premiumPaymentId: String(paymentId),
-            premiumProvider: 'MercadoPago',
-            premiumSince: admin.firestore.FieldValue.serverTimestamp(),
-            premiumUntil: defaultUntil,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          console.log(`[MercadoPago webhook] Upgraded user ${userId} to ${planId} status successfully in Firestore.`);
-          await processReferralRewardForUser(userId);
-        } catch (dbErr: any) {
-          console.warn(`[MercadoPago webhook] Webhook Firestore update warning:`, dbErr.message);
-        }
-      } else {
-        console.error('[MercadoPago webhook] Firestore reference db is not initialized.');
-      }
-    }
-
+    await processApprovedPayment(paymentId);
     res.status(200).send('Webhook Processed OK');
   } catch (error) {
     console.error('[MercadoPago webhook] Webhook processing exception error:', error);
-    // If external service fails, we return 500 so Mercado Pago can retry the webhook safely
     res.status(500).send('Webhook server error');
   }
 });
@@ -2920,6 +2909,9 @@ app.post('/api/admin/content/add-doc', verifyAdminAuthorizationMiddleware, async
     return res.status(500).json({ error: 'Erro ao adicionar conteúdo administrativo.' });
   }
 });
+
+
+
 
 app.post('/api/admin/content/set-doc', verifyAdminAuthorizationMiddleware, async (req: express.Request, res: express.Response) => {
   try {

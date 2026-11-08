@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, doc, updateDoc, collection, getDocs, deleteDoc, serverTimestamp, getDoc, query, where, addDoc, setDoc } from '../firebase';
+import { calculateRemainingDays } from '../utils/subscriptionUtils';
 import { safeLocalStorageGet, safeLocalStorageSet } from '../internato/utils/storageUtils';
 import User from 'lucide-react/dist/esm/icons/user.js';
 import Mail from 'lucide-react/dist/esm/icons/mail.js';
@@ -426,37 +427,28 @@ export default function ProfileView({ subjects: externalSubjects, loadingSubject
     }
   };
 
+  const [currentTime, setCurrentTime] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 60000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setCurrentTime(Date.now());
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
   const getRemainingDays = () => {
-    if (isLucas || profile.isLifetimePremium) return 'ilimitado';
-    
-    let expiryDate: Date | null = null;
-    
-    if (profile.premiumUntil) {
-      expiryDate = new Date(profile.premiumUntil);
-    } else if (profile.premiumSince) {
-      let premiumSinceDate: Date | null = null;
-      if (profile.premiumSince instanceof Date) {
-        premiumSinceDate = profile.premiumSince;
-      } else if (profile.premiumSince && typeof profile.premiumSince.toDate === 'function') {
-        premiumSinceDate = profile.premiumSince.toDate();
-      } else if (profile.premiumSince && typeof profile.premiumSince.seconds === 'number') {
-        premiumSinceDate = new Date(profile.premiumSince.seconds * 1000);
-      } else {
-        premiumSinceDate = new Date(profile.premiumSince);
-      }
-      
-      if (premiumSinceDate && !isNaN(premiumSinceDate.getTime())) {
-        expiryDate = new Date(premiumSinceDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-      }
-    }
-    
-    if (expiryDate && !isNaN(expiryDate.getTime())) {
-      const diffTime = expiryDate.getTime() - Date.now();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return Math.max(0, diffDays);
-    }
-    
-    return 0;
+    return calculateRemainingDays(profile.premiumUntil, profile.isLifetimePremium, isLucas, currentTime);
   };
   
   const remainingDays = getRemainingDays();

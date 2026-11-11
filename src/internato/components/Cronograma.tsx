@@ -1418,7 +1418,49 @@ export default function Cronograma({
   const [studyViewMode, setStudyViewMode] = useState<'focused' | 'grid'>('focused');
   const [ciclosCollapsed, setCiclosCollapsed] = useState(true);
   const [infoExpanded, setInfoExpanded] = useState(false);
-  const [activeDayTab, setActiveDayTab] = useState<string>('Seg');
+  const ALL_POSSIBLE_DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Sab', 'Dom'];
+  const [activeDayTab, setActiveDayTab] = useState<string>(() => {
+    const userId = profile?.uid;
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`medrevise_active_day_${userId}`);
+        if (saved && ALL_POSSIBLE_DAYS.includes(saved)) {
+          return saved;
+        }
+      } catch (e) {
+        // ignore storage errors
+      }
+    }
+    return 'Seg';
+  });
+
+  // Sync or restore activeDayTab when profile changes
+  useEffect(() => {
+    const userId = profile?.uid;
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`medrevise_active_day_${userId}`);
+        if (saved && ALL_POSSIBLE_DAYS.includes(saved)) {
+          setActiveDayTab(saved);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [profile?.uid]);
+
+  // Persist activeDayTab when it changes and profile.uid exists
+  useEffect(() => {
+    const userId = profile?.uid;
+    if (userId && ALL_POSSIBLE_DAYS.includes(activeDayTab)) {
+      try {
+        localStorage.setItem(`medrevise_active_day_${userId}`, activeDayTab);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [activeDayTab, profile?.uid]);
+
   const [showConfirmReset, setShowConfirmReset] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 

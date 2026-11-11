@@ -216,7 +216,7 @@ export default function SummaryGenerationWizard({
   const cost = getCost();
 
   return (
-    <div translate="no" className="notranslate bg-white border-2 border-stone-200 rounded-3xl shadow-2xl overflow-hidden max-w-2xl w-full mx-auto my-auto flex flex-col max-h-[92vh] sm:max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+    <div translate="no" className="notranslate bg-white border-2 border-stone-200 rounded-3xl shadow-2xl overflow-hidden max-w-2xl w-[95vw] sm:w-full mx-auto my-auto flex flex-col max-h-[92vh] sm:max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
       {/* Header */}
       <div className="bg-gradient-to-r from-indigo-900 to-indigo-950 p-3.5 sm:p-5 text-white flex items-center justify-between shrink-0">
         <div className="space-y-1 min-w-0 pr-2">
@@ -656,7 +656,7 @@ export default function SummaryGenerationWizard({
       </div>
 
       {/* Footer Navigation - Always Pinned at Bottom */}
-      <div className="p-3 sm:p-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between shrink-0 gap-2 z-10">
+      <div className="p-3 sm:p-4 bg-stone-50/95 backdrop-blur-md border-t border-stone-200 flex items-center justify-between shrink-0 gap-2 z-10 sticky bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-md">
         {step > 1 ? (
           <Button
             variant="outline"

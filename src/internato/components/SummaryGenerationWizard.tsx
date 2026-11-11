@@ -534,7 +534,12 @@ export default function SummaryGenerationWizard({
 
             <div className="space-y-4 pt-2">
               <div className="space-y-2">
-                <label className="text-xs font-bold text-stone-800 uppercase tracking-wide">Casos Clínicos por Capítulo</label>
+                <label className="text-xs font-bold text-stone-800 uppercase tracking-wide">
+                  Casos Clínicos & Questões por Capítulo (Fixação Prática)
+                </label>
+                <p className="text-[11px] text-stone-500 leading-relaxed">
+                  Gere vinhetas clínicas com questões interativas comentadas de residência médica para cada capítulo em qualquer modo.
+                </p>
                 <div className="grid grid-cols-3 gap-2">
                   {(['minimum', 'moderate', 'maximum'] as const).map((lvl) => (
                     <button

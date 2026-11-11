@@ -60,7 +60,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
-import { generateTopicContent, generateQuestions, generateFlashcards, GenerationDepth, deepenTopicSection, getGlobalUsage, importPdfWithAI, deepenNotebookArea, analyzeSummaryNeeds, generateCustomAnalyzedSummary, generateWithAI, resumeFailedSummaryContent, getChaptersFromMonograph, calculateExtraCredits } from '../services/geminiService';
+import { generateTopicContent, generateQuestions, generateFlashcards, GenerationDepth, deepenTopicSection, getGlobalUsage, importPdfWithAI, deepenNotebookArea, analyzeSummaryNeeds, generateCustomAnalyzedSummary, generateWithAI, resumeFailedSummaryContent, getChaptersFromMonograph, calculateExtraCredits, extractReferencesFromMarkdown } from '../services/geminiService';
 
 import { db, auth, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, getCountFromServer } from '../firebase';
 import jsPDF from 'jspdf';
@@ -3846,6 +3846,12 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
           updateFields.content = sanitized; // Legacy support
         }
 
+        // Extrair referências estruturadas do Markdown e salvar
+        const extractedRefs = extractReferencesFromMarkdown(sanitized);
+        if (extractedRefs.length > 0) {
+          updateFields.references = extractedRefs;
+        }
+
         // Update in Firestore
         await updateDoc(getTopicDocRef(), updateFields);
         const updated = { ...topic, ...updateFields };
@@ -4124,6 +4130,11 @@ Responda APENAS com os números separados por vírgula (exemplo: 0,1,3). Se todo
         };
         if (targetDepth === 'standard') {
           updateFields.content = sanitized;
+        }
+
+        const extractedRefs = extractReferencesFromMarkdown(sanitized);
+        if (extractedRefs.length > 0) {
+          updateFields.references = extractedRefs;
         }
 
         await updateDoc(getTopicDocRef(), updateFields);
@@ -6658,21 +6669,30 @@ th { background: #F8F7F4; font-weight: bold; }
             </div>
           )}
           
-          {((topic.references && topic.references.length > 0) || referencePref) && (
-            <div className="mt-16 pt-10 border-t border-[#E2E0D9]">
-              <div className="flex items-center justify-between mb-6">
-                <h4 className="text-xs uppercase tracking-widest font-bold text-[#1A1A1A] flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-primary" /> Referências Bibliográficas e Diretrizes Técnicas
-                </h4>
-                {referencePref && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 px-3 py-1 rounded-full border border-red-200">
-                    Prioridade: {referencePref}
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {topic.references && topic.references.length > 0 ? (
-                  topic.references.map((ref, i) => (
+          {(() => {
+            const rawRefs = (topic.references && Array.isArray(topic.references) && topic.references.length > 0)
+              ? topic.references
+              : extractReferencesFromMarkdown(currentContent);
+            const effectiveRefs = (rawRefs && rawRefs.length > 0)
+              ? rawRefs
+              : (referencePref ? [referencePref] : []);
+
+            if (effectiveRefs.length === 0) return null;
+
+            return (
+              <div className="mt-16 pt-10 border-t border-[#E2E0D9]">
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="text-xs uppercase tracking-widest font-bold text-[#1A1A1A] flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-primary" /> Referências Bibliográficas e Diretrizes Técnicas
+                  </h4>
+                  {referencePref && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 px-3 py-1 rounded-full border border-red-200">
+                      Prioridade: {referencePref}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {effectiveRefs.map((ref, i) => (
                     <div key={`reference-${i}`} className="p-4 rounded-2xl bg-white border border-[#E2E0D9] shadow-sm space-y-1.5">
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
@@ -6682,21 +6702,11 @@ th { background: #F8F7F4; font-weight: bold; }
                         Fonte científica e diretriz clínica de referência utilizada no embasamento técnico e resoluções de questões.
                       </p>
                     </div>
-                  ))
-                ) : (
-                  <div className="p-4 rounded-2xl bg-white border border-[#E2E0D9] shadow-sm space-y-1.5 col-span-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
-                      <span className="text-xs font-bold text-[#1A1A1A]">{referencePref || 'UpToDate / Diretrizes da Sociedade Brasileira / Ministério da Saúde'}</span>
-                    </div>
-                    <p className="text-[11px] text-[#8E8A82] italic leading-relaxed">
-                      Diretriz e fonte científica prioritária selecionada para embasamento técnico deste resumo de estudo.
-                    </p>
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="mt-20 pt-10 border-t border-[#E2E0D9] flex flex-col items-center justify-center space-y-4">
             <div className="text-[10px] uppercase tracking-widest font-black text-[#8E8A82]">Zona de Perigo</div>

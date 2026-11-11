@@ -515,7 +515,7 @@ DIRETRIZES FUNDAMENTAIS DE RIGOR, DENSIDADE E NÃO REPETIÇÃO:
    > **HIGHLIGHT DE PROVA / PEGADINHA DE BANCA (${regionalShort}):**
    > [Dica clínica e pegadinha recorrente em provas]
 
-${i === totalChapters - 1 ? `7. SEÇÃO FINAL MANDATÓRIA: Inclua ao final a seção "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS" detalhando de 3 a 5 fontes oficiais (UpToDate 2025/2026, Ministério da Saúde, SBC, SBPT, FEBRASGO, SBP, Harrison, etc.). ${reference ? `Destaque: "${reference}".` : ''}` : ''}
+${i === totalChapters - 1 ? `7. SEÇÃO FINAL MANDATÓRIA: Inclua ao final a seção com o cabeçalho exato "## Referências Bibliográficas" detalhando de 3 a 5 fontes e diretrizes oficiais pertinentes (UpToDate, Ministério da Saúde, SBC, SBPT, FEBRASGO, SBP, Harrison, etc.). ${reference ? `Destaque: "${reference}".` : ''} É expressamente proibido inventar referências fictícias.` : ''}
 
 Escreva o capítulo "${chapterTitle}" com densidade técnica impecável, parágrafos ricos e explicativos em Markdown puro com LaTeX.`;
 
@@ -533,7 +533,25 @@ Escreva o capítulo "${chapterTitle}" com densidade técnica impecável, parágr
       }
 
       if (chapterText && chapterText.trim().length > 100) {
-        const cleanedText = cleanLeadingChapterTitle(chapterText, chapterTitle);
+        let cleanedText = cleanLeadingChapterTitle(chapterText, chapterTitle);
+        if (illustrationLevel !== 'minimum' && illustrationLevel !== 'off' && illustrationLevel !== 'desativado' && illustrationLevel !== 'none') {
+          try {
+            const caseMarkdown = await generateChapterClinicalCases(
+              safeTitle,
+              safeArea,
+              chapterTitle,
+              i,
+              totalChapters,
+              illustrationLevel,
+              userId
+            );
+            if (caseMarkdown && caseMarkdown.trim()) {
+              cleanedText += `\n\n${caseMarkdown.trim()}`;
+            }
+          } catch (caseErr) {
+            console.warn(`[Master] Falha ao gerar caso clínico para capítulo ${chapterTitle}:`, caseErr);
+          }
+        }
         fullContent += `## ${chapterTitle}\n\n${cleanedText}\n\n---\n\n`;
         await recordUsage(costPerChapter);
       } else {
@@ -716,9 +734,9 @@ export async function generateTopicContent(
   PROIBIÇÃO DE IMAGENS AUTOMÁTICAS: É terminantemente proibido inserir qualquer tipo de imagem, figura ou link de imagem Markdown de forma automática no corpo do texto. O texto deve ser gerado de forma puramente textual e teórica.
   
   SEÇÃO FINAL OBRIGATÓRIA - REFERÊNCIAS BIBLIOGRÁFICAS DESCRITAS:
-  Ao final do resumo, crie a seção:
-  "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS"
-  Liste de 2 a 4 fontes oficiais (UpToDate, Diretrizes Brasileiras, Ministério da Saúde, Harrison, etc.). ${reference ? `Destaque a preferência informada: "${reference}".` : ""}
+  Ao final do resumo, crie a seção com o cabeçalho exato:
+  "## Referências Bibliográficas"
+  Liste de 2 a 4 fontes oficiais e diretrizes pertinentes (UpToDate, Diretrizes Brasileiras, Ministério da Saúde, Harrison, etc.). ${reference ? `Destaque a preferência informada: "${reference}".` : ""} É expressamente proibido inventar fontes ou links fictícios.
 
   Formate em Markdown profissional. NÃO use tags HTML.
   ${getPromptPreferenceInstructions(illustrationLevel, alertBoxLevel)}`;
@@ -734,7 +752,28 @@ export async function generateTopicContent(
     .replace(/UFG, UnB, PSU-GO, PSU-DF/g, focusTarget);
 
   const rawResult = await generateWithAI(customPrompt, model, finalCredits);
-  return removeDuplicateSumarios(rawResult);
+  let finalSummary = removeDuplicateSumarios(rawResult);
+
+  if (illustrationLevel !== 'minimum' && illustrationLevel !== 'off' && illustrationLevel !== 'desativado' && illustrationLevel !== 'none') {
+    try {
+      const caseMarkdown = await generateChapterClinicalCases(
+        safeTitle,
+        safeArea,
+        safeTitle,
+        0,
+        1,
+        illustrationLevel,
+        userId
+      );
+      if (caseMarkdown && caseMarkdown.trim()) {
+        finalSummary += `\n\n---\n\n${caseMarkdown.trim()}\n\n---\n\n`;
+      }
+    } catch (caseErr) {
+      console.warn(`[Summary] Falha ao gerar caso clínico:`, caseErr);
+    }
+  }
+
+  return finalSummary;
 }
 
 function slugify(text: any): string {
@@ -858,7 +897,7 @@ async function generateMonograph(title: string, area: string, reference?: string
       - SCRIPT DE CONSULTA MÉDICA: Exiba perguntas estruturadas e sequenciais que o médico deve fazer na anamnese.
       - RESPOSTAS DO PACIENTE: Apresente as possíveis respostas, queixas acadêmicas ou reações do paciente para cada questionamento do médico.
       - EXPLICAÇÃO E CONDUTA DE MANEJO: Para cada resposta descrita, explique detalhadamente de forma didática o raciocínio fisiológico por trás, a exata conduta terapêutica imediata, o adjustment de dosagem necessária e o manejo corretivo de possíveis intercorrências de acordo com as diretrizes do SUS e SES-GO/SES-DF.
-      - SEÇÃO FINAL MANDATÓRIA DE REFERÊNCIAS: Como este é o capítulo de encerramento da monografia, inclua obrigatoriamente ao final dele a seção "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS", listando e descrevendo detalhadamente (de 5 a 8 fontes) os livros-texto e diretrizes oficiais utilizadas no tratado (UpToDate, Ministério da Saúde, SBC, SBPT, FEBRASGO, SBP, Harrison, Sabiston, etc.).
+      - SEÇÃO FINAL MANDATÓRIA DE REFERÊNCIAS: Como este é o capítulo de encerramento da monografia, inclua obrigatoriamente ao final dele a seção com o cabeçalho exato "## Referências Bibliográficas", listando e descrevendo detalhadamente (de 5 a 8 fontes) os livros-texto e diretrizes oficiais utilizadas no tratado (UpToDate, Ministério da Saúde, SBC, SBPT, FEBRASGO, SBP, Harrison, Sabiston, etc.). É expressamente proibido inventar referências fictícias.
       Organize em formato de diálogo simulado intercalado por tabelas Markdown de diagnóstico/intervenção e caixas explicativas do Preceptor.` : ''}
 
       TOM DE VOZ (ESTILO PRECEPTOR):
@@ -890,7 +929,25 @@ async function generateMonograph(title: string, area: string, reference?: string
       }
 
       if (chapterContent && chapterContent.trim().length > 0) {
-        const cleanedChapterContent = cleanLeadingChapterTitle(chapterContent, chapterTitle);
+        let cleanedChapterContent = cleanLeadingChapterTitle(chapterContent, chapterTitle);
+        if (illustrationLevel !== 'minimum' && illustrationLevel !== 'off' && illustrationLevel !== 'desativado' && illustrationLevel !== 'none') {
+          try {
+            const caseMarkdown = await generateChapterClinicalCases(
+              safeTitle,
+              safeArea,
+              chapterTitle,
+              i,
+              outline.length,
+              illustrationLevel,
+              userId
+            );
+            if (caseMarkdown && caseMarkdown.trim()) {
+              cleanedChapterContent += `\n\n${caseMarkdown.trim()}`;
+            }
+          } catch (caseErr) {
+            console.warn(`[Monografia] Falha ao gerar caso clínico para capítulo ${chapterTitle}:`, caseErr);
+          }
+        }
         fullMonograph += `## ${chapterTitle}\n\n${cleanedChapterContent}\n\n---\n\n`;
       } else {
         fullMonograph += `\n\n## ${chapterTitle}\n\n*Nota: Conteúdo resumido para este capítulo por instabilidade temporária do servidor de IA. Utilize o botão 'Aprofundar Capítulo' para expandir.*\n\n---\n\n`;
@@ -2485,6 +2542,102 @@ export async function recordIdempotentEliteUsage(
 const activeTopicGenerationsSet = new Set<string>();
 
 /**
+ * Valida a completude estrutural e textual de um capítulo médico gerado.
+ * Avalia se o texto encerrou com bloco ou frase truncada, tabelas não fechadas,
+ * blocos de código ou alertas abertos.
+ */
+export function validateChapterCompleteness(text: string): { isComplete: boolean; reason?: string } {
+  if (!text || text.trim().length < 150) {
+    return { isComplete: false, reason: 'Texto insuficiente ou vazio' };
+  }
+  const trimmed = text.trim();
+
+  // 1. Verificar blocos de código não fechados (```)
+  const codeBlockCount = (trimmed.match(/```/g) || []).length;
+  if (codeBlockCount % 2 !== 0) {
+    return { isComplete: false, reason: 'Bloco de código (```) não fechado' };
+  }
+
+  // 2. Verificar blocos de alerta/blockquote não fechados
+  // Se a última linha começar com > ou se o último caractere for pipe (|) solto
+  const lines = trimmed.split('\n').filter(l => l.trim().length > 0);
+  const lastLine = lines[lines.length - 1] || '';
+
+  // 3. Tabela com linha incompleta (ex: começa com | mas não termina com |)
+  if (lastLine.trim().startsWith('|') && !lastLine.trim().endsWith('|')) {
+    return { isComplete: false, reason: 'Linha de tabela Markdown incompleta' };
+  }
+
+  // 4. Frase cortada abruptamente (termina com conjunção, preposição ou vírgula)
+  const danglingEndings = [
+    ',', ';', ':', ' e', ' ou', ' mas', ' porém', ' contudo', ' onde', ' que', ' com', ' sem', ' para', ' por', ' de', ' da', ' do', ' em', ' no', ' na'
+  ];
+  const lowerLast = lastLine.toLowerCase().trim();
+  for (const dangling of danglingEndings) {
+    if (lowerLast.endsWith(dangling)) {
+      return { isComplete: false, reason: `Frase interrompida com conectivo pendente ("${dangling.trim()}")` };
+    }
+  }
+
+  return { isComplete: true };
+}
+
+/**
+ * Corrige e fecha com segurança blocos de Markdown que possam ter ficado abertos
+ */
+export function repairIncompleteMarkdownBlocks(text: string): string {
+  if (!text) return '';
+  let fixed = text.trim();
+
+  // Fecha blocos de código ímpares
+  const codeBlockCount = (fixed.match(/```/g) || []).length;
+  if (codeBlockCount % 2 !== 0) {
+    fixed += '\n```';
+  }
+
+  // Fecha linha de tabela aberta
+  const lines = fixed.split('\n');
+  const lastLine = lines[lines.length - 1] || '';
+  if (lastLine.trim().startsWith('|') && !lastLine.trim().endsWith('|')) {
+    fixed += ' |';
+  }
+
+  return fixed;
+}
+
+/**
+ * Extrai referências bibliográficas estruturadas a partir de um texto Markdown completo.
+ * Não inventa referências e preserva fontes e diretrizes legítimas citadas no texto.
+ */
+export function extractReferencesFromMarkdown(markdownText: string): string[] {
+  if (!markdownText) return [];
+
+  const refs: string[] = [];
+  // Procura por seção de referências bibliográficas
+  const refSectionMatch = markdownText.match(/(?:##|###)\s*(?:📚\s*)?(?:REFERÊNCIAS\s+BIBLIOGRÁFICAS|REFERENCIAS\s+BIBLIOGRAFICAS|REFERÊNCIAS|REFERENCIAS|DIRETRIZES\s+TÉCNICAS|BIBLIOGRAFIA)[\s\S]*?(?=(?:\n##\s+[^\n]+)|$)/i);
+
+  if (refSectionMatch && refSectionMatch[0]) {
+    const sectionText = refSectionMatch[0];
+    const lines = sectionText.split('\n');
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      // Pula cabeçalhos da seção
+      if (/^#{2,4}\s+/i.test(line)) continue;
+      // Captura itens de lista (ex: - UpToDate..., 1. Diretriz..., * Harrison...)
+      const itemMatch = line.match(/^(?:[-*•]|\d+\.)\s+(.+)$/);
+      if (itemMatch && itemMatch[1]) {
+        const cleaned = itemMatch[1].replace(/^[#\s*_]+|[#\s*_]+$/g, '').trim();
+        if (cleaned.length > 5 && !refs.includes(cleaned)) {
+          refs.push(cleaned);
+        }
+      }
+    }
+  }
+
+  return refs;
+}
+
+/**
  * Motor dedicado de Geração Adaptativa Progressiva para a Modalidade Elite (depth = 'elite').
  * Orçamento computacional base de 16.000 tokens distribuído via Water-Filling + 5D Ratings.
  * Trava atômica no Firestore (activeLock via runTransaction) com Fencing Token (lockVersion) & Lease Heartbeat.
@@ -2824,6 +2977,12 @@ DIRETRIZES TÉCNICAS E MÉDICAS MANDATÓRIAS DO CAPÍTULO:
 
 Referência ou contexto adicional do aluno: ${reference || 'Nenhuma'}
 
+${i === totalChapters - 1 ? `SEÇÃO FINAL MANDATÓRIA DE REFERÊNCIAS:
+Como este é o capítulo final do Tratado Elite, você DEVE OBRIGATORIAMENTE incluir ao final dele a seção com o cabeçalho exato:
+"## Referências Bibliográficas"
+Liste de 3 a 5 fontes científicas, consensos e diretrizes oficiais diretamente pertinentes ao tema abordado (ex: Diretrizes da Sociedade Brasileira da especialidade, Ministério da Saúde, UpToDate, Harrison, protocolos clínicos reconhecidos). ${reference ? `Destaque a preferência informada: "${reference}".` : ''}
+É TERMINANTEMENTE PROIBIDO inventar referências fictícias, autores inexistentes ou links falsos.` : ''}
+
 Escreva o capítulo "${chapterTitle}" de forma exaustiva e pronta para alta performance médica.`;
 
       const finalPrompt = prompt + getPromptPreferenceInstructions(illustrationLevel, alertBoxLevel);
@@ -2856,14 +3015,14 @@ Escreva o capítulo "${chapterTitle}" de forma exaustiva e pronta para alta perf
 
           // Intelligent Truncation Recovery & Contextual Continuation
           let continuationRounds = 0;
-          const MAX_CONTINUATION_ROUNDS = 3;
-          while ((finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH') && continuationRounds < MAX_CONTINUATION_ROUNDS && accumulatedText.length > 0) {
+          const MAX_CONTINUATION_ROUNDS = 5;
+          while ((finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH' || !validateChapterCompleteness(accumulatedText).isComplete) && continuationRounds < MAX_CONTINUATION_ROUNDS && accumulatedText.length > 0) {
             continuationRounds++;
-            console.log(`[Elite Continuation] Capítulo ${i + 1} (${chapterTitle}) truncado (MAX_TOKENS). Iniciando continuação inteligente rodada ${continuationRounds}...`);
+            console.log(`[Elite Continuation] Capítulo ${i + 1} (${chapterTitle}) truncado ou incompleto (${finishReason}). Iniciando continuação inteligente rodada ${continuationRounds}/${MAX_CONTINUATION_ROUNDS}...`);
             
             const lastSnippet = accumulatedText.slice(-800);
             const continuationPrompt = `[CONTINUAÇÃO OBRIGATÓRIA DE CAPÍTULO TRUNCADO]
-Você estava redigindo o capítulo "${chapterTitle}" do Tratado Elite Médica. A última resposta foi interrompida por limite de tokens.
+Você estava redigindo o capítulo "${chapterTitle}" do Tratado Elite Médica. A última resposta foi interrompida por limite de tokens ou encerrou de forma incompleta.
 CONTEXTO FINAL DO TRECHO GERADO ATÉ AGORA:
 "...${lastSnippet}"
 
@@ -2885,13 +3044,17 @@ INSTRUÇÃO: Continue a redação EXATAMENTE do ponto onde o texto acima parou.
             }
           }
 
-          chapterText = accumulatedText;
+          chapterText = repairIncompleteMarkdownBlocks(accumulatedText);
 
-          if (chapterText && chapterText.trim().length > 100) {
+          const completenessCheck = validateChapterCompleteness(chapterText);
+          if (chapterText && chapterText.trim().length > 100 && completenessCheck.isComplete) {
+            chapterSuccess = true;
+            break;
+          } else if (chapterText && chapterText.trim().length > 100 && attempt === 2) {
             chapterSuccess = true;
             break;
           } else {
-            console.warn(`[Elite Progressivo] Capítulo ${i + 1} (${chapterTitle}) descartado por tamanho insuficiente.`);
+            console.warn(`[Elite Progressivo] Capítulo ${i + 1} (${chapterTitle}) descartado por integridade pendente: ${completenessCheck.reason || 'Tamanho insuficiente'}.`);
           }
         } catch (err) {
           chapterError = err;
@@ -2949,6 +3112,34 @@ INSTRUÇÃO: Continue a redação EXATAMENTE do ponto onde o texto acima parou.
       const chapterId = chapterObj?.chapterId || `chap_${i + 1}_${slugify(chapterTitle)}`;
       const chapterEndTag = `<!-- MEDREVISE_CHAP_END: RUN=${runId} | ID=${chapterId} | HASH=${contentHash} -->`;
 
+      // Se illustrationLevel estiver habilitado (moderado ou máximo), gera e anexa o caso clínico do capítulo
+      if (illustrationLevel !== 'minimum' && illustrationLevel !== 'off' && illustrationLevel !== 'desativado' && illustrationLevel !== 'none') {
+        try {
+          if (onProgress) {
+            onProgress({
+              current: i,
+              total: totalChapters,
+              message: `Gerando Caso Clínico do Capítulo ${i + 1}/${totalChapters}: "${chapterTitle}"...`,
+              partialContent: fullContent
+            });
+          }
+          const caseMarkdown = await generateChapterClinicalCases(
+            safeTitle,
+            safeArea,
+            chapterTitle,
+            i,
+            totalChapters,
+            illustrationLevel,
+            userId
+          );
+          if (caseMarkdown && caseMarkdown.trim()) {
+            cleanedChapterText += `\n\n${caseMarkdown.trim()}`;
+          }
+        } catch (caseErr) {
+          console.warn(`[Elite] Falha não impeditiva ao gerar caso clínico para capítulo ${chapterTitle}:`, caseErr);
+        }
+      }
+
       const chapterMarkdown = `## ${chapterTitle}\n\n${cleanedChapterText}\n\n${chapterEndTag}\n\n---\n\n`;
       fullContent += chapterMarkdown;
 
@@ -2986,13 +3177,21 @@ INSTRUÇÃO: Continue a redação EXATAMENTE do ponto onde o texto acima parou.
               expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
             };
 
-            transaction.update(topicRef, {
+            const topicUpdateData: any = {
               content: fullContent,
               content_elite: fullContent,
               generationMeta,
               lastUpdated: new Date().toISOString(),
               activeLock: activeLockToRefresh
-            });
+            };
+
+            // Se for o último capítulo ou já contiver referências, extrair e persistir no campo 'references' do documento
+            const extractedRefs = extractReferencesFromMarkdown(fullContent);
+            if (extractedRefs.length > 0) {
+              topicUpdateData.references = extractedRefs;
+            }
+
+            transaction.update(topicRef, topicUpdateData);
           });
           console.log(`[Elite Progressivo] Capítulo ${i + 1}/${totalChapters} gravado atomicamente no Firestore (lockVersion: ${lockVersion} validado)!`);
         } catch (saveErr: any) {
@@ -3275,7 +3474,7 @@ DIRETRIZES FUNDAMENTAIS DE RIGOR, APROFUNDAMENTO, DIDÁTICA E NÃO REPETIÇÃO:
      > **OBSERVAÇÃO CLÍNICA / HIGHLIGHT DE PROVA:**
      > [Dica clínica objetiva, acionável e relevante para prova]
 
-${i === totalChapters - 1 ? `- SEÇÃO FINAL MANDATÓRIA DE REFERÊNCIAS: Como este é o capítulo final do tratado, inclua ao final a seção "## 📚 REFERÊNCIAS BIBLIOGRÁFICAS E DIRETRIZES TÉCNICAS" detalhando de 3 a 5 fontes e diretrizes oficiais utilizadas (UpToDate, Diretrizes da SBC/SBPT/FEBRASGO/SBP, Ministério da Saúde, Harrison, etc.).` : ''}
+${i === totalChapters - 1 ? `- SEÇÃO FINAL MANDATÓRIA DE REFERÊNCIAS: Como este é o capítulo final do tratado, inclua ao final a seção com o cabeçalho exato "## Referências Bibliográficas" detalhando de 3 a 5 fontes e diretrizes oficiais diretamente pertinentes ao tema (UpToDate, Diretrizes da Sociedade Brasileira da especialidade, Ministério da Saúde, Harrison, consensos clínicos). É terminantemente proibido inventar referências fictícias.` : ''}
 
 Referência ou contexto adicional do aluno: ${reference || 'Nenhuma'}
 

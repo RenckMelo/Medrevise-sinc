@@ -5492,7 +5492,7 @@ const getMermaidInstance = async () => {
 };
 
 // Preprocesses and sanitizes Mermaid syntax to prevent node text overflow or unescaped character crashes
-const sanitizeMermaidCode = (code: string): string => {
+export const sanitizeMermaidCode = (code: string): string => {
   if (!code) return 'graph TD\n  A["Algoritmo Decisório"]';
 
   let cleaned = code
@@ -5502,38 +5502,41 @@ const sanitizeMermaidCode = (code: string): string => {
     .replace(/```$/, '')
     .trim();
 
-  // Convert shorthand link "B -- Sim --> C" into standard "B -->|Sim| C"
-  cleaned = cleaned.replace(/(\w+)\s+--\s*([^-\n>]+)\s*-->\s*(\w+)/g, '$1 -->|$2| $3');
+  // 1. Normalize Unicode hyphens and dashes to standard ASCII hyphen '-'
+  cleaned = cleaned.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-');
 
-  // Insert <br/> in long labels to prevent text overflow outside node boundaries
-  cleaned = cleaned.replace(/(\[[^\]]+\]|\{[^\}]+\}|\([^)]+\))/g, (match) => {
+  // 2. Fix squashed nodes/links on same line (e.g. "E{Label} E -->")
+  cleaned = cleaned.replace(/([A-Za-z0-9_]+)(\{[^}]+\}|\([^)]+\}|\[[^\]]+\])\s+([A-Za-z0-9_]+)\s+-->/g, '$1$2\n    $3 -->');
+
+  // 3. Ensure node text containing parentheses or special characters inside brackets/braces is quoted in double quotes
+  cleaned = cleaned.replace(/(\[[^\]]+\]|\{[^\}]+\}|\([^)]+\})/g, (match) => {
+    const openChar = match[0];
+    const closeChar = match[match.length - 1];
+    let inner = match.slice(1, -1).trim();
+
+    // If inner contains parentheses, slashes, colons, or ampersands and is not double-quoted
+    if ((inner.includes('(') || inner.includes(')') || inner.includes('/') || inner.includes(':') || inner.includes('&')) && !(inner.startsWith('"') && inner.endsWith('"'))) {
+      inner = `"${inner.replace(/"/g, '\\"')}"`;
+    }
+
     if (match.length > 28 && !match.includes('<br') && !match.includes('\n')) {
-      const isSquare = match.startsWith('[') && match.endsWith(']');
-      const isCurly = match.startsWith('{') && match.endsWith('}');
-      const isRound = match.startsWith('(') && match.endsWith(')');
-
-      let openBracket = '[';
-      let closeBracket = ']';
-      if (isCurly) { openBracket = '{'; closeBracket = '}'; }
-      if (isRound) { openBracket = '('; closeBracket = ')'; }
-
-      let inner = match.slice(1, -1).trim();
-      if (inner.startsWith('"') && inner.endsWith('"')) {
-        inner = inner.slice(1, -1);
-        openBracket += '"';
-        closeBracket = '"' + closeBracket;
-      }
-
-      const words = inner.split(' ');
+      const isQuoted = inner.startsWith('"') && inner.endsWith('"');
+      const rawText = isQuoted ? inner.slice(1, -1) : inner;
+      const words = rawText.split(' ');
       if (words.length > 3) {
         const mid = Math.floor(words.length / 2);
         const line1 = words.slice(0, mid).join(' ');
         const line2 = words.slice(mid).join(' ');
-        return `${openBracket}${line1}<br/>${line2}${closeBracket}`;
+        const formattedInner = isQuoted ? `"${line1}<br/>${line2}"` : `${line1}<br/>${line2}`;
+        return `${openChar}${formattedInner}${closeChar}`;
       }
     }
-    return match;
+
+    return `${openChar}${inner}${closeChar}`;
   });
+
+  // Convert shorthand link "B -- Sim --> C" into standard "B -->|Sim| C"
+  cleaned = cleaned.replace(/(\w+)\s+--\s*([^-\n>]+)\s*-->\s*(\w+)/g, '$1 -->|$2| $3');
 
   if (!cleaned.startsWith('graph') && !cleaned.startsWith('flowchart')) {
     cleaned = 'graph TD\n' + cleaned;

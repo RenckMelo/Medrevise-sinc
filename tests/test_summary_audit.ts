@@ -107,4 +107,46 @@ const dist = calculateAdaptiveTokenDistribution(chapters, undefined, 16000, 1200
 assert(dist.allocations.length === 6, 'Aloca 6 capítulos no orçamento adaptativo do Elite');
 assert(dist.totalAllocated === 16000, 'Conserva o total exato de 16.000 tokens distribuídos');
 
+// ==========================================
+// Teste K: Sanitize Mermaid Code & Parse Fixes
+// ==========================================
+import { sanitizeMermaidCode } from '../src/internato/utils/markdownUtils.tsx';
+
+// 1. Fluxograma com rótulo contendo parênteses
+const case1 = `graph TD\n    D --> E{Gravidade (TG-2021)}`;
+const sanitized1 = sanitizeMermaidCode(case1);
+assert(sanitized1.includes('"Gravidade (TG-2021)"'), 'Envolve parênteses e hífen em aspas duplas');
+
+// 2. Fluxograma com hífen Unicode (ex: TG‑2021 com non-breaking hyphen \u2011)
+const case2 = `graph TD\n    D --> E{Gravidade (TG\u20112021)}`;
+const sanitized2 = sanitizeMermaidCode(case2);
+assert(!sanitized2.includes('\u2011'), 'Normaliza hífen unicode para hífen ASCII padrão');
+assert(sanitized2.includes('TG-2021'), 'Mantém texto legível com hífen padrão');
+
+// 3. Fluxograma com múltiplas conexões e nós squashed
+const case3 = `graph TD\n    D --> E{Gravidade (TG-2021)} E --> F`;
+const sanitized3 = sanitizeMermaidCode(case3);
+assert(sanitized3.includes('E') && sanitized3.includes('E -->'), 'Divide nós e conexões concatenadas na mesma linha');
+
+// 4. Fluxograma com conexões em linhas separadas
+const case4 = `graph TD\n    A --> B\n    B --> C`;
+const sanitized4 = sanitizeMermaidCode(case4);
+assert(sanitized4.includes('A --> B') && sanitized4.includes('B --> C'), 'Preserva conexões em linhas separadas');
+
+// 5. Bloco Mermaid inválido / vazio
+const case5 = '';
+const sanitized5 = sanitizeMermaidCode(case5);
+assert(sanitized5.startsWith('graph TD'), 'Fornece fallback seguro para bloco vazio');
+
+// 6. Resumo com Mermaid válido seguido de texto Markdown
+const case6Code = '```mermaid\ngraph TD\n    A --> B\n```\n# Título do Capítulo\nTexto clínico de seguimento.';
+const sanitized6 = sanitizeMermaidCode(case6Code);
+assert(sanitized6.includes('A --> B'), 'Processa corretamente o código Mermaid extraído dos cercos de markdown');
+
+// 7. Resumo sem nenhum bloco Mermaid
+const case7Text = '# Resumo Clinico Padrão\nSem blocos de diagrama aqui.';
+const sanitized7 = sanitizeMermaidCode(case7Text);
+assert(sanitized7.startsWith('graph TD'), 'Garante cabeçalho graph TD padrão mesmo sem tag mermaid explícita');
+
 console.log(`\nTESTES CONCLUÍDOS: ${passedTests}/${totalTests} aprovados com sucesso.`);
+
